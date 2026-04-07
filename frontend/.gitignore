@@ -7,10 +7,21 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Dependencies and Build
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
 *.local
+
+# --- NEW: SECURITY & SECRETS ---
+# This prevents the GitHub block you just experienced
+.env
+.env.local
+.env.*
+secure.env
+# ------------------------------
 
 # Editor directories and files
 .vscode/*
