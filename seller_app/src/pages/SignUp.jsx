@@ -206,19 +206,19 @@ const handleFileChange = (e, field) => {
               <div className="space-y-3">
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Full Name *</label>
-                  <input name="fullName" type="text" placeholder="Juan Dela Cruz" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.fullName ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.fullName} />
+                  <input name="fullName" type="text" placeholder="Enter Full Name" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.fullName ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.fullName} />
                   {errors.fullName && <p className="text-[9px] text-red-500 mt-1">{errors.fullName}</p>}
                 </div>
                 
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Email Address *</label>
-                  <input name="email" type="email" placeholder="juan.delacruz@example.com" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.email ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.email} />
+                  <input name="email" type="email" placeholder="Enter Email Address" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.email ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.email} />
                   {errors.email && <p className="text-[9px] text-red-500 mt-1">{errors.email}</p>}
                 </div>
 
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Contact Number *</label>
-                  <input name="contactNumber" type="text" placeholder="09123456789" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.contactNumber ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.contactNumber} />
+                  <input name="contactNumber" type="text" placeholder="Enter Phone Number" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.contactNumber ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.contactNumber} />
                   {errors.contactNumber && <p className="text-[9px] text-red-500 mt-1">{errors.contactNumber}</p>}
                 </div>
 
@@ -232,8 +232,8 @@ const handleFileChange = (e, field) => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <input name="password" type="password" placeholder="Password *" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.password ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} />
-                  <input name="confirmPassword" type="password" placeholder="Confirm *" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.confirmPassword ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} />
+                  <input name="password" type="password" placeholder="Enter Password" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.password ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} />
+                  <input name="confirmPassword" type="password" placeholder="Confirm Password" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.confirmPassword ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} />
                 </div>
               </div>
 
