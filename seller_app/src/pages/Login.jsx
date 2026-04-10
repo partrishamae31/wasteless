@@ -3,6 +3,31 @@ import { supabase } from '../supabaseClient';
 
 const Login = ({ onSignUpClick }) => {
   const [role, setRole] = useState('seller');
+  // 1. ADD THESE STATES
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // 2. ADD THIS LOGIN FUNCTION
+  const handleEmailLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      });
+
+      if (error) throw error;
+
+      alert("Login successful!");
+      // You can redirect here, e.g., window.location.href = '/dashboard';
+    } catch (error) {
+      alert("Login failed: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSocialLogin = async (provider) => {
     try {
@@ -74,18 +99,35 @@ const Login = ({ onSignUpClick }) => {
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">Email Address</label>
-              <input type="email" placeholder="your@email.com" className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-teal-500" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">Password</label>
-              <input type="password" placeholder="Enter your password" className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-teal-500" />
-            </div>
+  <label className="text-xs font-semibold text-gray-600 block mb-1">Email Address</label>
+  <input 
+    type="email" 
+    placeholder="your@email.com" 
+    className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-teal-500" 
+    value={email} // Link to state
+    onChange={(e) => setEmail(e.target.value)} // Update state
+  />
+</div>
+<div>
+  <label className="text-xs font-semibold text-gray-600 block mb-1">Password</label>
+  <input 
+    type="password" 
+    placeholder="Enter your password" 
+    className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-teal-500" 
+    value={password} // Link to state
+    onChange={(e) => setPassword(e.target.value)} // Update state
+  />
+</div>
           </div>
 
-          <button type="button" className="w-full mt-6 py-3 bg-gradient-to-r from-[#3e8ca3] to-[#689d38] text-white font-semibold rounded-lg text-sm flex items-center justify-center gap-2 hover:opacity-90 transition">
-            Sign In <span>→</span>
-          </button>
+          <button 
+  type="button" 
+  onClick={handleEmailLogin} 
+  disabled={loading}
+  className="w-full mt-6 py-3 bg-gradient-to-r from-[#3e8ca3] to-[#689d38] text-white font-semibold rounded-lg text-sm flex items-center justify-center gap-2 hover:opacity-90 transition disabled:opacity-50"
+>
+  {loading ? 'Signing In...' : 'Sign In'} <span>→</span>
+</button>
 
           <div className="relative flex py-5 items-center">
             <div className="flex-grow border-t border-gray-200"></div>
