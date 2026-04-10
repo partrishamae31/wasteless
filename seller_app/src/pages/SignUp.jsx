@@ -205,25 +205,25 @@ const handleFileChange = (e, field) => {
               <h3 className="text-sm font-bold text-gray-700 mb-2">Basic Information</h3>
               <div className="space-y-3">
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Full Name *</label>
+                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Full Name</label>
                   <input name="fullName" type="text" placeholder="Enter Full Name" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.fullName ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.fullName} />
                   {errors.fullName && <p className="text-[9px] text-red-500 mt-1">{errors.fullName}</p>}
                 </div>
                 
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Email Address *</label>
+                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Email Address</label>
                   <input name="email" type="email" placeholder="Enter Email Address" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.email ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.email} />
                   {errors.email && <p className="text-[9px] text-red-500 mt-1">{errors.email}</p>}
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Contact Number *</label>
+                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Contact Number</label>
                   <input name="contactNumber" type="text" placeholder="Enter Phone Number" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.contactNumber ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.contactNumber} />
                   {errors.contactNumber && <p className="text-[9px] text-red-500 mt-1">{errors.contactNumber}</p>}
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Barangay of Residence *</label>
+                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Barangay of Residence</label>
                   <select name="barangay" className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.barangay ? 'border-red-500 ring-red-500' : 'border-gray-100 focus:ring-teal-500'}`} onChange={handleChange} value={formData.barangay}>
                     <option value="">Select barangay...</option>
                     <option value="brgy1">Barangay 1</option>
