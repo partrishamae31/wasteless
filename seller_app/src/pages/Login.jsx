@@ -48,39 +48,25 @@ const Login = ({ onSignUpClick }) => {
 };
 
   const handleSocialLogin = async (provider) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: provider,
-        options: {
-          // This is the key to making it a popup
-          skipBrowserRedirect: true, 
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'select_account',
-          },
-        },
-      });
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: provider,
+      options: {
+        redirectTo: window.location.origin, // Ensure this matches your Vercel URL
+      },
+    });
 
-      if (error) throw error;
-
-      // If Supabase returns a URL, we open it in a custom popup window
-      if (data?.url) {
-        const width = 500;
-        const height = 600;
-        const left = window.screenX + (window.innerWidth - width) / 2;
-        const top = window.screenY + (window.innerHeight - height) / 2;
-        
-        window.open(
-          data.url,
-          'google-login',
-          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,status=yes`
-        );
-      }
-    } catch (error) {
-      console.error("Login error:", error.message);
-      alert("Error: " + error.message);
-    }
-  };
+    if (error) throw error;
+    
+    // Note: OAuth usually redirects. The "Role Creation" logic 
+    // actually needs to happen in your App.jsx or a "Sync" component 
+    // after the user returns from Google.
+    
+  } catch (error) {
+    console.error("Login error:", error.message);
+    alert("Error: " + error.message);
+  }
+};
 
   return (
     <div className="flex h-screen w-full bg-white font-sans overflow-hidden">
