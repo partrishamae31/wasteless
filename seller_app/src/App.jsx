@@ -10,26 +10,27 @@ function App() {
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('login');
+  const fetchOrCreateProfile = async (user) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
 
-  const fetchRole = async (userId) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .maybeSingle();
+  if (error) {
+    console.error('Profile fetch error:', error.message);
+    return null;
+  }
 
-    if (error) {
-      console.error('Role fetch error:', error.message);
-      return null;
-    }
-    if (!data) {
+  // 🆕 If no profile → create one (SOCIAL LOGIN FIX)
+  if (!data) {
     console.log('No profile found → creating one...');
 
     const { error: insertError } = await supabase
       .from('profiles')
       .insert({
         id: user.id,
-        role: 'seller', // 👈 default role (you can change later)
+        role: 'seller',
         full_name: user.user_metadata?.full_name || '',
       });
 
@@ -41,7 +42,7 @@ function App() {
     return 'seller';
   }
 
-   return data.role;
+  return data.role;
 };
 
   useEffect(() => {
