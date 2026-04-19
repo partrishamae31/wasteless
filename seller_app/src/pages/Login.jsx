@@ -10,24 +10,42 @@ const Login = ({ onSignUpClick }) => {
 
   // 2. ADD THIS LOGIN FUNCTION
   const handleEmailLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password,
-      });
+  e.preventDefault();
+  setLoading(true);
+  try {
+    // 1. Authenticate the user
+    const { data: { user }, error: authError } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
 
-      if (error) throw error;
+    if (authError) throw authError;
 
-      alert("Login successful!");
-      // You can redirect here, e.g., window.location.href = '/dashboard';
-    } catch (error) {
-      alert("Login failed: " + error.message);
-    } finally {
-      setLoading(false);
+    // 2. Fetch the user's role from your database (e.g., 'profiles' or 'users' table)
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles') // Ensure this table exists in your Supabase DB
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) throw profileError;
+
+    // 3. ROLE VALIDATION: Compare DB role with the UI selection
+    if (profile.role !== role) {
+      // Force sign out because the user chose the wrong role card
+      await supabase.auth.signOut();
+      alert(`Access Denied: This account is registered as a ${profile.role}. Please select the correct role above.`);
+      return;
     }
-  };
+
+    console.log("Auth and Role match success!");
+
+  } catch (error) {
+    alert("Login failed: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSocialLogin = async (provider) => {
     try {

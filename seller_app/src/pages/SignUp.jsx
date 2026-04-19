@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { supabase } from '../supabaseClient'; // Make sure the path matches where your supabaseClient.js is located
+import { supabase } from '../supabaseClient';
+
 const SignUp = ({ onLoginClick }) => {
   const [step, setStep] = useState(1);
   const [accountType, setAccountType] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
-  
-  // Form Data State
+  const [loading, setLoading] = useState(false); // New: Loading state
+  const permitRef = React.useRef();
+const techRef = React.useRef();
+
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -13,13 +16,11 @@ const SignUp = ({ onLoginClick }) => {
     barangay: '',
     password: '',
     confirmPassword: '',
-    idFile: null,
     businessName: '',
     businessPermit: null,
     techCert: null
   });
 
-  // Validation Errors State
   const [errors, setErrors] = useState({});
 
   const handleChange = (e) => {
@@ -29,21 +30,22 @@ const SignUp = ({ onLoginClick }) => {
     }
   };
 
-const handleFileChange = (e, field) => {
-  // Use index to get the actual file object
-  // CHANGE THE LINE BELOW:
-  const selectedFile = e.target.files && e.target.files; // Add here!
-  
-  if (selectedFile) {
-    if (selectedFile.size > 5 * 1024 * 1024) {
-      setErrors(prev => ({ ...prev, [field]: "File is too large (Max 5MB)" }));
-    } else {
-      // Save the single file to state
-      setFormData(prev => ({ ...prev, [field]: selectedFile }));
-      setErrors(prev => ({ ...prev, [field]: "" }));
+  const handleFileChange = (e, field) => {
+    const file = e.target.files[0]; // Grab the first file index
+    
+    if (file) {
+      console.log(`File selected for ${field}:`, file.name); 
+      
+      setFormData(prev => ({
+        ...prev,
+        [field]: file 
+      }));
+
+      if (errors[field]) {
+        setErrors(prev => ({ ...prev, [field]: '' }));
+      }
     }
-  }
-};
+  };
 
   const validateStep2 = () => {
     let newErrors = {};
@@ -55,7 +57,6 @@ const handleFileChange = (e, field) => {
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = "Passwords do not match";
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -64,74 +65,89 @@ const handleFileChange = (e, field) => {
     if (step === 1 && accountType) {
       setStep(2);
     } else if (step === 2) {
-    if (validateStep2()) {
-      // ADD THESE 3 LINES BELOW:
-      if (accountType === 'seller') {
-        setIsSubmitted(true); // Sellers go straight to the end
-      } else {
-        setStep(3); // Harvesters go to the upload screen
+      if (validateStep2()) {
+        accountType === 'seller' ? setIsSubmitted(true) : setStep(3);
       }
-    }
     } else if (step === 3) {
-  if (!formData.businessPermit) { // Changed from idFile
-    setErrors({ ...errors, businessPermit: "Please upload your permit" });
-  } else {
-    setIsSubmitted(true);
+    if (accountType === 'harvester') {
+      // These are the two lines that were causing the "Unexpected Token" error
+      const pFile = permitRef.current?.files?.[0];
+      const tFile = techRef.current?.files?.[0];
+
+      if (!pFile || !tFile) {
+        alert("Please ensure BOTH files are selected!");
+        return;
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        businessPermit: pFile,
+        techCert: tFile
+      }));
+
+      setIsSubmitted(true);
+    }
   }
-}
   };
 
   const handleFinalSubmit = async () => {
+  setLoading(true);
   try {
-    // 1. Sign up the user first
+    // Auth Sign Up
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: formData.email,
       password: formData.password,
     });
-
     if (authError) throw authError;
-
-    // Use the ID from the newly created auth user
     const userId = authData.user?.id;
 
-    if (!userId) throw new Error("User ID not generated.");
+    // Helper (Defined here)
+    const uploadFile = async (file, prefix, folder) => {
+      if (!file) return null;
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${folder}/${userId}/${prefix}_${Date.now()}.${fileExt}`;
 
-    // 2. Upload the Permit (using the userId in the path for organization)
-    const permitFile = formData.businessPermit;
-    const permitPath = `permits/${userId}/${Date.now()}_${permitFile.name}`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('verifications')
-      .upload(permitPath, permitFile);
+      const { error: uploadError } = await supabase.storage
+        .from('verifications')
+        .upload(filePath, file);
 
-    if (uploadError) throw uploadError;
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from('verifications').getPublicUrl(filePath);
+      return data.publicUrl;
+    };
 
-    const { data: publicUrlData } = supabase.storage
-      .from('verifications')
-      .getPublicUrl(permitPath);
+    // Use the files we saved in formData during handleContinue
+    let permitUrl = null;
+    let techCertUrl = null;
 
-    // 3. NOW insert into profiles (This satisfies the Foreign Key)
+    if (accountType === 'harvester') {
+      permitUrl = await uploadFile(formData.businessPermit, 'permit', 'permits');
+      techCertUrl = await uploadFile(formData.techCert, 'tech_cert', 'certs');
+    }
+
+    // Save to Database
     const { error: dbError } = await supabase
       .from('profiles')
-      .insert([{
-        id: userId, // This matches the ID in auth.users
+      .upsert({
+        id: userId,
         full_name: formData.fullName,
         email: formData.email,
         role: accountType,
-        business_name: formData.businessName,
-        business_permit_url: publicUrlData.publicUrl,
-        status: 'pending'
-      }]);
+        business_permit_url: permitUrl, 
+        tech_cert_url: techCertUrl,
+        verification_status: accountType === 'harvester' ? 'pending' : 'verified',
+        is_verified: accountType !== 'harvester'
+      });
 
     if (dbError) throw dbError;
+    alert("Registration Complete!");
 
-    alert("Registration successful! Please check your email for a verification link.");
   } catch (error) {
-    console.error("Submission failed:", error.message);
-    alert("Registration failed: " + error.message);
+    alert("Submit Error: " + error.message);
+  } finally {
+    setLoading(false);
   }
 };
-
   const steps = [1, 2, 3];
 
   return (
@@ -272,52 +288,37 @@ const handleFileChange = (e, field) => {
       />
     </div>
 
-    {/* Business Permit Upload */}
-    <div className="space-y-2">
-      <label className="text-[10px] font-bold text-gray-500 block uppercase tracking-wider">Business Permit / DTI Registration *</label>
-      <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer bg-gray-50 hover:bg-gray-100 transition-all">
-        <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center">
-          <svg className="w-6 h-6 mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-          <p className="text-[10px] font-bold text-[#2d7a7f]">{formData.businessPermit ? formData.businessPermit.name : 'Click to upload'}</p>
-          {/* ADD THE PREVIEW HERE */}
-    {/* The 'instanceof File' check ensures the app won't crash if the state is messy */}
-{formData.businessPermit && formData.businessPermit instanceof File && (
-  <div className="mt-2">
-    <img 
-      src={URL.createObjectURL(formData.businessPermit)} 
-      className="h-20 w-auto rounded-lg object-cover shadow-sm border border-gray-200" 
-      alt="Preview" 
-    />
-  </div>
-)}
-          <p className="text-[8px] text-gray-400 mt-1">PDF or JPEG (max 5MB)</p>
-        </div>
-        <input 
+    {/* Business Permit */}
+<div className="mt-4">
+  <label className="text-[10px] font-bold text-gray-500 uppercase">Business Permit *</label>
+  <input 
   type="file" 
-  className="hidden" 
-  accept=".pdf,.jpg,.jpeg" 
-  onChange={(e) => handleFileChange(e, 'businessPermit')} 
+  ref={permitRef} 
+  accept="image/*" 
+  className="..." 
 />
-      </label>
-    </div>
+  {formData.businessPermit && (
+    <p className="text-[10px] text-emerald-600 font-bold mt-1">
+      ✓ {formData.businessPermit.name} detected
+    </p>
+  )}
+</div>
 
-    {/* Technical Certification Upload */}
-    <div className="space-y-2">
-      <label className="text-[10px] font-bold text-gray-500 block uppercase tracking-wider">Technical Certification *</label>
-      <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer bg-gray-50 hover:bg-gray-100 transition-all">
-        <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center">
-          <svg className="w-6 h-6 mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-          <p className="text-[10px] font-bold text-[#2d7a7f]">{formData.techCert ? formData.techCert.name : 'Click to upload'}</p>
-          <p className="text-[8px] text-gray-400 mt-1">PDF or JPEG (max 5MB)</p>
-        </div>
-        <input 
+{/* Technical Cert */}
+<div className="mt-4">
+  <label className="text-[10px] font-bold text-gray-500 uppercase">Technical Certification *</label>
+  <input 
   type="file" 
-  className="hidden" 
-  accept=".pdf,.jpg,.jpeg" 
-  onChange={(e) => handleFileChange(e, 'techCert')} 
+  ref={techRef} 
+  accept="image/*" 
+  className="..." 
 />
-      </label>
-    </div>
+  {formData.techCert && (
+    <p className="text-[10px] text-emerald-600 font-bold mt-1">
+      ✓ {formData.techCert.name} detected
+    </p>
+  )}
+</div>
 
     {/* Navigation Buttons */}
     <div className="flex gap-3 pt-4">
