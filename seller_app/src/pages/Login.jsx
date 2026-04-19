@@ -49,21 +49,17 @@ const Login = ({ onSignUpClick }) => {
 
   const handleSocialLogin = async (provider) => {
   try {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: provider,
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
       options: {
-        redirectTo: window.location.origin, // Ensure this matches your Vercel URL
+        redirectTo: window.location.origin, // 👈 VERY IMPORTANT
       },
     });
 
     if (error) throw error;
-    
-    // Note: OAuth usually redirects. The "Role Creation" logic 
-    // actually needs to happen in your App.jsx or a "Sync" component 
-    // after the user returns from Google.
-    
+
   } catch (error) {
-    console.error("Login error:", error.message);
+    console.error("Social login error:", error.message);
     alert("Error: " + error.message);
   }
 };
