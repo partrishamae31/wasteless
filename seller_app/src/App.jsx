@@ -16,15 +16,33 @@ function App() {
       .from('profiles')
       .select('role')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Role fetch error:', error.message);
       return null;
     }
+    if (!data) {
+    console.log('No profile found → creating one...');
 
-    return data?.role || null;
-  };
+    const { error: insertError } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        role: 'seller', // 👈 default role (you can change later)
+        full_name: user.user_metadata?.full_name || '',
+      });
+
+    if (insertError) {
+      console.error('Profile creation error:', insertError.message);
+      return null;
+    }
+
+    return 'seller';
+  }
+
+   return data.role;
+};
 
   useEffect(() => {
     let mounted = true;
@@ -41,7 +59,7 @@ function App() {
       setSession(session ?? null);
 
       if (session?.user) {
-        const userRole = await fetchRole(session.user.id);
+        const userRole = await fetchOrCreateProfile(session.user);
         if (mounted) setRole(userRole);
       } else {
         setRole(null);
@@ -57,7 +75,7 @@ function App() {
         setSession(session ?? null);
 
         if (session?.user) {
-          const userRole = await fetchRole(session.user.id);
+          const userRole = await fetchOrCreateProfile(session.user);
           setRole(userRole);
         } else {
           setRole(null);
