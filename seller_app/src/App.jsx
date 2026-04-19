@@ -1,46 +1,29 @@
-import React, { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
-import Login from "./pages/Login";
-import SignUp from "./pages/SignUp";
-import SellerDashboard from "./pages/SellerDashboard";
-import HarvesterDashboard from "./pages/HarvesterDashboard";
+import React, { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
+import Login from './pages/Login';
+import SignUp from './pages/SignUp';
+import SellerDashboard from './pages/SellerDashboard';
+import HarvesterDashboard from './pages/HarvesterDashboard';
 
 function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState("login");
-  const fetchOrCreateProfile = async (user) => {
+  const [currentPage, setCurrentPage] = useState('login');
+
+  const fetchRole = async (userId) => {
     const { data, error } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
 
     if (error) {
-      console.error("Profile fetch error:", error.message);
+      console.error('Role fetch error:', error.message);
       return null;
     }
 
-    // 🆕 If no profile → create one (SOCIAL LOGIN FIX)
-    if (!data) {
-      console.log("No profile found → creating one...");
-
-      const { error: insertError } = await supabase.from("profiles").insert({
-        id: user.id,
-        role: "seller",
-        full_name: user.user_metadata?.full_name || "",
-      });
-
-      if (insertError) {
-        console.error("Profile creation error:", insertError.message);
-        return null;
-      }
-
-      return "seller";
-    }
-
-    return data.role;
+    return data?.role || null;
   };
 
   useEffect(() => {
@@ -58,7 +41,7 @@ function App() {
       setSession(session ?? null);
 
       if (session?.user) {
-        const userRole = await fetchOrCreateProfile(session.user);
+        const userRole = await fetchRole(session.user.id);
         if (mounted) setRole(userRole);
       } else {
         setRole(null);
@@ -69,20 +52,19 @@ function App() {
 
     init();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session ?? null);
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange(async (_event, session) => {
+        setSession(session ?? null);
 
-      if (session?.user) {
-        const userRole = await fetchOrCreateProfile(session.user);
-        setRole(userRole);
-      } else {
-        setRole(null);
-      }
+        if (session?.user) {
+          const userRole = await fetchRole(session.user.id);
+          setRole(userRole);
+        } else {
+          setRole(null);
+        }
 
-      setLoading(false);
-    });
+        setLoading(false);
+      });
 
     return () => {
       mounted = false;
@@ -94,7 +76,7 @@ function App() {
     await supabase.auth.signOut();
     setSession(null);
     setRole(null);
-    setCurrentPage("login");
+    setCurrentPage('login');
   };
 
   // ✅ ONLY show loader when BOTH session + role are unknown on first load
@@ -108,28 +90,26 @@ function App() {
 
   // Logged in
   if (session) {
-    if (role === null) {
+    if (!role) {
       return (
-        <div className="h-screen flex items-center justify-center text-red-500">
-          Failed to load profile. Check database permissions.
+        <div className="h-screen w-full flex items-center justify-center bg-white text-slate-500">
+          Loading role...
         </div>
       );
     }
 
-    return role === "harvester" ? (
-      <HarvesterDashboard session={session} onLogout={handleLogout} />
-    ) : (
-      <SellerDashboard session={session} onLogout={handleLogout} />
-    );
+    return role === 'harvester'
+      ? <HarvesterDashboard session={session} onLogout={handleLogout} />
+      : <SellerDashboard session={session} onLogout={handleLogout} />;
   }
 
   // Logged out
   return (
     <div className="App">
-      {currentPage === "login" ? (
-        <Login onSignUpClick={() => setCurrentPage("signup")} />
+      {currentPage === 'login' ? (
+        <Login onSignUpClick={() => setCurrentPage('signup')} />
       ) : (
-        <SignUp onLoginClick={() => setCurrentPage("login")} />
+        <SignUp onLoginClick={() => setCurrentPage('login')} />
       )}
     </div>
   );
