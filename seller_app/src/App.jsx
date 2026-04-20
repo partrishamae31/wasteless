@@ -1,25 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
-import Login from './pages/Login';
-import SignUp from './pages/SignUp';
-import SellerDashboard from './pages/SellerDashboard';
-import HarvesterDashboard from './pages/HarvesterDashboard';
+import React, { useState, useEffect } from "react";
+import { supabase } from "./supabaseClient";
+import Login from "./pages/Login";
+import SignUp from "./pages/SignUp";
+import SellerDashboard from "./pages/SellerDashboard";
+import HarvesterDashboard from "./pages/HarvesterDashboard";
 
 function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState('login');
+  const [currentPage, setCurrentPage] = useState("login");
 
   const fetchRole = async (userId) => {
     const { data, error } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
       .single();
 
     if (error) {
-      console.error('Role fetch error:', error.message);
+      console.error("Role fetch error:", error.message);
       return null;
     }
 
@@ -52,19 +52,40 @@ function App() {
 
     init();
 
-    const { data: { subscription } } =
-      supabase.auth.onAuthStateChange(async (_event, session) => {
-        setSession(session ?? null);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session ?? null);
 
-        if (session?.user) {
-          const userRole = await fetchRole(session.user.id);
-          setRole(userRole);
-        } else {
-          setRole(null);
+      if (session?.user) {
+        let userRole = await fetchRole(session.user.id);
+
+        // IF ROLE IS MISSING (New Social Login User)
+        if (!userRole) {
+          const savedRole = localStorage.getItem("pendingRole") || "seller"; // Default to seller
+
+          const { error: insertError } = await supabase
+            .from("profiles")
+            .insert([
+              {
+                id: session.user.id,
+                role: savedRole,
+                email: session.user.email,
+              },
+            ]);
+
+          if (!insertError) {
+            userRole = savedRole;
+            localStorage.removeItem("pendingRole"); // Clean up
+          }
         }
 
-        setLoading(false);
-      });
+        setRole(userRole);
+      } else {
+        setRole(null);
+      }
+      setLoading(false);
+    });
 
     return () => {
       mounted = false;
@@ -76,7 +97,7 @@ function App() {
     await supabase.auth.signOut();
     setSession(null);
     setRole(null);
-    setCurrentPage('login');
+    setCurrentPage("login");
   };
 
   // ✅ ONLY show loader when BOTH session + role are unknown on first load
@@ -98,18 +119,20 @@ function App() {
       );
     }
 
-    return role === 'harvester'
-      ? <HarvesterDashboard session={session} onLogout={handleLogout} />
-      : <SellerDashboard session={session} onLogout={handleLogout} />;
+    return role === "harvester" ? (
+      <HarvesterDashboard session={session} onLogout={handleLogout} />
+    ) : (
+      <SellerDashboard session={session} onLogout={handleLogout} />
+    );
   }
 
   // Logged out
   return (
     <div className="App">
-      {currentPage === 'login' ? (
-        <Login onSignUpClick={() => setCurrentPage('signup')} />
+      {currentPage === "login" ? (
+        <Login onSignUpClick={() => setCurrentPage("signup")} />
       ) : (
-        <SignUp onLoginClick={() => setCurrentPage('login')} />
+        <SignUp onLoginClick={() => setCurrentPage("login")} />
       )}
     </div>
   );
