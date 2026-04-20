@@ -11,7 +11,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('browse');
   const [selectedListing, setSelectedListing] = useState(null);
-  const [isProfileOpen, setIsProfileOpen] = useState(false); // ✅ Fixed missing state
+  const [isProfileOpen, setIsProfileOpen] = useState(false); 
 
   useEffect(() => {
     fetchActiveListings();
@@ -35,7 +35,6 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     }
   };
 
-  // ✅ HANDLER: Submits the bid to Supabase
   const handlePlaceBid = async (listingId, amount, message) => {
   console.log("Submitting bid...");
 

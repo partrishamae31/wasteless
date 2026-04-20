@@ -44,29 +44,33 @@ const SellerDashboard = ({ session }) => {
     const verifyRole = async () => {
       if (!session?.user) return;
 
-      const { data } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
         .single();
 
-      if (data?.role !== 'seller') {
+      console.log("ROLE CHECK DEBUG:", data, error); // 👈 ADD THIS
+
+      if (error || !data) {
+        alert("Profile not found in database.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      if (data.role !== "seller") {
         alert("Access Denied: You are not a seller.");
         await supabase.auth.signOut();
-        // The screen stays empty because we haven't set checkingRole to false
-      } else {
-        setIsAuthorized(true);
-        setCheckingRole(false);
+        return;
       }
-    };
 
+      setIsAuthorized(true);
+      setCheckingRole(false);
+    };
     verifyRole();
   }, [session]);
-
   // CRITICAL: If still checking or not authorized, show NOTHING (blank or loader)
-  if (checkingRole || !isAuthorized) {
-    return <div className="h-screen w-full bg-white flex items-center justify-center">Loading</div>;
-  }
+  
   useEffect(() => {
     const fetchProfile = async () => {
       const { data } = await supabase
@@ -76,20 +80,16 @@ const SellerDashboard = ({ session }) => {
         .single();
       setProfileData(data);
     };
-    if (session) fetchProfile();
-  }, [session]);
+    if (session && isAuthorized) fetchProfile(); // Added isAuthorized check inside
+  }, [session, isAuthorized]);
 
   useEffect(() => {
     const fetchListings = async () => {
+      if (!isAuthorized) return; // Exit early if not authorized
       try {
         const { data, error } = await supabase
           .from("listings")
-          .select(
-            `
-          *,
-          bids (*) 
-        `,
-          ) // 👈 This tells Supabase to join the bids table
+          .select(`*, bids (*)`)
           .eq("seller_id", session.user.id)
           .order("created_at", { ascending: false });
 
@@ -102,7 +102,14 @@ const SellerDashboard = ({ session }) => {
       }
     };
     fetchListings();
-  }, [session.user.id]);
+  }, [session.user.id, isAuthorized]);
+  if (checkingRole || !isAuthorized) {
+    return (
+      <div className="h-screen w-full bg-white flex items-center justify-center">
+        Loading
+      </div>
+    );
+  }
   const handleSelectListing = async (listing) => {
     setSelectedListing(listing);
     setLoading(true);
@@ -398,7 +405,6 @@ const SellerDashboard = ({ session }) => {
             )}
           </div>
         </div>
-        
 
         {/* Right Panel */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[600px] sticky top-6 z-10">
