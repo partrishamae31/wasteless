@@ -8,6 +8,40 @@ const SignUp = ({ onLoginClick }) => {
   const [loading, setLoading] = useState(false); // New: Loading state
   const permitRef = React.useRef();
   const techRef = React.useRef();
+  const valenzuelaBarangays = [
+    "Arkong Bato",
+    "Bagbaguin",
+    "Balangkas",
+    "Bignay",
+    "Bisig",
+    "Canumay East",
+    "Canumay West",
+    "Coloong",
+    "Dalandanan",
+    "Gen. T. de Leon",
+    "Isla",
+    "Karuhatan",
+    "Lawang Bato",
+    "Lingunan",
+    "Mabolo",
+    "Malanday",
+    "Malinta",
+    "Mapulang Lupa",
+    "Marulas",
+    "Maysan",
+    "Palasan",
+    "Pariancillo Villa",
+    "Paso de Blas",
+    "Pasolo",
+    "Poblacion",
+    "Pulo",
+    "Punturin",
+    "Rincon",
+    "Tagalag",
+    "Ugong",
+    "Viente Reales",
+    "Wawang Pulo",
+  ];
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -150,8 +184,8 @@ const SignUp = ({ onLoginClick }) => {
           verification_status:
             accountType === "harvester" ? "pending" : "verified",
           is_verified: accountType !== "harvester",
-          barangay: formData.barangay
-                },
+          barangay: formData.barangay,
+        },
       ]);
 
       if (dbError) {
@@ -328,12 +362,20 @@ const SignUp = ({ onLoginClick }) => {
                   </label>
                   <select
                     name="barangay"
-                    className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.barangay ? "border-red-500 ring-red-500" : "border-gray-100 focus:ring-teal-500"}`}
+                    className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${
+                      errors.barangay
+                        ? "border-red-500 ring-red-500"
+                        : "border-gray-100 focus:ring-teal-500"
+                    }`}
                     onChange={handleChange}
                     value={formData.barangay}
                   >
                     <option value="">Select barangay...</option>
-                    <option value="brgy1">Barangay 1</option>
+                    {valenzuelaBarangays.map((brgy) => (
+                      <option key={brgy} value={brgy}>
+                        {brgy}
+                      </option>
+                    ))}
                   </select>
                   {errors.barangay && (
                     <p className="text-[9px] text-red-500 mt-1">
