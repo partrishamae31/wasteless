@@ -16,48 +16,55 @@ function App() {
       .from('profiles')
       .select('role')
       .eq('id', userId)
-      .maybeSingle(); // Use maybeSingle to avoid errors if profile is missing
+      .single();
 
     if (error) {
       console.error('Role fetch error:', error.message);
       return null;
     }
+
     return data?.role || null;
   };
 
   useEffect(() => {
     let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const init = async () => {
+      setLoading(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!mounted) return;
-      
+
       setSession(session ?? null);
 
       if (session?.user) {
-        setLoading(true); // Re-trigger loading when session changes
-        let userRole = await fetchRole(session.user.id);
-
-        // AUTO-CREATE PROFILE FOR SOCIAL LOGIN
-        if (!userRole) {
-          const savedRole = localStorage.getItem('pendingRole') || 'seller';
-          const { error: insertError } = await supabase
-            .from('profiles')
-            .insert([{ 
-              id: session.user.id, 
-              role: savedRole, 
-              email: session.user.email 
-            }]);
-
-          if (!insertError) userRole = savedRole;
-          localStorage.removeItem('pendingRole');
-        }
-        
-        setRole(userRole);
+        const userRole = await fetchRole(session.user.id);
+        if (mounted) setRole(userRole);
       } else {
         setRole(null);
       }
+
       setLoading(false);
-    });
+    };
+
+    init();
+
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange(async (_event, session) => {
+        setSession(session ?? null);
+
+        if (session?.user) {
+          const userRole = await fetchRole(session.user.id);
+          setRole(userRole);
+        } else {
+          setRole(null);
+        }
+
+        setLoading(false);
+      });
 
     return () => {
       mounted = false;
@@ -65,10 +72,15 @@ function App() {
     };
   }, []);
 
-  // --- REVISED RENDERING LOGIC ---
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setRole(null);
+    setCurrentPage('login');
+  };
 
-  // 1. Initial Load / Transition Loader
-  if (loading) {
+  // ✅ ONLY show loader when BOTH session + role are unknown on first load
+  if (loading && session === null) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-white">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2d7a7f]"></div>
@@ -76,13 +88,12 @@ function App() {
     );
   }
 
-  // 2. Logged In Logic
+  // Logged in
   if (session) {
-    if (role === null) {
-      // This prevents the white screen if the insert hasn't finished yet
+    if (!role) {
       return (
         <div className="h-screen w-full flex items-center justify-center bg-white text-slate-500">
-          Syncing profile...
+          Loading role...
         </div>
       );
     }
@@ -92,7 +103,7 @@ function App() {
       : <SellerDashboard session={session} onLogout={handleLogout} />;
   }
 
-  // 3. Logged Out Logic
+  // Logged out
   return (
     <div className="App">
       {currentPage === 'login' ? (

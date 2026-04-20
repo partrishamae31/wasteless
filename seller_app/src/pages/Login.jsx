@@ -48,17 +48,18 @@ const Login = ({ onSignUpClick }) => {
 };
 
   const handleSocialLogin = async (provider) => {
-  // CRITICAL: Save role to storage before popup opens
-  localStorage.setItem('pendingRole', role); 
-
-  try {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: provider,
-      options: {
-        skipBrowserRedirect: true, 
-        queryParams: { access_type: 'offline', prompt: 'select_account' },
-      },
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: provider,
+        options: {
+          // This is the key to making it a popup
+          skipBrowserRedirect: true, 
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
+          },
+        },
+      });
 
       if (error) throw error;
 
