@@ -44,37 +44,54 @@ function App() {
 
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session ?? null);
+    // Inside App.jsx - useEffect
+const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_OUT') {
+    setSession(null);
+    setRole(null);
+    setLoading(false);
+    return;
+  }
 
-      if (session?.user) {
-        setLoading(true); // Show loader while checking/fixing role
-        let userRole = await fetchRole(session.user.id);
+  if (session?.user) {
+    setSession(session);
+    setLoading(true); // Ensure loader shows while we fix the account
 
-        if (userRole === null) {
-          const savedRole = localStorage.getItem('pendingRole') || 'seller'; 
-          
-          const { error: insertError } = await supabase
-            .from('profiles')
-            .insert([{ 
-              id: session.user.id, 
-              role: savedRole, 
-              email: session.user.email 
-            }]);
+    try {
+      let userRole = await fetchRole(session.user.id);
 
-          if (!insertError) {
-            userRole = savedRole;
-            localStorage.removeItem('pendingRole');
-          } else {
-            console.error("Profile creation failed:", insertError.message);
-          }
+      // If role is missing (Google/Social Login)
+      if (!userRole) {
+        // 1. Get role from memory
+        const savedRole = localStorage.getItem('pendingRole') || 'seller';
+        
+        // 2. Attempt to create the profile
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert([{ 
+            id: session.user.id, 
+            role: savedRole, 
+            email: session.user.email 
+          }]);
+
+        // If insert fails because it already exists but fetchRole missed it (Race condition)
+        if (insertError && insertError.code === '23505') { 
+           userRole = await fetchRole(session.user.id);
+        } else {
+           userRole = savedRole;
         }
-        setRole(userRole);
-      } else {
-        setRole(null);
+        
+        localStorage.removeItem('pendingRole');
       }
-      setLoading(false);
-    });
+
+      setRole(userRole);
+    } catch (err) {
+      console.error("Auth sync error:", err);
+    } finally {
+      setLoading(false); // This MUST run to clear the white screen
+    }
+  }
+});
 
     return () => {
       mounted = false;
