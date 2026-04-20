@@ -52,6 +52,7 @@ function App() {
 
     init();
 
+    // Inside App.jsx - onAuthStateChange
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -60,9 +61,14 @@ function App() {
       if (session?.user) {
         let userRole = await fetchRole(session.user.id);
 
-        // IF ROLE IS MISSING (New Social Login User)
+        // If the user exists in Auth but has NO profile in your table
         if (!userRole) {
-          const savedRole = localStorage.getItem("pendingRole") || "seller"; // Default to seller
+          // 1. Try to get role from storage, fallback to 'seller' if browser changed
+          const savedRole = localStorage.getItem("pendingRole") || "seller";
+
+          console.log(
+            `Creating new profile for ${session.user.email} with role: ${savedRole}`,
+          );
 
           const { error: insertError } = await supabase
             .from("profiles")
@@ -74,12 +80,15 @@ function App() {
               },
             ]);
 
-          if (!insertError) {
+          if (insertError) {
+            console.error("Error auto-creating profile:", insertError.message);
+          } else {
             userRole = savedRole;
-            localStorage.removeItem("pendingRole"); // Clean up
+            localStorage.removeItem("pendingRole");
           }
         }
 
+        // Final check: set the state so the dashboard renders
         setRole(userRole);
       } else {
         setRole(null);
