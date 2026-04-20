@@ -53,48 +53,41 @@ function App() {
     init();
 
     // Inside App.jsx - onAuthStateChange
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+  setSession(session ?? null);
 
-      if (session?.user) {
-        let userRole = await fetchRole(session.user.id);
+  if (session?.user) {
+    // 1. Try to fetch the role
+    let userRole = await fetchRole(session.user.id);
 
-        // If the user exists in Auth but has NO profile in your table
-        if (!userRole) {
-          // 1. Try to get role from storage, fallback to 'seller' if browser changed
-          const savedRole = localStorage.getItem("pendingRole") || "seller";
+    // 2. If the role is missing (first-time Google user), create the profile
+    if (!userRole) {
+      // Get the role the user clicked earlier (default to 'seller')
+      const savedRole = localStorage.getItem('pendingRole') || 'seller'; 
+      
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert([{ 
+          id: session.user.id, 
+          role: savedRole, 
+          email: session.user.email 
+        }]);
 
-          console.log(
-            `Creating new profile for ${session.user.email} with role: ${savedRole}`,
-          );
-
-          const { error: insertError } = await supabase
-            .from("profiles")
-            .insert([
-              {
-                id: session.user.id,
-                role: savedRole,
-                email: session.user.email,
-              },
-            ]);
-
-          if (insertError) {
-            console.error("Error auto-creating profile:", insertError.message);
-          } else {
-            userRole = savedRole;
-            localStorage.removeItem("pendingRole");
-          }
-        }
-
-        // Final check: set the state so the dashboard renders
-        setRole(userRole);
+      if (!insertError) {
+        userRole = savedRole;
+        localStorage.removeItem('pendingRole'); // Clean up memory
       } else {
-        setRole(null);
+        console.error("Profile creation failed:", insertError.message);
       }
-      setLoading(false);
-    });
+    }
+    
+    // 3. Set the role so the correct dashboard renders
+    setRole(userRole);
+  } else {
+    setRole(null);
+  }
+  setLoading(false);
+});
 
     return () => {
       mounted = false;
