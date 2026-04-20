@@ -16,13 +16,12 @@ function App() {
       .from("profiles")
       .select("role")
       .eq("id", userId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("Role fetch error:", error.message);
       return null;
     }
-
     return data?.role || null;
   };
 
@@ -31,63 +30,51 @@ function App() {
 
     const init = async () => {
       setLoading(true);
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+      const { data: { session } } = await supabase.auth.getSession();
+      
       if (!mounted) return;
-
       setSession(session ?? null);
 
       if (session?.user) {
         const userRole = await fetchRole(session.user.id);
         if (mounted) setRole(userRole);
-      } else {
-        setRole(null);
       }
-
       setLoading(false);
     };
 
     init();
 
-    // Inside App.jsx - onAuthStateChange
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-  setSession(session ?? null);
+      setSession(session ?? null);
 
-  if (session?.user) {
-    // 1. Try to fetch the role
-    let userRole = await fetchRole(session.user.id);
+      if (session?.user) {
+        setLoading(true); // Show loader while checking/fixing role
+        let userRole = await fetchRole(session.user.id);
 
-    // 2. If the role is missing (first-time Google user), create the profile
-    if (!userRole) {
-      // Get the role the user clicked earlier (default to 'seller')
-      const savedRole = localStorage.getItem('pendingRole') || 'seller'; 
-      
-      const { error: insertError } = await supabase
-        .from('profiles')
-        .insert([{ 
-          id: session.user.id, 
-          role: savedRole, 
-          email: session.user.email 
-        }]);
+        if (userRole === null) {
+          const savedRole = localStorage.getItem('pendingRole') || 'seller'; 
+          
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert([{ 
+              id: session.user.id, 
+              role: savedRole, 
+              email: session.user.email 
+            }]);
 
-      if (!insertError) {
-        userRole = savedRole;
-        localStorage.removeItem('pendingRole'); // Clean up memory
+          if (!insertError) {
+            userRole = savedRole;
+            localStorage.removeItem('pendingRole');
+          } else {
+            console.error("Profile creation failed:", insertError.message);
+          }
+        }
+        setRole(userRole);
       } else {
-        console.error("Profile creation failed:", insertError.message);
+        setRole(null);
       }
-    }
-    
-    // 3. Set the role so the correct dashboard renders
-    setRole(userRole);
-  } else {
-    setRole(null);
-  }
-  setLoading(false);
-});
+      setLoading(false);
+    });
 
     return () => {
       mounted = false;
@@ -102,8 +89,10 @@ function App() {
     setCurrentPage("login");
   };
 
-  // ✅ ONLY show loader when BOTH session + role are unknown on first load
-  if (loading && session === null) {
+  // --- RENDERING LOGIC ---
+
+  // 1. Initial Application Load
+  if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-white">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2d7a7f]"></div>
@@ -111,32 +100,36 @@ function App() {
     );
   }
 
-  // Logged in
-  if (session) {
-    if (!role) {
-      return (
-        <div className="h-screen w-full flex items-center justify-center bg-white text-slate-500">
-          Loading role...
-        </div>
-      );
-    }
-
-    return role === "harvester" ? (
-      <HarvesterDashboard session={session} onLogout={handleLogout} />
-    ) : (
-      <SellerDashboard session={session} onLogout={handleLogout} />
+  // 2. Not Logged In
+  if (!session) {
+    return (
+      <div className="App">
+        {currentPage === "login" ? (
+          <Login onSignUpClick={() => setCurrentPage("signup")} />
+        ) : (
+          <SignUp onLoginClick={() => setCurrentPage("login")} />
+        )}
+      </div>
     );
   }
 
-  // Logged out
-  return (
-    <div className="App">
-      {currentPage === "login" ? (
-        <Login onSignUpClick={() => setCurrentPage("signup")} />
-      ) : (
-        <SignUp onLoginClick={() => setCurrentPage("login")} />
-      )}
-    </div>
+  // 3. Logged in but Role Profile is still being created/fetched
+  if (session && role === null) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-white">
+        <div className="text-center">
+           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2d7a7f] mx-auto mb-4"></div>
+           <p className="text-gray-500">Setting up your {localStorage.getItem('pendingRole') || 'account'}...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Logged In & Role Ready
+  return role === "harvester" ? (
+    <HarvesterDashboard session={session} onLogout={handleLogout} />
+  ) : (
+    <SellerDashboard session={session} onLogout={handleLogout} />
   );
 }
 

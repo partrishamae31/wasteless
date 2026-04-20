@@ -52,40 +52,22 @@ const Login = ({ onSignUpClick }) => {
   };
 
   const handleSocialLogin = async (provider) => {
-    // SAVE THE ROLE TO LOCALSTORAGE FIRST
-    localStorage.setItem("pendingRole", role);
+  localStorage.setItem("pendingRole", role);
 
-    try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: provider,
-        options: {
-          skipBrowserRedirect: true,
-          queryParams: {
-            access_type: "offline",
-            prompt: "select_account",
-          },
-        },
-      });
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: provider,
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
 
-      if (error) throw error;
-
-      if (data?.url) {
-        const width = 500;
-        const height = 600;
-        const left = window.screenX + (window.innerWidth - width) / 2;
-        const top = window.screenY + (window.innerHeight - height) / 2;
-
-        window.open(
-          data.url,
-          "google-login",
-          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,status=yes`,
-        );
-      }
-    } catch (error) {
-      console.error("Login error:", error.message);
-      alert("Error: " + error.message);
-    }
-  };
+    if (error) throw error;
+  } catch (error) {
+    console.error("Login error:", error.message);
+    alert("Error: " + error.message);
+  }
+};
 
   return (
     <div className="flex h-screen w-full bg-white font-sans overflow-hidden">
