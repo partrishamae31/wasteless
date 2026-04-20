@@ -94,15 +94,22 @@ const SignUp = ({ onLoginClick }) => {
   const handleFinalSubmit = async () => {
     setLoading(true);
     try {
-      // Auth Sign Up
+      // 1. Auth Sign Up
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
       });
-      if (authError) throw authError;
-      const userId = authData.user?.id;
 
-      // Helper (Defined here)
+      if (authError) throw authError;
+      const userId = authData.user?.id || authData.session?.user?.id;
+
+      if (!userId) {
+        throw new Error(
+          "User ID not available yet. Please check email confirmation or disable email confirmation in Supabase.",
+        );
+      }
+
+      // 2. Handle File Uploads (Only for Harvesters)
       const uploadFile = async (file, prefix, folder) => {
         if (!file) return null;
         const fileExt = file.name.split(".").pop();
@@ -119,7 +126,6 @@ const SignUp = ({ onLoginClick }) => {
         return data.publicUrl;
       };
 
-      // Use the files we saved in formData during handleContinue
       let permitUrl = null;
       let techCertUrl = null;
 
@@ -132,24 +138,34 @@ const SignUp = ({ onLoginClick }) => {
         techCertUrl = await uploadFile(formData.techCert, "tech_cert", "certs");
       }
 
-      // Save to Database
-      const { error: dbError } = await supabase.from("profiles").upsert({
-        id: userId,
-        full_name: formData.fullName,
-        email: formData.email,
-        // SignUp.jsx
-        role: accountType.toLowerCase(),
-        business_permit_url: permitUrl,
-        tech_cert_url: techCertUrl,
-        verification_status:
-          accountType === "harvester" ? "pending" : "verified",
-        is_verified: accountType !== "harvester",
-      });
+      // 3. Save to Database using INSERT (not upsert) to ensure a clean record
+      const { error: dbError } = await supabase.from("profiles").upsert([
+        {
+          id: userId,
+          full_name: formData.fullName,
+          email: formData.email,
+          role: accountType,
+          business_permit_url: permitUrl,
+          tech_cert_url: techCertUrl,
+          verification_status:
+            accountType === "harvester" ? "pending" : "verified",
+          is_verified: accountType !== "harvester",
+          barangay: formData.barangay
+                },
+      ]);
 
-      if (dbError) throw dbError;
-      alert("Registration Complete!");
+      if (dbError) {
+        // If DB fails, we should ideally delete the Auth user,
+        // but for now, we throw the error to the catch block.
+        throw dbError;
+      }
+
+      alert("Registration Complete! Redirecting to dashboard...");
+
+      // Optional: Force a refresh or manual redirect if App.js doesn't pick it up
+      window.location.reload();
     } catch (error) {
-      alert("Submit Error: " + error.message);
+      alert("Registration Error: " + error.message);
     } finally {
       setLoading(false);
     }

@@ -129,10 +129,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
       {/* --- STATS GRID --- */}
       <div className="grid grid-cols-4 gap-6 mb-10">
-        <StatCard label="Active Alerts" value="5" />
-        <StatCard label="Pending Bids" value="3" />
-        <StatCard label="Acquired Parts" value="24" />
-        <StatCard label="Total Spent" value="₱45,200" isPrice />
+        <StatCard label="Active Alerts" value="0" />
+        <StatCard label="Pending Bids" value="0" />
+        <StatCard label="Acquired Parts" value="0" />
+        <StatCard label="Total Spent" value="0" isPrice />
       </div>
 
       {/* --- ACCURATE NAVIGATION --- */}
