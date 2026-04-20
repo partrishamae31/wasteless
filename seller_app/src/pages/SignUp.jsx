@@ -540,10 +540,9 @@ const SignUp = ({ onLoginClick }) => {
                 </button>
                 <button
                   onClick={handleFinalSubmit}
-                  disabled={loading}
-                  className="..."
+                  className="flex-1 py-3 bg-[#6da43a] text-white rounded-lg font-bold text-sm shadow-md hover:opacity-90"
                 >
-                  {loading ? "Processing..." : "Complete Registration"}
+                  Complete Registration
                 </button>
               </div>
             </div>
