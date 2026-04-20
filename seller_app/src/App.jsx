@@ -68,17 +68,18 @@ function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session ?? null);
-
-      if (session?.user) {
-        const userRole = await fetchRole(session.user.id);
-        setRole(userRole);
-      } else {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT") {
+        setSession(null);
         setRole(null);
+        return;
       }
 
-      setLoading(false);
+      if (session?.user) {
+        setSession(session); // Set session first
+        const userRole = await fetchRole(session.user.id);
+        setRole(userRole);
+      }
     });
 
     return () => {
@@ -105,31 +106,29 @@ function App() {
 
   // Logged in
   // Inside your App() component, under the session check:
-if (session) {
-  if (role === null) {
+  if (session) {
+    if (role === null) {
+      return (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-white text-slate-500 gap-2">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#2d7a7f]"></div>
+          Validating Wasteless Account...
+        </div>
+      );
+    }
+
+    if (role === "seller") {
+      return <SellerDashboard />;
+    } else if (role === "harvester") {
+      return <HarvesterDashboard />;
+    }
+
+    // Fallback for if a user exists but has no valid role
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white text-slate-500 gap-2">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#2d7a7f]"></div>
-        Validating Wasteless Account...
+      <div className="h-screen flex items-center justify-center">
+        <p>Error: Role not assigned. Please contact support.</p>
       </div>
     );
   }
-
-  if (role === "harvester") {
-    return <HarvesterDashboard session={session} onLogout={handleLogout} />;
-  } 
-  
-  if (role === "seller") {
-    return <SellerDashboard session={session} onLogout={handleLogout} />;
-  }
-
-  // Fallback for if a user exists but has no valid role
-  return (
-    <div className="h-screen flex items-center justify-center">
-      <p>Error: Role not assigned. Please contact support.</p>
-    </div>
-  );
-}
   // Logged out
   return (
     <div className="App">
