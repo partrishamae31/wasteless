@@ -101,11 +101,11 @@ const SignUp = ({ onLoginClick }) => {
       setStep(2);
     } else if (step === 2) {
       if (validateStep2()) {
-        accountType === "seller" ? setIsSubmitted(true) : setStep(3);
+        setStep(3);
       }
     } else if (step === 3) {
+      // --- HARVESTER LOGIC ---
       if (accountType === "harvester") {
-        // These are the two lines that were causing the "Unexpected Token" error
         const pFile = permitRef.current?.files?.[0];
         const tFile = techRef.current?.files?.[0];
 
@@ -114,10 +114,32 @@ const SignUp = ({ onLoginClick }) => {
           return;
         }
 
+        // Update files in state for harvester
         setFormData((prev) => ({
           ...prev,
           businessPermit: pFile,
           techCert: tFile,
+        }));
+
+        setIsSubmitted(true);
+      }
+      // --- SELLER LOGIC ---
+      else if (accountType === "seller") {
+        if (!formData.businessName) {
+          alert("Please enter your Shop/Business Name");
+          return;
+        }
+
+        // Optional: If you added a file input for Seller's Valid ID using permitRef
+        const idFile = permitRef.current?.files?.[0];
+        if (!idFile) {
+          alert("Please upload a Valid ID");
+          return;
+        }
+
+        setFormData((prev) => ({
+          ...prev,
+          businessPermit: idFile, // Saving ID under businessPermit key
         }));
 
         setIsSubmitted(true);
@@ -127,83 +149,114 @@ const SignUp = ({ onLoginClick }) => {
 
   const handleFinalSubmit = async () => {
     setLoading(true);
+
     try {
-      // 1. Auth Sign Up
+      const autoVerify = accountType === "seller";
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
+        options: {
+          data: {
+            full_name: formData.fullName,
+            role: accountType === "seller" ? "Seller" : "Harvester",
+            barangay: formData.barangay,
+            contact_number: formData.contactNumber,
+            business_name: formData.businessName,
+            is_verified: autoVerify,
+            status: autoVerify ? "Active" : "Pending",
+          },
+        },
       });
 
       if (authError) throw authError;
-      const userId = authData.user?.id || authData.session?.user?.id;
+      if (!authData?.user) throw new Error("User creation failed.");
 
-      if (!userId) {
-        throw new Error(
-          "User ID not available yet. Please check email confirmation or disable email confirmation in Supabase.",
-        );
-      }
+      const userId = authData.user.id;
 
-      // 2. Handle File Uploads (Only for Harvesters)
-      const uploadFile = async (file, prefix, folder) => {
-        if (!file) return null;
+      // 2. Prepare the updates for the profiles table
+      let updates = {
+        is_verified: autoVerify,
+        status: autoVerify ? "Active" : "Pending",
+      };
+
+      // SELLER upload
+      if (accountType === "seller" && formData.businessPermit) {
+        const file = formData.businessPermit;
         const fileExt = file.name.split(".").pop();
-        const filePath = `${folder}/${userId}/${prefix}_${Date.now()}.${fileExt}`;
+        const fileName = `${userId}/permit_${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from("verifications")
-          .upload(filePath, file);
+          .upload(`permits/${fileName}`, file);
 
         if (uploadError) throw uploadError;
+
         const { data } = supabase.storage
           .from("verifications")
-          .getPublicUrl(filePath);
-        return data.publicUrl;
-      };
+          .getPublicUrl(`permits/${fileName}`);
 
-      let permitUrl = null;
-      let techCertUrl = null;
+        updates.business_permit_url = data.publicUrl;
+      }
 
+      // HARVESTER upload
       if (accountType === "harvester") {
-        permitUrl = await uploadFile(
-          formData.businessPermit,
-          "permit",
-          "permits",
-        );
-        techCertUrl = await uploadFile(formData.techCert, "tech_cert", "certs");
+        // Permit
+        if (formData.businessPermit) {
+          const file = formData.businessPermit;
+          const fileExt = file.name.split(".").pop();
+          const fileName = `${userId}/permit_${Date.now()}.${fileExt}`;
+
+          const { error } = await supabase.storage
+            .from("verifications")
+            .upload(`permits/${fileName}`, file);
+
+          if (error) throw error;
+
+          const { data } = supabase.storage
+            .from("verifications")
+            .getPublicUrl(`permits/${fileName}`);
+
+          updates.business_permit_url = data.publicUrl;
+        }
+
+        // Tech Cert
+        if (formData.techCert) {
+          const file = formData.techCert;
+          const fileExt = file.name.split(".").pop();
+          const fileName = `${userId}/cert_${Date.now()}.${fileExt}`;
+
+          const { error } = await supabase.storage
+            .from("verifications")
+            .upload(`certs/${fileName}`, file);
+
+          if (error) throw error;
+
+          const { data } = supabase.storage
+            .from("verifications")
+            .getPublicUrl(`certs/${fileName}`);
+
+          updates.tech_cert_url = data.publicUrl;
+        }
       }
 
-      // 3. Save to Database using INSERT (not upsert) to ensure a clean record
-      const { error: dbError } = await supabase.from("profiles").upsert([
-        {
-          id: userId,
-          full_name: formData.fullName,
-          email: formData.email,
-          role: accountType,
-          business_permit_url: permitUrl,
-          tech_cert_url: techCertUrl,
-          verification_status:
-            accountType === "harvester" ? "pending" : "verified",
-          is_verified: accountType !== "harvester",
-          barangay: formData.barangay,
-        },
-      ]);
+      // FINAL UPDATE
+      const { error: profileError } = await supabase
+      .from("profiles")
+      .update(updates)
+      .eq("id", userId);
 
-      if (dbError) {
-        // If DB fails, we should ideally delete the Auth user,
-        // but for now, we throw the error to the catch block.
-        throw dbError;
-      }
+    if (profileError) throw profileError;
 
-      alert("Registration Complete! Redirecting to dashboard...");
+    alert(autoVerify 
+      ? "Account created! You can now log in." 
+      : "Registration submitted! Please wait for admin approval.");
 
-      // Optional: Force a refresh or manual redirect if App.js doesn't pick it up
-      window.location.reload();
-    } catch (error) {
-      alert("Registration Error: " + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (err) {
+    alert("Registration Error: " + err.message);
+  } finally {
+    setLoading(false);
+  }
+};
   const steps = [1, 2, 3];
 
   return (
@@ -420,84 +473,93 @@ const SignUp = ({ onLoginClick }) => {
           )}
 
           {/* STEP 3: Professional Verification */}
+          {/* STEP 3: Professional Verification / Business Details */}
           {!isSubmitted && step === 3 && (
             <div className="space-y-4 animate-fadeIn text-left">
-              {/* Banner */}
               <h3 className="text-xs font-bold text-emerald-900 mb-1">
-                Professional Verification
+                {accountType === "seller"
+                  ? "Business Details"
+                  : "Professional Verification"}
               </h3>
+
               <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl mb-2">
                 <p className="text-[10px] text-emerald-800 leading-relaxed">
-                  To ensure marketplace integrity, we require all repair shops
-                  and tech-harvesters to verify their credentials. Your account
-                  will be set to "Pending Verification" until an administrator
-                  reviews your documents.
+                  {accountType === "seller"
+                    ? "Please provide your shop name and a valid ID to start selling on Wasteless."
+                    : "To ensure marketplace integrity, we require all repair shops to verify credentials."}
                 </p>
               </div>
 
-              {/* Business Name Input */}
+              {/* Business Name - Shared by both */}
               <div>
                 <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">
-                  Business/Shop Name *
+                  {accountType === "seller"
+                    ? "Store / Business Name *"
+                    : "Business/Shop Name *"}
                 </label>
                 <input
                   name="businessName"
                   type="text"
-                  placeholder="Tech Repair Shop"
+                  placeholder={
+                    accountType === "seller"
+                      ? "My E-waste Shop"
+                      : "Tech Repair Shop"
+                  }
                   className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
                   onChange={handleChange}
                   value={formData.businessName || ""}
                 />
               </div>
 
-              {/* Business Permit */}
-              <div className="mt-4">
-                <label className="text-[10px] font-bold text-gray-500 uppercase">
-                  Business Permit *
-                </label>
-                <input
-                  type="file"
-                  ref={permitRef}
-                  accept="image/*"
-                  className="..."
-                />
-                {formData.businessPermit && (
-                  <p className="text-[10px] text-emerald-600 font-bold mt-1">
-                    ✓ {formData.businessPermit.name} detected
-                  </p>
-                )}
-              </div>
+              {/* SELLER ONLY: Valid ID */}
+              {accountType === "seller" && (
+                <div className="mt-4">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">
+                    Valid ID (e.g. PhilID, Driver's License) *
+                  </label>
+                  <input
+                    type="file"
+                    ref={permitRef} // You can reuse the permitRef for the ID file
+                    accept="image/*"
+                    className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
+                  />
+                </div>
+              )}
 
-              {/* Technical Cert */}
-              <div className="mt-4">
-                <label className="text-[10px] font-bold text-gray-500 uppercase">
-                  Technical Certification *
-                </label>
-                <input
-                  type="file"
-                  ref={techRef}
-                  accept="image/*"
-                  className="..."
-                />
-                {formData.techCert && (
-                  <p className="text-[10px] text-emerald-600 font-bold mt-1">
-                    ✓ {formData.techCert.name} detected
-                  </p>
-                )}
-              </div>
+              {/* HARVESTER ONLY: Existing Permit & Tech Cert */}
+              {accountType === "harvester" && (
+                <>
+                  <div className="mt-4">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">
+                      Business Permit *
+                    </label>
+                    <input
+                      type="file"
+                      ref={permitRef}
+                      accept="image/*"
+                      className="..."
+                    />
+                  </div>
+                  <div className="mt-4">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">
+                      Technical Certification *
+                    </label>
+                    <input
+                      type="file"
+                      ref={techRef}
+                      accept="image/*"
+                      className="..."
+                    />
+                  </div>
+                </>
+              )}
 
-              {/* Navigation Buttons */}
+              {/* Navigation Buttons (Keep as is) */}
               <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setStep(2)}
-                  className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50"
-                >
+                <button onClick={() => setStep(2)} className="...">
                   Back
                 </button>
-                <button
-                  onClick={handleContinue}
-                  className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90"
-                >
+                <button onClick={handleContinue} className="...">
                   Continue
                 </button>
               </div>

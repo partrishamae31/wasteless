@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 // 1. Add this import at the top of the file
 import CreateListingModal from "./CreateListingModal"; // Adjust path as needed
+import SellerMessages from "./SellerMessages"; // Ensure the filename matches
 
 import {
   Package,
@@ -58,8 +59,10 @@ const SellerDashboard = ({ session }) => {
         return;
       }
 
-      if (data.role !== "seller") {
-        alert("Access Denied: You are not a seller.");
+      const dbRole = data.role?.toLowerCase().trim();
+      if (dbRole !== "seller") {
+        console.error("Role Mismatch. Found:", dbRole);
+        alert(`Access Denied: Your account is registered as a ${dbRole}.`);
         await supabase.auth.signOut();
         return;
       }
@@ -70,7 +73,7 @@ const SellerDashboard = ({ session }) => {
     verifyRole();
   }, [session]);
   // CRITICAL: If still checking or not authorized, show NOTHING (blank or loader)
-  
+
   useEffect(() => {
     const fetchProfile = async () => {
       const { data } = await supabase
@@ -333,156 +336,144 @@ const SellerDashboard = ({ session }) => {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Listings Section */}
-        <div className="col-span-2">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="font-bold text-lg">My Listings</h2>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="bg-[#3285a1] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-90 transition"
-            >
-              <Plus size={18} /> Create Listing
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {loading ? (
-              <p className="text-center text-slate-400 py-10">
-                Syncing with Wasteless database...
-              </p>
-            ) : listings.length > 0 ? (
-              listings.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => setSelectedListing(item)}
-                  className={`cursor-pointer transition-all duration-200 ${
-                    selectedListing?.id === item.id
-                      ? "border-[#3285a1] ring-2 ring-[#3285a1]/10 bg-slate-50/30"
-                      : "border-slate-100 bg-white hover:border-[#3285a1]/50"
-                  } p-6 rounded-2xl border shadow-sm relative overflow-hidden`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-slate-800">
-                          {item.device_model}
-                        </span>
-                        <span className="bg-blue-100 text-blue-600 text-[10px] px-2 py-0.5 rounded-full font-medium uppercase">
-                          {item.status}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-400 mb-2">
-                        {item.condition}
-                      </div>
-                    </div>
-                    <Package className="text-slate-200" size={32} />
-                  </div>
-
-                  <div className="flex justify-between items-center border-t border-slate-50 pt-4 mt-4">
-                    <div className="flex gap-4 text-xs font-bold text-[#3285a1]">
-                      <span>₱ {item.scrap_value?.toLocaleString()}</span>
-                      <span className="flex items-center gap-1">
-                        <MessageSquare size={12} /> {item.bids?.length || 0}{" "}
-                        bids
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-emerald-500 flex items-center gap-1">
-                      <span className="w-3 h-3 bg-emerald-100 rounded-full flex items-center justify-center">
-                        ✓
-                      </span>{" "}
-                      Data cleared
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="bg-white p-10 rounded-2xl text-center border-2 border-dashed border-slate-200">
-                <p className="text-slate-400">
-                  No active listings found in the database.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Panel */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[600px] sticky top-6 z-10">
-          {selectedListing ? (
-            <>
-              {/* Sidebar Header */}
-              <div className="p-4 border-b border-slate-50 flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold text-slate-800 text-sm">Bids</h3>
-                  <p className="text-[10px] text-slate-400">
-                    {selectedListing.device_model}
-                  </p>
-                </div>
+      {/* --- MAIN CONTENT AREA --- */}
+      <div className="min-h-[600px]">
+        {activeTab === "listings" && (
+          <div className="grid grid-cols-3 gap-6">
+            {/* Listings Section */}
+            <div className="col-span-2">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="font-bold text-lg">My Listings</h2>
                 <button
-                  onClick={() => setSelectedListing(null)}
-                  className="text-slate-300"
+                  onClick={() => setIsModalOpen(true)}
+                  className="bg-[#3285a1] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-90 transition"
                 >
-                  ✕
+                  <Plus size={18} /> Create Listing
                 </button>
               </div>
 
-              {/* Bids List */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {selectedListing?.bids && selectedListing.bids.length > 0 ? (
-                  selectedListing.bids.map((bid) => (
+              <div className="space-y-4">
+                {loading ? (
+                  <p className="text-center text-slate-400 py-10">
+                    Syncing with Wasteless database...
+                  </p>
+                ) : listings.length > 0 ? (
+                  listings.map((item) => (
                     <div
-                      key={bid.id}
-                      className="p-4 rounded-xl border border-slate-50 bg-slate-50/30"
+                      key={item.id}
+                      onClick={() => handleSelectListing(item)}
+                      className={`cursor-pointer transition-all duration-200 ${
+                        selectedListing?.id === item.id
+                          ? "border-[#3285a1] ring-2 ring-[#3285a1]/10 bg-slate-50/30"
+                          : "border-slate-100 bg-white hover:border-[#3285a1]/50"
+                      } p-6 rounded-2xl border shadow-sm relative overflow-hidden`}
                     >
+                      {/* ... listing card content ... */}
                       <div className="flex justify-between items-start mb-2">
-                        <span className="text-sm font-bold text-[#3285a1]">
-                          ₱{bid.amount.toLocaleString()}
-                        </span>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-slate-800">
+                              {item.device_model}
+                            </span>
+                            <span className="bg-blue-100 text-blue-600 text-[10px] px-2 py-0.5 rounded-full font-medium uppercase">
+                              {item.status}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-400 mb-2">
+                            {item.condition}
+                          </div>
+                        </div>
+                        <Package className="text-slate-200" size={32} />
                       </div>
-                      <div className="flex gap-2 mt-4">
-                        <button className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold hover:opacity-90">
-                          Accept
-                        </button>
-                        <button className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-[10px] font-bold hover:bg-slate-50">
-                          Decline
-                        </button>
+                      <div className="flex justify-between items-center border-t border-slate-50 pt-4 mt-4">
+                        <div className="flex gap-4 text-xs font-bold text-[#3285a1]">
+                          <span>₱ {item.scrap_value?.toLocaleString()}</span>
+                        </div>
+                        <div className="text-[10px] text-emerald-500 flex items-center gap-1">
+                          Verified
+                        </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                    <p className="text-xs">No bids yet for this item.</p>
+                  <div className="bg-white p-10 rounded-2xl text-center border-2 border-dashed border-slate-200">
+                    <p className="text-slate-400">No active listings found.</p>
                   </div>
                 )}
               </div>
-
-              {/* Message Input at Bottom */}
-              <div className="p-4 border-t border-slate-50">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Send a message..."
-                    className="flex-1 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none"
-                  />
-                  <button className="bg-[#3285a1] text-white p-2 rounded-lg">
-                    <MessageSquare size={16} />
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            /* This is your original placeholder when nothing is selected */
-            <div className="flex flex-col items-center justify-center text-center h-full py-20 px-6">
-              <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-4">
-                <MessageSquare className="text-slate-200" size={32} />
-              </div>
-              <h3 className="font-bold text-slate-800 mb-2">Bids & Messages</h3>
-              <p className="text-xs text-slate-400">
-                Select a listing to view active bids or start a conversation
-              </p>
             </div>
-          )}
-        </div>
+
+            {/* Right Panel: Bids Sidebar (Only for Listings Tab) */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[600px] sticky top-6 z-10">
+              {selectedListing ? (
+                <>
+                  <div className="p-4 border-b border-slate-50 flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-sm">Bids</h3>
+                      <p className="text-[10px] text-slate-400">
+                        {selectedListing.device_model}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedListing(null)}
+                      className="text-slate-300"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {listingBids.map((bid) => (
+                      <div
+                        key={bid.id}
+                        className="p-4 rounded-xl border border-slate-50 bg-slate-50/30"
+                      >
+                        <span className="text-sm font-bold text-[#3285a1]">
+                          ₱{bid.amount.toLocaleString()}
+                        </span>
+                        <div className="flex gap-2 mt-4">
+                          <button className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold">
+                            Accept
+                          </button>
+                          <button className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-[10px] font-bold">
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center h-full py-20 px-6">
+                  <MessageSquare className="text-slate-200 mb-4" size={32} />
+                  <h3 className="font-bold text-slate-800 mb-2">
+                    Bids & Messages
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Select a listing to view active bids
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- MESSAGES TAB (Section 9) --- */}
+        {activeTab === "messages" && (
+          <div className="animate-in fade-in duration-500">
+            <SellerMessages userId={session.user.id} />
+          </div>
+        )}
+
+        {/* --- TRANSACTIONS TAB --- */}
+        {activeTab === "transactions" && (
+          <div className="bg-white p-20 rounded-2xl border border-slate-100 text-center">
+            <ArrowLeftRight className="mx-auto text-slate-200 mb-4" size={48} />
+            <h2 className="font-bold text-slate-800">No Transactions Yet</h2>
+            <p className="text-sm text-slate-400">
+              Your completed deals will appear here.
+            </p>
+          </div>
+        )}
       </div>
       {/* Profile Modal Overlay */}
       {showProfileModal && (

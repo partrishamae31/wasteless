@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
@@ -11,125 +11,87 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState("login");
 
-  const fetchRole = async (userId) => {
-    try {
-      let attempts = 0;
-      let role = null;
-
-      while (attempts < 5 && !role) {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", userId)
-          .single();
-
-        if (!error && data?.role) {
-          role = data.role;
-          break;
-        }
-
-        await new Promise((res) => setTimeout(res, 500)); // wait 0.5s
-        attempts++;
-      }
-
-      return role;
-    } catch (err) {
-      console.error("Role fetch error:", err.message);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    let mounted = true;
-
-    const init = async () => {
-      setLoading(true);
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (mounted) {
-        setSession(session ?? null);
-        if (session?.user) {
-          const userRole = await fetchRole(session.user.id);
-          setRole(userRole);
-          if (!userRole) {
-            setTimeout(async () => {
-              const retryRole = await fetchRole(session.user.id);
-              setRole(retryRole);
-            }, 1000);
-          }
-        }
-        setLoading(false);
-      }
-    };
-
-    init();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_OUT") {
-        setSession(null);
-        setRole(null);
-        return;
-      }
-
-      if (session?.user) {
-        setSession(session); // Set session first
-        const userRole = await fetchRole(session.user.id);
-        setRole(userRole);
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
     setRole(null);
-    setCurrentPage("login");
+  };
+  // 🔥 SINGLE SOURCE OF TRUTH
+  const loadUser = async (session) => {
+    if (!session?.user) {
+      setSession(null);
+      setRole(null);
+      setLoading(false);
+      return;
+    }
+
+    setSession(session);
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Role error:", error.message);
+      setRole("NO_ROLE");
+    } else {
+      setRole(data?.role || "NO_ROLE");
+    }
+
+    setLoading(false);
+    if (data?.role) {
+      setRole(data.role);
+    } else {
+      setCurrentPage("finish-profile");
+    }
   };
 
-  // ✅ ONLY show loader when BOTH session + role are unknown on first load
-  if (loading && session === null) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-white">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2d7a7f]"></div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    // INITIAL LOAD
+    supabase.auth.getSession().then(({ data }) => {
+      loadUser(data.session);
+    });
 
-  // Logged in
-  // Inside your App() component, under the session check:
-  if (session) {
-    if (role === null) {
-      return (
-        <div className="h-screen w-full flex flex-col items-center justify-center bg-white text-slate-500 gap-2">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#2d7a7f]"></div>
-          Validating Wasteless Account...
-        </div>
-      );
-    }
+    // LISTENER
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      loadUser(session);
+    });
 
-    if (role === "seller") {
-      return <SellerDashboard />;
-    } else if (role === "harvester") {
-      return <HarvesterDashboard />;
-    }
+    return () => subscription.unsubscribe();
+  }, []);
 
-    // Fallback for if a user exists but has no valid role
+  // 🔥 LOADING STATE (ONLY ONE)
+  if (loading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <p>Error: Role not assigned. Please contact support.</p>
+        Loading...
       </div>
     );
   }
-  // Logged out
+
+  // 🔥 LOGGED IN
+  if (session) {
+    if (role === "seller") {
+      return <SellerDashboard session={session} />;
+    }
+
+    if (role === "harvester") {
+      return <HarvesterDashboard session={session} onLogout={handleLogout} />;
+    }
+
+    return (
+      <div className="h-screen flex items-center justify-center">
+        No role found. Please contact support.
+      </div>
+    );
+  }
+
+  // 🔥 LOGGED OUT
   return (
     <div className="App">
       {currentPage === "login" ? (
