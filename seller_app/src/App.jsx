@@ -34,20 +34,19 @@ function App() {
       .eq("id", session.user.id)
       .maybeSingle();
 
-    if (error) {
-      console.error("Role error:", error.message);
-      setRole("NO_ROLE");
-    } else {
-      setRole(data?.role || "NO_ROLE");
-    }
-
-    setLoading(false);
-    if (data?.role) {
-      setRole(data.role);
-    } else {
-      setCurrentPage("finish-profile");
-    }
-  };
+    if (!data || error) {
+    // REQ-2: If the user exists in Auth but NOT in our Profiles table,
+    // they bypassed the signup flow. We must kick them out.
+    await supabase.auth.signOut(); 
+    alert("Account not found. Please create an account via the Sign Up page first.");
+    setSession(null);
+    setRole(null);
+  } else {
+    setSession(session);
+    setRole(data.role);
+  }
+  setLoading(false);
+};
 
   useEffect(() => {
     // INITIAL LOAD
@@ -67,15 +66,21 @@ function App() {
 
   // 🔥 LOADING STATE (ONLY ONE)
   if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        Loading...
-      </div>
-    );
-  }
+  return (
+    <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
+      <div className="w-12 h-12 border-4 border-[#769c2d] border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p className="font-bold text-[#3285a1] animate-pulse uppercase tracking-widest text-xs">
+        Syncing Wasteless Profile...
+      </p>
+    </div>
+  );
+}
 
   // 🔥 LOGGED IN
   if (session) {
+    if (role === "NO_ROLE" || !role) {
+    return <SignUp onLoginClick={() => setCurrentPage("login")} isCompletingSocial={true} />;
+  }
     if (role === "seller") {
       return <SellerDashboard session={session} />;
     }
