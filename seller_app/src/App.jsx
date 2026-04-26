@@ -25,8 +25,8 @@ function App() {
       return;
     }
 
-    // Don't set the session yet! 
-    // We only set it once we know they have a valid profile.
+    setLoading(true); // Ensure loading is true while checking DB
+
     const { data, error } = await supabase
       .from("profiles")
       .select("role")
@@ -34,20 +34,23 @@ function App() {
       .maybeSingle();
 
     if (!data || error) {
-      console.warn("Unauthorized access: No profile found for this UID.");
-      
-      await supabase.auth.signOut(); 
-      
+      // 🚨 Bypassed profile creation detected
+      await supabase.auth.signOut();
+
       setSession(null);
       setRole(null);
-      alert("Access Denied: You must register an account first. Social login is only for existing users.");
-      setCurrentPage("login"); 
+      setLoading(false); // Stop loading before showing alert
+
+      alert(
+        "Access Denied: Your Google email is not yet registered in our system. Please create an account first.",
+      );
+      setCurrentPage("login");
     } else {
+      // ✅ Profile exists
       setSession(session);
       setRole(data.role);
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -68,21 +71,26 @@ function App() {
 
   // 🔥 LOADING STATE (ONLY ONE)
   if (loading) {
-  return (
-    <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
-      <div className="w-12 h-12 border-4 border-[#769c2d] border-t-transparent rounded-full animate-spin mb-4"></div>
-      <p className="font-bold text-[#3285a1] animate-pulse uppercase tracking-widest text-xs">
-        Syncing Wasteless Profile...
-      </p>
-    </div>
-  );
-}
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
+        <div className="w-12 h-12 border-4 border-[#769c2d] border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="font-bold text-[#3285a1] animate-pulse uppercase tracking-widest text-xs">
+          Syncing Wasteless Profile...
+        </p>
+      </div>
+    );
+  }
 
   // 🔥 LOGGED IN
   if (session) {
     if (role === "NO_ROLE" || !role) {
-    return <SignUp onLoginClick={() => setCurrentPage("login")} isCompletingSocial={true} />;
-  }
+      return (
+        <SignUp
+          onLoginClick={() => setCurrentPage("login")}
+          isCompletingSocial={true}
+        />
+      );
+    }
     if (role === "seller") {
       return <SellerDashboard session={session} />;
     }
