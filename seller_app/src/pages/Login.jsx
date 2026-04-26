@@ -52,6 +52,8 @@ const Login = ({ onSignUpClick }) => {
   };
 
   const handleSocialLogin = async (provider) => {
+    setLoading(true);
+
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: provider,
@@ -63,14 +65,9 @@ const Login = ({ onSignUpClick }) => {
           },
         },
       });
-      if (error) {
-        alert("Authentication failed. Please try again.");
-        return;
-      }
 
       if (error) throw error;
 
-      // If Supabase returns a URL, we open it in a custom popup window
       if (data?.url) {
         const width = 500;
         const height = 600;
@@ -84,8 +81,9 @@ const Login = ({ onSignUpClick }) => {
         );
       }
     } catch (error) {
-      // 2.2.2.1 Response: Display exact error message
       alert("Authentication failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -202,6 +200,9 @@ const Login = ({ onSignUpClick }) => {
               Facebook
             </button>
           </div>
+          <p className="text-[10px] text-gray-400 text-center mt-3">
+            Google/Facebook login is for existing accounts only.
+          </p>
 
           <p className="text-center text-xs text-gray-400 mt-6">
             Don't have an account?{" "}
