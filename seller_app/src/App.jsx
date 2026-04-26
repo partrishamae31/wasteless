@@ -34,7 +34,7 @@ function App() {
     .eq("id", session.user.id)
     .maybeSingle();
 
-  if (!data || error) {
+  if (!data || error || !data.role) {
     console.warn("Unauthorized access: No profile found for this UID.");
 
     await supabase.auth.signOut();
