@@ -41,7 +41,7 @@ function App() {
 
     setSession(null);
     setRole(null);
-    setIsUnauthorized(true); // 🔥 IMPORTANT
+    setIsUnauthorized(true); // 🔥 IMPORTANT  c
     setCurrentPage("login");
   } else {
     setSession(session);
