@@ -10,6 +10,7 @@ function App() {
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState("login");
+  const [isUnauthorized, setIsUnauthorized] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -18,40 +19,39 @@ function App() {
   };
   // 🔥 SINGLE SOURCE OF TRUTH
   const loadUser = async (session) => {
-    if (!session?.user) {
-      setSession(null);
-      setRole(null);
-      setLoading(false);
-      return;
-    }
+  setLoading(true);
 
-    setLoading(true); // Ensure loading is true while checking DB
+  if (!session?.user) {
+    setSession(null);
+    setRole(null);
+    setIsUnauthorized(false);
+    setLoading(false);
+    return;
+  }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", session.user.id)
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", session.user.id)
+    .maybeSingle();
 
-    if (!data || error) {
-      // 🚨 Bypassed profile creation detected
-      await supabase.auth.signOut();
+  if (!data || error) {
+    console.warn("Unauthorized access: No profile found for this UID.");
 
-      setSession(null);
-      setRole(null);
-      setLoading(false); // Stop loading before showing alert
+    await supabase.auth.signOut();
 
-      alert(
-        "Access Denied: Your Google email is not yet registered in our system. Please create an account first.",
-      );
-      setCurrentPage("login");
-    } else {
-      // ✅ Profile exists
-      setSession(session);
-      setRole(data.role);
-      setLoading(false);
-    }
-  };
+    setSession(null);
+    setRole(null);
+    setIsUnauthorized(true); // 🔥 IMPORTANT
+    setCurrentPage("login");
+  } else {
+    setSession(session);
+    setRole(data.role);
+    setIsUnauthorized(false);
+  }
+
+  setLoading(false);
+};
 
   useEffect(() => {
     // INITIAL LOAD
@@ -80,7 +80,28 @@ function App() {
       </div>
     );
   }
+if (isUnauthorized) {
+  return (
+    <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
+      <p className="text-red-500 font-bold text-center">
+        Access Denied: Email not registered.
+      </p>
+      <p className="text-gray-600 mt-2">
+        Please create an account first before using Google login.
+      </p>
 
+      <button
+        onClick={() => {
+          setIsUnauthorized(false);
+          setCurrentPage("signup");
+        }}
+        className="mt-4 px-4 py-2 bg-[#769c2d] text-white rounded"
+      >
+        Create Account
+      </button>
+    </div>
+  );
+}
   // 🔥 LOGGED IN
   if (session) {
     if (role === "NO_ROLE" || !role) {
