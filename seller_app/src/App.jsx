@@ -11,6 +11,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState("login");
   const [isUnauthorized, setIsUnauthorized] = useState(false);
+  const [isChecked, setIsChecked] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -20,11 +21,13 @@ function App() {
   // 🔥 SINGLE SOURCE OF TRUTH
   const loadUser = async (session) => {
   setLoading(true);
+  setIsChecked(false); // 🔥 reset check
 
   if (!session?.user) {
     setSession(null);
     setRole(null);
     setLoading(false);
+    setIsChecked(true);
     return;
   }
 
@@ -35,13 +38,11 @@ function App() {
     .maybeSingle();
 
   if (!data || error || !data.role) {
-    console.warn("Unauthorized access: No profile found for this UID.");
-
     await supabase.auth.signOut();
 
     setSession(null);
     setRole(null);
-    setIsUnauthorized(true); // 🔥 IMPORTANT  c
+    setIsUnauthorized(true);
     setCurrentPage("login");
   } else {
     setSession(session);
@@ -50,6 +51,7 @@ function App() {
   }
 
   setLoading(false);
+  setIsChecked(true); // 🔥 validation done
 };
 
   useEffect(() => {
@@ -69,7 +71,7 @@ function App() {
   }, []);
 
   // 🔥 LOADING STATE (ONLY ONE)
-  if (loading) {
+  if (loading || !isChecked) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
         <div className="w-12 h-12 border-4 border-[#769c2d] border-t-transparent rounded-full animate-spin mb-4"></div>
