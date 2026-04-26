@@ -24,7 +24,6 @@ function App() {
   if (!session?.user) {
     setSession(null);
     setRole(null);
-    setIsUnauthorized(false);
     setLoading(false);
     return;
   }
