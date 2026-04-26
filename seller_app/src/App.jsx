@@ -25,9 +25,8 @@ function App() {
       return;
     }
 
-    setSession(session);
-    setLoading(true);
-
+    // Don't set the session yet! 
+    // We only set it once we know they have a valid profile.
     const { data, error } = await supabase
       .from("profiles")
       .select("role")
@@ -35,18 +34,21 @@ function App() {
       .maybeSingle();
 
     if (!data || error) {
-    // REQ-2: If the user exists in Auth but NOT in our Profiles table,
-    // they bypassed the signup flow. We must kick them out.
-    await supabase.auth.signOut(); 
-    alert("Account not found. Please create an account via the Sign Up page first.");
-    setSession(null);
-    setRole(null);
-  } else {
-    setSession(session);
-    setRole(data.role);
-  }
-  setLoading(false);
-};
+      console.warn("Unauthorized access: No profile found for this UID.");
+      
+      await supabase.auth.signOut(); 
+      
+      setSession(null);
+      setRole(null);
+      alert("Access Denied: You must register an account first. Social login is only for existing users.");
+      setCurrentPage("login"); 
+    } else {
+      setSession(session);
+      setRole(data.role);
+    }
+    
+    setLoading(false);
+  };
 
   useEffect(() => {
     // INITIAL LOAD
