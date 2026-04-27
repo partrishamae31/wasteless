@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   LayoutGrid,
   Send,
+  XCircle,
 } from "lucide-react";
 
 const HarvesterDashboard = ({ session, onLogout }) => {
@@ -25,20 +26,106 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [activeTab, setActiveTab] = useState("browse"); // Switch to "messages" to see the update
   const [selectedListing, setSelectedListing] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isVerified, setIsVerified] = useState(false);
-
-  // Add this useEffect to check verification status on load
+  const [profileData, setProfileData] = useState({
+    full_name: "Loading...",
+    initials: "??",
+  });
+  const [verificationStatus, setVerificationStatus] = useState("unverified");
+  const isVerified = verificationStatus === "verified";
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const handleReverify = () => {
+    setActiveTab("settings");
+  };
   useEffect(() => {
-    const checkVerification = async () => {
+    if (!session?.user?.id) return;
+
+    const fetchNotifications = async () => {
+      const { data } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (data) setNotifications(data);
+    };
+
+    fetchNotifications();
+
+    const listingsChannel = supabase
+      .channel("realtime-listings")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "listings" },
+        (payload) => {
+          console.log("Change received!", payload); // <-- Check your browser console!
+
+          const newNotif = {
+            id: payload.new.id,
+            title: "New Listing Available",
+            content: `${payload.new.device_model} was just posted!`,
+            created_at: new Date().toISOString(),
+            is_read: false,
+          };
+
+          setNotifications((prev) => [newNotif, ...prev]);
+
+          setListings((prev) => [payload.new, ...prev]);
+        },
+      )
+      .subscribe((status) => {
+        console.log("Realtime status:", status); // Should say 'SUBSCRIBED'
+      });
+
+    return () => {
+      supabase.removeChannel(listingsChannel);
+    };
+  }, [session?.user?.id]);
+  useEffect(() => {
+    const fetchProfile = async () => {
       if (!session?.user?.id) return;
+
       const { data, error } = await supabase
         .from("profiles")
-        .select("verification_status")
+        .select("full_name, verification_status, rejection_reason")
         .eq("id", session.user.id)
         .single();
 
-      if (data?.verification_status === "verified") {
-        setIsVerified(true);
+      if (data) {
+        setVerificationStatus(data.verification_status);
+        setRejectionReason(data.rejection_reason);
+
+        const name = data.full_name || "User";
+        const initials = name
+          .split(" ")
+          .map((n) => n)
+          .join("")
+          .toUpperCase()
+          .slice(0, 2);
+
+        setProfileData({
+          full_name: name,
+          initials: initials,
+        });
+      }
+    };
+
+    fetchProfile();
+    fetchActiveListings();
+  }, [session?.user?.id]);
+  useEffect(() => {
+    const checkVerification = async () => {
+      if (!session?.user?.id) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("verification_status, rejection_reason")
+        .eq("id", session.user.id)
+        .single();
+
+      if (data) {
+        setVerificationStatus(data.verification_status);
+        setRejectionReason(data.rejection_reason);
       }
     };
     checkVerification();
@@ -73,7 +160,6 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       return;
     }
     try {
-      // 1. Insert the Bid
       const { data: bidData, error: bidError } = await supabase
         .from("bids")
         .insert([
@@ -87,7 +173,6 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
       if (bidError) throw bidError;
 
-      // 2. If there's a message, start the conversation thread
       if (message.trim()) {
         await supabase.from("messages").insert([
           {
@@ -114,10 +199,62 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           <Bell
             className="text-slate-400 hover:text-slate-600 transition-colors"
             size={22}
+            onClick={() => setShowNotifications(!showNotifications)}
           />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#f8fafc]">
-            3
-          </span>
+          {notifications.filter((n) => !n.is_read).length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#f8fafc]">
+              {notifications.filter((n) => !n.is_read).length}
+            </span>
+          )}
+
+          {/* Notification Dropdown */}
+          {showNotifications && (
+            <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+              <div className="p-5 border-b border-slate-50 flex justify-between items-center">
+                <h3 className="font-black text-slate-800 text-xs uppercase">
+                  Notifications
+                </h3>
+                <button className="text-[10px] font-bold text-[#769c2d]">
+                  Mark all read
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {notifications.length > 0 ? (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!n.is_read ? "bg-lime-50/30" : ""}`}
+                    >
+                      <div className="flex gap-3">
+                        <div className="w-8 h-8 bg-lime-100 rounded-xl flex items-center justify-center text-[#769c2d]">
+                          <Package size={14} />
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-black text-slate-800">
+                            {n.title}
+                          </p>
+                          <p className="text-[10px] text-slate-500 leading-tight mt-1">
+                            {n.content}
+                          </p>
+                          <p className="text-[8px] text-slate-300 font-bold mt-2 uppercase">
+                            Just now
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-10 text-center text-slate-300 text-[10px] font-bold uppercase tracking-widest">
+                    No new alerts
+                  </div>
+                )}
+              </div>
+              <button className="w-full py-4 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors bg-slate-50/50">
+                View All Notifications
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="relative">
@@ -126,15 +263,26 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             className="flex items-center gap-3 bg-white p-1.5 pr-4 rounded-full shadow-sm border border-slate-100 cursor-pointer hover:bg-slate-50 transition-all"
           >
             <div className="text-right hidden sm:block">
+              {/* REMOVED TECH SOLUTIONS SHOP - NOW USING DATABASE NAME */}
               <p className="font-bold text-slate-700 text-[11px] leading-tight">
-                Tech Solutions Shop
+                {profileData.full_name}
               </p>
-              <p className="text-[#769c2d] text-[9px] font-bold flex items-center justify-end gap-1">
-                <CheckCircle2 size={10} /> Verified
-              </p>
+              {verificationStatus === "verified" ? (
+                <p className="text-[#769c2d] text-[9px] font-bold flex items-center justify-end gap-1">
+                  <CheckCircle2 size={10} /> Verified
+                </p>
+              ) : verificationStatus === "rejected" ? (
+                <p className="text-red-500 text-[9px] font-bold flex items-center justify-end gap-1">
+                  <XCircle size={10} /> Rejected
+                </p>
+              ) : (
+                <p className="text-orange-400 text-[9px] font-bold flex items-center justify-end gap-1">
+                  <Clock size={10} /> Pending
+                </p>
+              )}
             </div>
             <div className="w-9 h-9 bg-[#4a7c59] rounded-full flex items-center justify-center text-white font-bold text-xs shadow-inner">
-              TS
+              {profileData.initials}
             </div>
           </div>
 
@@ -148,28 +296,21 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 <div className="bg-gradient-to-br from-[#4a7c59] to-[#769c2d] p-5 text-white">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center font-bold text-sm">
-                      TS
+                      {profileData.initials}
                     </div>
                     <div>
-                      <p className="font-bold text-xs">Tech Solutions Shop</p>
+                      <p className="font-bold text-xs">
+                        {profileData.full_name}
+                      </p>
                       <p className="text-[9px] text-white/80">
                         {session?.user?.email}
                       </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 text-center">
-                    <div className="flex-1 bg-white/10 py-1.5 rounded-lg font-bold text-[10px]">
-                      ⭐ 4.8 Rating
-                    </div>
-                    <div className="flex-1 bg-white/10 py-1.5 rounded-lg font-bold text-[10px]">
-                      📦 32 Buys
                     </div>
                   </div>
                 </div>
                 <div className="p-3">
                   <MenuLink icon={<User size={15} />} label="View Profile" />
                   <MenuLink icon={<Settings size={15} />} label="Settings" />
-                  <MenuLink icon={<Award size={15} />} label="Achievements" />
                   <div className="h-[1px] bg-slate-50 my-2 mx-2"></div>
                   <button
                     onClick={onLogout}
@@ -183,6 +324,31 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           )}
         </div>
       </div>
+      {verificationStatus === "rejected" && (
+        <div className="mb-8 p-6 bg-red-50 border-2 border-red-100 rounded-[2rem] flex items-center gap-6 animate-in slide-in-from-top duration-500">
+          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <XCircle size={24} />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-black text-red-800 uppercase tracking-tight">
+              Account Verification Rejected
+            </h3>
+            <p className="text-xs text-red-600 font-medium mt-1">
+              Reason:{" "}
+              <span className="font-bold">
+                "{rejectionReason || "No specific reason provided."}"
+              </span>
+            </p>
+            <p className="text-[10px] text-red-400 mt-2">
+              Please update your documents in Settings and re-submit for
+              approval.
+            </p>
+          </div>
+          <button className="px-6 py-2 bg-red-600 text-white text-[10px] font-black rounded-xl uppercase tracking-widest hover:bg-red-700 transition-colors">
+            Update Profile
+          </button>
+        </div>
+      )}
 
       {/* --- STATS GRID --- */}
       <div className="grid grid-cols-4 gap-6 mb-10">
@@ -202,9 +368,18 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         />
         <NavBtn
           active={activeTab === "map"}
-          onClick={() => setActiveTab("map")}
-          icon={<Map size={16} />}
-          label="Urban Mine Map"
+          onClick={() => {
+            if (!isVerified) {
+              alert(
+                "Access Denied: Urban Mine Map is restricted to Verified Professionals.",
+              );
+            } else {
+              setActiveTab("map");
+            }
+          }}
+          icon={<Map size={16} className={!isVerified ? "opacity-50" : ""} />}
+          label={isVerified ? "Urban Mine Map" : "Map (Locked)"}
+          disabled={!isVerified}
         />
         <NavBtn
           active={activeTab === "leaderboard"}
@@ -271,12 +446,80 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 const MessagesView = ({ session }) => {
   const [conversations, setConversations] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
-
-  // Sample data for UI preview - Replace with real Supabase query later
   useEffect(() => {
-    // We use selectedChat?.listing_id to ensure we only listen
-    // to messages for the item currently on screen
+    const fetchConversations = async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select(
+          `
+        listing_id,
+        listings (
+          device_model, 
+          asking_price,
+          seller_id,
+          profiles:seller_id (full_name) 
+        ),
+        sender_id,
+        receiver_id
+      `,
+        )
+        .or(`sender_id.eq.${session.user.id},receiver_id.eq.${session.user.id}`)
+        .order("created_at", { ascending: false });
+
+      if (data) {
+        const uniqueChats = data.reduce((acc, current) => {
+          const x = acc.find((item) => item.listing_id === current.listing_id);
+          if (!x) {
+            return acc.concat([current]);
+          } else {
+            return acc;
+          }
+        }, []);
+        setConversations(uniqueChats);
+      }
+    };
+
+    fetchConversations();
+  }, [session.user.id]);
+  useEffect(() => {
+    if (!selectedChat) return;
+
+    const fetchMessages = async () => {
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("listing_id", selectedChat.listing_id)
+        .order("created_at", { ascending: true });
+      if (data) setMessages(data);
+    };
+
+    fetchMessages();
+
+    // Real-time subscription for new messages
+    const channel = supabase
+      .channel(`chat-${selectedChat.listing_id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `listing_id=eq.${selectedChat.listing_id}`,
+        },
+        (payload) => {
+          setMessages((prev) => [...prev, payload.new]);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedChat]);
+
+  useEffect(() => {
     if (!selectedChat?.listing_id) return;
 
     const channel = supabase
@@ -300,74 +543,50 @@ const MessagesView = ({ session }) => {
     };
   }, [selectedChat]);
   const handleSendMessage = async () => {
-    if (!messageText.trim()) return;
+    if (!messageText.trim() || !selectedChat) return;
+
+    // Determine who the receiver is (the person who isn't the current user)
+    const receiverId =
+      selectedChat.sender_id === session.user.id
+        ? selectedChat.receiver_id
+        : selectedChat.sender_id;
 
     const { error } = await supabase.from("messages").insert([
       {
         content: messageText,
         sender_id: session.user.id,
-        // If you are Harvester, receiver is listing owner.
-        // If you are Seller, receiver is the bidder.
-        receiver_id: selectedChat.other_party_id,
+        receiver_id: receiverId,
         listing_id: selectedChat.listing_id,
+        is_read: false,
       },
     ]);
 
-    if (error) {
-      console.error("Error sending message:", error.message);
-    } else {
-      setMessageText(""); // Clear input after sending
-    }
+    if (!error) setMessageText("");
   };
 
   return (
     <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border border-white overflow-hidden min-h-[600px]">
       {/* Sidebar: Message List */}
       <div className="col-span-4 border-r border-slate-50 p-6">
-        <div className="mb-6 px-2">
-          <h2 className="text-xl font-black text-slate-800 mb-4">Messages</h2>
-          <div className="relative">
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"
-              size={16}
-            />
-            <input
-              type="text"
-              placeholder="Search conversations..."
-              className="w-full bg-slate-50 border-none rounded-2xl py-3.5 pl-12 text-xs font-medium placeholder:text-slate-300 focus:ring-2 focus:ring-[#769c2d]/20 transition-all"
-            />
-          </div>
-        </div>
-
+        <h2 className="text-xl font-black text-slate-800 mb-4">Messages</h2>
         <div className="space-y-1">
           {conversations.map((chat) => (
             <div
-              key={chat.id}
-              onClick={() => setSelectedChat(chat.id)}
-              className={`p-4 rounded-[1.5rem] cursor-pointer transition-all flex items-start gap-4 ${selectedChat === chat.id ? "bg-[#f0f9ff] border border-[#e0f2fe]" : "hover:bg-slate-50"}`}
+              key={chat.listing_id}
+              onClick={() => setSelectedChat(chat)}
+              className={`p-4 rounded-[1.5rem] cursor-pointer transition-all flex items-start gap-4 ${
+                selectedChat?.listing_id === chat.listing_id
+                  ? "bg-[#f0f9ff]"
+                  : "hover:bg-slate-50"
+              }`}
             >
-              <div className="w-10 h-10 rounded-full bg-slate-100 flex-shrink-0 flex items-center justify-center text-slate-400">
-                <User size={20} />
-              </div>
               <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-center mb-0.5">
-                  <h4 className="font-bold text-slate-700 text-xs truncate">
-                    {chat.name}
-                  </h4>
-                  {chat.unread > 0 && (
-                    <span className="w-5 h-5 bg-[#769c2d] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                      {chat.unread}
-                    </span>
-                  )}
-                </div>
-                <p className="text-[10px] font-bold text-[#3285a1] mb-1">
-                  {chat.item}
-                </p>
-                <p className="text-[10px] text-slate-400 truncate leading-relaxed">
-                  {chat.lastMsg}
-                </p>
-                <p className="text-[9px] text-slate-300 mt-2 font-bold uppercase">
-                  {chat.date}
+                <h4 className="font-bold text-slate-700 text-xs truncate">
+                  {/* Displays the Seller Name instead of "Conversation" */}
+                  {chat.listings?.profiles?.full_name || "Unknown Seller"}
+                </h4>
+                <p className="text-[10px] font-bold text-[#3285a1]">
+                  {chat.listings?.device_model}
                 </p>
               </div>
             </div>
@@ -379,93 +598,55 @@ const MessagesView = ({ session }) => {
       <div className="col-span-8 flex flex-col bg-slate-50/30">
         {selectedChat ? (
           <>
-            {/* Chat Header */}
-            <div className="p-6 bg-white border-b border-slate-50 flex justify-between items-center">
-              <div>
-                <h3 className="font-black text-slate-800 text-sm">
-                  Maria Santos
-                </h3>
-                <p className="text-[10px] font-bold text-slate-300 flex items-center gap-2">
-                  <Box size={12} /> iPhone 11
-                </p>
-              </div>
-              <div className="bg-orange-50 px-4 py-2 rounded-xl flex flex-col items-end">
-                <p className="text-[9px] font-bold text-orange-400 uppercase tracking-tighter">
-                  Your Bid
-                </p>
-                <p className="text-sm font-black text-orange-600">
-                  ₱3,200{" "}
-                  <span className="text-[9px] opacity-60 ml-1">Pending</span>
-                </p>
-              </div>
+            <div className="p-6 bg-white border-b border-slate-50">
+              <h3 className="font-black text-slate-800 text-sm">
+                {selectedChat.listings?.profiles?.full_name}
+                <span className="font-medium text-slate-400 ml-2">
+                  ({selectedChat.listings?.device_model})
+                </span>
+              </h3>
             </div>
 
-            {/* Chat Bubbles */}
-            <div className="flex-1 p-8 overflow-y-auto space-y-6">
-              <div className="flex justify-end">
-                <div className="bg-[#769c2d] text-white p-4 rounded-2xl rounded-tr-none max-w-[70%] shadow-md shadow-lime-900/10">
-                  <p className="text-xs font-medium">
-                    Hi! I'm interested in the iPhone 11. Can you confirm the
-                    battery health percentage?
-                  </p>
-                  <p className="text-[9px] opacity-70 text-right mt-2">
-                    2:15 PM
-                  </p>
+            <div className="flex-1 p-8 overflow-y-auto space-y-4">
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.sender_id === session.user.id ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`p-4 rounded-2xl max-w-[70%] text-xs font-medium shadow-sm ${
+                      msg.sender_id === session.user.id
+                        ? "bg-[#769c2d] text-white rounded-tr-none"
+                        : "bg-white text-slate-600 rounded-tl-none border border-slate-100"
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
                 </div>
-              </div>
-
-              <div className="flex justify-start">
-                <div className="bg-white border border-slate-100 text-slate-600 p-4 rounded-2xl rounded-tl-none max-w-[70%] shadow-sm">
-                  <p className="text-xs font-medium">
-                    Hello! The battery health is at 85%. The device has been
-                    well-maintained.
-                  </p>
-                  <p className="text-[9px] text-slate-300 mt-2">2:22 PM</p>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <div className="bg-[#769c2d] text-white p-4 rounded-2xl rounded-tr-none max-w-[70%] shadow-md shadow-lime-900/10">
-                  <p className="text-xs font-medium">
-                    Great! What about the camera modules?
-                  </p>
-                  <p className="text-[9px] opacity-70 text-right mt-2">
-                    2:28 PM
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-start">
-                <div className="bg-white border border-slate-100 text-slate-600 p-4 rounded-2xl rounded-tl-none max-w-[70%] shadow-sm">
-                  <p className="text-xs font-medium">
-                    Yes, the battery is still in good condition
-                  </p>
-                  <p className="text-[9px] text-slate-300 mt-2">2:30 PM</p>
-                </div>
-              </div>
+              ))}
             </div>
 
-            {/* Input Area */}
-            <div className="p-6 bg-white border-t border-slate-50">
-              <div className="flex gap-4">
-                <input
-                  type="text"
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 bg-slate-50 border-none rounded-2xl py-4 px-6 text-xs font-medium placeholder:text-slate-300"
-                />
-                <button className="bg-[#769c2d] text-white p-4 rounded-2xl shadow-lg shadow-lime-900/20 hover:scale-105 active:scale-95 transition-all">
-                  <Send size={18} />
-                </button>
-              </div>
+            <div className="p-6 bg-white border-t border-slate-50 flex gap-4">
+              <input
+                type="text"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 bg-slate-50 border-none rounded-2xl py-4 px-6 text-xs"
+              />
+              <button
+                onClick={handleSendMessage}
+                className="bg-[#769c2d] text-white p-4 rounded-2xl"
+              >
+                <Send size={18} />
+              </button>
             </div>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-slate-300 flex-col gap-4">
-            <MessageSquare size={40} strokeWidth={1} />
-            <p className="text-xs font-bold uppercase tracking-widest">
-              Select a conversation to start
+            <MessageSquare size={40} />
+            <p className="text-xs font-bold uppercase">
+              Select a chat to view messages
             </p>
           </div>
         )}

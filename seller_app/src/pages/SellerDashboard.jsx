@@ -26,7 +26,6 @@ const SellerDashboard = ({ session }) => {
   const [profileData, setProfileData] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  // 2. Inside your SellerDashboard component:
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [user, setUser] = useState(null); // Assuming you have user data for the ID
   const [bids, setBids] = useState([]);
@@ -41,6 +40,38 @@ const SellerDashboard = ({ session }) => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const handleAcceptBid = async (bid) => {
+    try {
+      // 1. Update the bid status
+      // This will now work once you add the 'status' column in Supabase
+      const { error: bidUpdateError } = await supabase
+        .from("bids")
+        .update({ status: "accepted" })
+        .eq("id", bid.id);
+
+      if (bidUpdateError) throw bidUpdateError;
+
+      // 2. Insert the auto-message
+      const { error: messageError } = await supabase.from("messages").insert([
+        {
+          listing_id: selectedListing.id,
+          sender_id: session.user.id,
+          receiver_id: bid.bidder_id,
+          content: `Hello! I've accepted your bid of ₱${bid.amount.toLocaleString()} for the ${selectedListing.device_model}. Let's coordinate!`,
+          is_read: false, // Matches your table column
+        },
+      ]);
+
+      if (messageError) throw messageError;
+
+      alert("Bid accepted! Opening chat...");
+      setActiveTab("messages");
+    } catch (error) {
+      // This is where your error was caught
+      console.error("Error in bid acceptance:", error.message);
+      alert(`Error: ${error.message}`);
+    }
+  };
   useEffect(() => {
     const verifyRole = async () => {
       if (!session?.user) return;
@@ -114,23 +145,21 @@ const SellerDashboard = ({ session }) => {
     );
   }
   const handleSelectListing = async (listing) => {
-    setSelectedListing(listing);
-    setLoading(true);
+  setSelectedListing(listing);
+  setLoading(true);
 
-    const { data, error } = await supabase
-      .from("bids")
-      .select(
-        `
+  const { data, error } = await supabase
+    .from("bids")
+    .select(`
       *,
       profiles:bidder_id (full_name) 
-    `,
-      ) // This assumes you have a profiles table linked
-      .eq("listing_id", listing.id)
-      .order("created_at", { ascending: false });
+    `) 
+    .eq("listing_id", listing.id)
+    .order("created_at", { ascending: false });
 
-    if (!error) setListingBids(data);
-    setLoading(false);
-  };
+  if (!error) setListingBids(data);
+  setLoading(false);
+};
   const handleLogout = async () => {
     setShowProfileMenu(false); // Close the menu first
     const { error } = await supabase.auth.signOut();
@@ -427,11 +456,26 @@ const SellerDashboard = ({ session }) => {
                         key={bid.id}
                         className="p-4 rounded-xl border border-slate-50 bg-slate-50/30"
                       >
-                        <span className="text-sm font-bold text-[#3285a1]">
-                          ₱{bid.amount.toLocaleString()}
-                        </span>
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            {/* Displays the Harvester's Name instead of ID */}
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                              Bidder
+                            </p>
+                            <p className="text-xs font-bold text-slate-700">
+                              {bid.profiles?.full_name || "Anonymous Harvester"}
+                            </p>
+                          </div>
+                          <span className="text-sm font-bold text-[#3285a1]">
+                            ₱{bid.amount.toLocaleString()}
+                          </span>
+                        </div>
+
                         <div className="flex gap-2 mt-4">
-                          <button className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold">
+                          <button
+                            onClick={() => handleAcceptBid(bid)}
+                            className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold hover:bg-[#2a6f87] transition-colors"
+                          >
                             Accept
                           </button>
                           <button className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-[10px] font-bold">
