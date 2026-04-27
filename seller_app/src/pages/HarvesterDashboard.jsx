@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
+import HarvesterAlerts from "./HarvesterAlerts";
 import {
   Search,
   Bell,
@@ -23,7 +24,7 @@ import {
 const HarvesterDashboard = ({ session, onLogout }) => {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("browse"); // Switch to "messages" to see the update
+  const [activeTab, setActiveTab] = useState("browse"); 
   const [selectedListing, setSelectedListing] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [profileData, setProfileData] = useState({
@@ -38,6 +39,36 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const handleReverify = () => {
     setActiveTab("settings");
   };
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    // Listen for NEW notifications (Triggered by the SQL function above)
+    const notifChannel = supabase
+      .channel("personal-notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          // This triggers the red dot on the bell icon automatically
+          setNotifications((prev) => [payload.new, ...prev]);
+
+          // Optional: Browser notification
+          if (Notification.permission === "granted") {
+            new Notification(payload.new.title, { body: payload.new.content });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(notifChannel);
+    };
+  }, [session?.user?.id]);
   useEffect(() => {
     if (!session?.user?.id) return;
 
@@ -415,12 +446,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               key={item.id}
               item={item}
               onBid={() => setSelectedListing(item)}
-              isVerified={isVerified} // --- ADD THIS PROP HERE ---
+              isVerified={isVerified}
             />
           ))}
         </div>
       ) : activeTab === "messages" ? (
         <MessagesView session={session} />
+      ) : activeTab === "alerts" ? ( 
+        <HarvesterAlerts session={session} />
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-slate-300 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
           <LayoutGrid size={48} className="mb-4 opacity-20" />
@@ -440,7 +473,53 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     </div>
   );
 };
+const AlertsView = ({ notifications }) => {
+  return (
+    <div className="bg-white rounded-[3rem] shadow-sm border border-white p-8 min-h-[500px]">
+      <div className="flex justify-between items-center mb-8">
+        <h2 className="text-2xl font-black text-slate-800">My Alerts</h2>
+        <span className="bg-lime-100 text-[#769c2d] px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+          {notifications.length} Total
+        </span>
+      </div>
 
+      <div className="space-y-4">
+        {notifications.length > 0 ? (
+          notifications.map((n) => (
+            <div
+              key={n.id}
+              className={`p-6 rounded-[2rem] border transition-all flex items-center gap-6 ${
+                !n.is_read
+                  ? "bg-lime-50/50 border-lime-100"
+                  : "bg-slate-50/30 border-slate-50"
+              }`}
+            >
+              <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-[#769c2d]">
+                <Bell size={20} />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-bold text-slate-800 text-sm">{n.title}</h4>
+                <p className="text-xs text-slate-500 mt-1">{n.content}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-slate-300 uppercase">
+                  {new Date(n.created_at).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-300">
+            <Bell size={48} className="mb-4 opacity-20" />
+            <p className="font-bold text-xs uppercase tracking-widest">
+              No alerts found
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 // --- MESSAGES VIEW COMPONENT ---
 
 const MessagesView = ({ session }) => {
@@ -519,29 +598,6 @@ const MessagesView = ({ session }) => {
     };
   }, [selectedChat]);
 
-  useEffect(() => {
-    if (!selectedChat?.listing_id) return;
-
-    const channel = supabase
-      .channel("chat-room")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `listing_id=eq.${selectedChat.listing_id}`,
-        },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedChat]);
   const handleSendMessage = async () => {
     if (!messageText.trim() || !selectedChat) return;
 
@@ -655,7 +711,6 @@ const MessagesView = ({ session }) => {
   );
 };
 
-// --- REMAINING HELPER COMPONENTS (StatCard, NavBtn, etc.) ---
 const StatCard = ({ label, value, isPrice }) => (
   <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-white flex flex-col items-center justify-center">
     <span

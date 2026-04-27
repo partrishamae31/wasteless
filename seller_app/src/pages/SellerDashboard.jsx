@@ -57,8 +57,8 @@ const SellerDashboard = ({ session }) => {
           listing_id: selectedListing.id,
           sender_id: session.user.id,
           receiver_id: bid.bidder_id,
-          content: `Hello! I've accepted your bid of ₱${bid.amount.toLocaleString()} for the ${selectedListing.device_model}. Let's coordinate!`,
-          is_read: false, // Matches your table column
+          content: `Hello! I've accepted your bid of ₱${bid.amount.toLocaleString()} for the ${selectedListing.device_model}`,
+          is_read: false, 
         },
       ]);
 
@@ -145,21 +145,23 @@ const SellerDashboard = ({ session }) => {
     );
   }
   const handleSelectListing = async (listing) => {
-  setSelectedListing(listing);
-  setLoading(true);
+    setSelectedListing(listing);
+    setLoading(true);
 
-  const { data, error } = await supabase
-    .from("bids")
-    .select(`
+    const { data, error } = await supabase
+      .from("bids")
+      .select(
+        `
       *,
       profiles:bidder_id (full_name) 
-    `) 
-    .eq("listing_id", listing.id)
-    .order("created_at", { ascending: false });
+    `,
+      )
+      .eq("listing_id", listing.id)
+      .order("created_at", { ascending: false });
 
-  if (!error) setListingBids(data);
-  setLoading(false);
-};
+    if (!error) setListingBids(data);
+    setLoading(false);
+  };
   const handleLogout = async () => {
     setShowProfileMenu(false); // Close the menu first
     const { error } = await supabase.auth.signOut();
@@ -331,7 +333,7 @@ const SellerDashboard = ({ session }) => {
       <div className="grid grid-cols-4 gap-4 mb-8">
         {[
           { label: "Active Listings", val: listings.length },
-          { label: "Total Bids", val: totalBidsCount }, // 👈 Changed from bids.length to totalBidsCount
+          { label: "Total Bids", val: totalBidsCount },
           { label: "Messages", val: "0" },
           { label: "Rating", val: "0.0" },
         ].map((stat, i) => (
@@ -414,12 +416,33 @@ const SellerDashboard = ({ session }) => {
                         </div>
                         <Package className="text-slate-200" size={32} />
                       </div>
+                      {/* ... inside listings.map((item) => ( ... */}
                       <div className="flex justify-between items-center border-t border-slate-50 pt-4 mt-4">
-                        <div className="flex gap-4 text-xs font-bold text-[#3285a1]">
-                          <span>₱ {item.scrap_value?.toLocaleString()}</span>
+                        <div className="flex gap-6 items-center">
+                          {/* Asking Price Section */}
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">
+                              Asking Price
+                            </span>
+                            <div className="text-sm font-bold text-[#3285a1]">
+                              ₱ {item.asking_price?.toLocaleString() || "0.00"}
+                            </div>
+                          </div>
+
+                          {/* Bids Count Section */}
+                          <div className="flex flex-col border-l border-slate-100 pl-6">
+                            <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">
+                              Bids Received
+                            </span>
+                            <div className="text-sm font-bold text-slate-700">
+                              {item.bids?.length || 0}{" "}
+                              {item.bids?.length === 1 ? "Bid" : "Bids"}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-[10px] text-emerald-500 flex items-center gap-1">
-                          Verified
+
+                        <div className="text-[10px] text-emerald-500 flex items-center gap-1 font-bold bg-emerald-50 px-2 py-1 rounded-md">
+                          <CheckCircle size={10} /> Verified
                         </div>
                       </div>
                     </div>

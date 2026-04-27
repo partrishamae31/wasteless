@@ -47,6 +47,38 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       images: [...formData.images, ...files],
     });
   };
+  const checkAndNotifyHarvesters = async (newListing) => {
+  try {
+    // 1. Find all active alerts that match the criteria
+    // REQ-1: Matches model and condition
+    // REQ-3: Matches price (Asking Price <= Harvester's Max Price)
+    const { data: matchingAlerts, error } = await supabase
+      .from("alerts")
+      .select("id, harvester_id, preferred_barangay")
+      .eq("device_model", newListing.device_model)
+      .eq("condition", newListing.condition)
+      .gte("max_price", newListing.asking_price); // Harvester's max must be >= asking price
+
+    if (error) throw error;
+
+    if (matchingAlerts.length > 0) {
+      // 2. Map matches to notification entries
+      const notifications = matchingAlerts.map((alert) => ({
+        user_id: alert.harvester_id,
+        type: "alert_match",
+        title: "High-Priority Match Found!",
+        content: `A ${newListing.device_model} matching your alert was just listed for ₱${newListing.asking_price}.`,
+        related_listing_id: newListing.id,
+        is_read: false
+      }));
+
+      // 3. Insert notifications into your notifications table (REQ-2)
+      await supabase.from("notifications").insert(notifications);
+    }
+  } catch (err) {
+    console.error("Alert Engine Error:", err.message);
+  }
+};
   const handleFinish = async () => {
     setLoading(true);
     try {
@@ -67,29 +99,37 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
         imageUrls.push(publicUrl);
       }
-      const { error } = await supabase.from("listings").insert([
+      const { data: insertedData, error } = await supabase
+      .from("listings")
+      .insert([
         {
-          seller_id: userId, // Matches your screenshot
-          device_model: formData.model, // Matches your screenshot
+          seller_id: userId,
+          device_model: formData.model,
           condition: formData.condition,
           asking_price: parseFloat(formData.price),
           images: imageUrls,
           status: "active",
+          //description: formData.description // Added to match your state
         },
-      ]);
+      ])
+      .select(); // Crucial: .select() returns the created listing data including ID
 
-      if (error) throw error;
+    if (error) throw error;
 
-      alert("Listing created successfully!");
-      onClose();
-      // Optional: window.location.reload() to see it in "My Listings"
-    } catch (err) {
-      console.error("Submission Error:", err.message);
-      alert("Failed to create listing: " + err.message);
-    } finally {
-      setLoading(false);
+    // 2. TRIGGER THE ALERT ENGINE (REQ-1, REQ-2, REQ-3)
+    if (insertedData && insertedData) {
+      await checkAndNotifyHarvesters(insertedData);
     }
-  };
+
+    alert("Listing created successfully!");
+    onClose();
+  } catch (err) {
+    console.error("Submission Error:", err.message);
+    alert("Failed to create listing: " + err.message);
+  } finally {
+    setLoading(false);
+  }
+};
   const steps = [1, 2, 3];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">

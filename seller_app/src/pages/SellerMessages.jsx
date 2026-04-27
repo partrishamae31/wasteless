@@ -35,7 +35,6 @@ const SellerMessages = ({ userId }) => {
       if (data) {
         const uniqueConversations = data.reduce((acc, current) => {
           if (!acc.find((item) => item.listing_id === current.listing_id)) {
-            // Determine who the "other person" is
             const otherPartyId = current.sender_id === userId ? current.receiver_id : current.sender_id;
             acc.push({ ...current, other_party_id: otherPartyId });
           }
@@ -47,7 +46,6 @@ const SellerMessages = ({ userId }) => {
     fetchConversations();
   }, [userId]);
 
-  // 2. Fetch Messages when a chat is selected
   useEffect(() => {
     if (!activeChat) return;
 
