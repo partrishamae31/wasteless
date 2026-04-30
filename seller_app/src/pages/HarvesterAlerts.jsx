@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { Bell, Plus, Trash2, CheckCircle, AlertCircle } from "lucide-react";
-import MatchingListingsView from "./MatchingListingsView"; 
+import MatchingListingsView from "./MatchingListingsView";
 
-const HarvesterAlerts = ({ session }) => {
+const HarvesterAlerts = ({ session, isVerified }) => { // Add isVerified here
   const [alerts, setAlerts] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedAlertForMatches, setSelectedAlertForMatches] = useState(null);
+  
 
   // Form State for REQ-1
   const [formData, setFormData] = useState({
@@ -113,8 +114,20 @@ const HarvesterAlerts = ({ session }) => {
               </p>
             </div>
             <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 bg-[#5c8d27] text-white px-6 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-[#4a721f] shadow-lg shadow-lime-900/10 transition-all active:scale-95"
+              onClick={() => {
+                if (!isVerified) {
+                  alert(
+                    "Access Denied: Only verified professionals can create component alerts.",
+                  );
+                } else {
+                  setIsModalOpen(true);
+                }
+              }}
+              className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-lg ${
+                isVerified
+                  ? "bg-[#5c8d27] text-white hover:bg-[#4a721f] shadow-lime-900/10"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+              }`}
             >
               <Plus size={18} strokeWidth={3} /> Create Alert
             </button>

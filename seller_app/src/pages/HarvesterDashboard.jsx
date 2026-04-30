@@ -24,7 +24,7 @@ import {
 const HarvesterDashboard = ({ session, onLogout }) => {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("browse"); 
+  const [activeTab, setActiveTab] = useState("browse");
   const [selectedListing, setSelectedListing] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [profileData, setProfileData] = useState({
@@ -40,45 +40,43 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     setActiveTab("settings");
   };
   useEffect(() => {
-    if (!session?.user?.id) return;
+  if (!session?.user?.id) return;
 
-    // Listen for NEW notifications (Triggered by the SQL function above)
-    const notifChannel = supabase
-      .channel("personal-notifications")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${session.user.id}`,
-        },
-        (payload) => {
-          // This triggers the red dot on the bell icon automatically
-          setNotifications((prev) => [payload.new, ...prev]);
+  const notifChannel = supabase
+    .channel("personal-notifications")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${session.user.id}`,
+      },
+      (payload) => {
+        // Add the REAL notification from the database to your state
+        setNotifications((prev) => [payload.new, ...prev]);
+        
+        // Show browser alert if matching
+        if (payload.new.type === 'alert_match') {
+           console.log("Match Found!", payload.new);
+        }
+      }
+    )
+    .subscribe();
 
-          // Optional: Browser notification
-          if (Notification.permission === "granted") {
-            new Notification(payload.new.title, { body: payload.new.content });
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(notifChannel);
-    };
-  }, [session?.user?.id]);
+  return () => supabase.removeChannel(notifChannel);
+}, [session?.user?.id]);
   useEffect(() => {
     if (!session?.user?.id) return;
 
+    // 1. Fetch initial notifications from DB
     const fetchNotifications = async () => {
       const { data } = await supabase
         .from("notifications")
         .select("*")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false })
-        .limit(5);
+        .limit(10);
       if (data) setNotifications(data);
     };
 
@@ -92,15 +90,15 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         (payload) => {
           console.log("Change received!", payload); // <-- Check your browser console!
 
-          const newNotif = {
-            id: payload.new.id,
-            title: "New Listing Available",
-            content: `${payload.new.device_model} was just posted!`,
-            created_at: new Date().toISOString(),
-            is_read: false,
-          };
+          // const newNotif = {
+          //   id: payload.new.id,
+          //   title: "New Listing Available",
+          //   content: `${payload.new.device_model} was just posted!`,
+          //   created_at: new Date().toISOString(),
+          //   is_read: false,
+          // };
 
-          setNotifications((prev) => [newNotif, ...prev]);
+          // setNotifications((prev) => [newNotif, ...prev]);
 
           setListings((prev) => [payload.new, ...prev]);
         },
@@ -185,30 +183,59 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
   const handlePlaceBid = async (listingId, amount, message) => {
     if (!isVerified) {
-      alert(
-        "REQ-2: Only verified harvesters can place bids. Please wait for admin approval.",
-      );
+      alert("Only verified harvesters can place bids.");
       return;
     }
+
     try {
-      const { data: bidData, error: bidError } = await supabase
-        .from("bids")
-        .insert([
-          {
-            listing_id: listingId,
-            bidder_id: session.user.id,
-            amount: amount,
-          },
-        ])
-        .select();
+      // 1. Fetch current status & listing info in one go to save a database call
+      const { data: currentListing, error: statusError } = await supabase
+        .from("listings")
+        .select("status, seller_id, device_model")
+        .eq("id", listingId)
+        .single();
+
+      // Check if the listing is locked (not active)
+      if (statusError || currentListing.status !== "active") {
+        alert("This listing is no longer accepting bids (Closed or Expired).");
+        setSelectedListing(null);
+        fetchActiveListings(); // Refresh the UI to reflect the change
+        return;
+      }
+
+      // 2. Insert the bid
+      const { error: bidError } = await supabase.from("bids").insert([
+        {
+          listing_id: listingId,
+          bidder_id: session.user.id,
+          amount: amount,
+        },
+      ]);
 
       if (bidError) throw bidError;
 
+      // 3. Insert notification for seller (using info from step 1)
+      const { error: notifError } = await supabase
+        .from("notifications")
+        .insert([
+          {
+            user_id: currentListing.seller_id,
+            type: "bid",
+            title: "New Bid Received",
+            description: `Someone placed ₱${amount.toLocaleString()} on your ${currentListing.device_model}`,
+            is_read: false,
+          },
+        ]);
+
+      if (notifError) throw notifError;
+
+      // 4. Handle optional message
       if (message.trim()) {
         await supabase.from("messages").insert([
           {
             listing_id: listingId,
             sender_id: session.user.id,
+            receiver_id: currentListing.seller_id, // Ensure receiver is set
             content: message,
           },
         ]);
@@ -216,12 +243,25 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
       alert("Bid placed successfully!");
       setSelectedListing(null);
+
+      // Optional: refresh local state if you track bids locally
+      // fetchActiveListings();
     } catch (err) {
       console.error("ERROR:", err);
       alert("Error placing bid: " + err.message);
     }
   };
+  const handleMarkAllRead = async () => {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", session.user.id)
+      .eq("is_read", false);
 
+    if (!error) {
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    }
+  };
   return (
     <div className="min-h-screen bg-[#f8fafc] p-8 font-sans">
       {/* --- TOP HEADER SECTION --- */}
@@ -245,7 +285,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 <h3 className="font-black text-slate-800 text-xs uppercase">
                   Notifications
                 </h3>
-                <button className="text-[10px] font-bold text-[#769c2d]">
+                <button
+                  onClick={handleMarkAllRead}
+                  className="text-[10px] font-bold text-[#769c2d] hover:text-[#5d7a24]"
+                >
                   Mark all read
                 </button>
               </div>
@@ -269,7 +312,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                             {n.content}
                           </p>
                           <p className="text-[8px] text-slate-300 font-bold mt-2 uppercase">
-                            Just now
+                            {new Date(n.created_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
                           </p>
                         </div>
                       </div>
@@ -383,7 +429,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
       {/* --- STATS GRID --- */}
       <div className="grid grid-cols-4 gap-6 mb-10">
-        <StatCard label="Active Alerts" value="0" />
+        <StatCard
+          label="Active Alerts"
+          value={notifications
+            .filter((n) => n.type === "alert_match")
+            .length.toString()}
+        />
         <StatCard label="Pending Bids" value="0" />
         <StatCard label="Acquired Parts" value="0" />
         <StatCard label="Total Spent" value="0" isPrice />
@@ -452,8 +503,18 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         </div>
       ) : activeTab === "messages" ? (
         <MessagesView session={session} />
-      ) : activeTab === "alerts" ? ( 
-        <HarvesterAlerts session={session} />
+      ) : activeTab === "alerts" ? (
+        <div className="space-y-8">
+          {/* This allows you to both manage alert settings AND see your matches */}
+          <HarvesterAlerts session={session} isVerified={isVerified} />
+
+          {/* ADD THIS LINE TO RENDER THE NOTIFICATIONS LIST */}
+          <AlertsView
+            notifications={notifications.filter(
+              (n) => n.type === "alert_match",
+            )}
+          />
+        </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-slate-300 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
           <LayoutGrid size={48} className="mb-4 opacity-20" />
@@ -490,20 +551,52 @@ const AlertsView = ({ notifications }) => {
               key={n.id}
               className={`p-6 rounded-[2rem] border transition-all flex items-center gap-6 ${
                 !n.is_read
-                  ? "bg-lime-50/50 border-lime-100"
+                  ? n.type === "alert_match"
+                    ? "bg-amber-50/50 border-amber-100" // Distinct color for matches
+                    : "bg-lime-50/50 border-lime-100"
                   : "bg-slate-50/30 border-slate-50"
               }`}
             >
-              <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-[#769c2d]">
-                <Bell size={20} />
+              {/* Dynamic Icon based on type */}
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                  n.type === "alert_match"
+                    ? "bg-amber-100 text-amber-600"
+                    : "bg-lime-100 text-[#769c2d]"
+                }`}
+              >
+                {n.type === "alert_match" ? (
+                  <Search size={14} />
+                ) : (
+                  <Package size={14} />
+                )}
               </div>
+
               <div className="flex-1">
-                <h4 className="font-bold text-slate-800 text-sm">{n.title}</h4>
-                <p className="text-xs text-slate-500 mt-1">{n.content}</p>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-slate-800 text-sm">
+                    {n.title}
+                  </h4>
+                  {n.type === "alert_match" && (
+                    <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">
+                      Match
+                    </span>
+                  )}
+                </div>
+                {/* FIX: Use description first, then content as a fallback */}
+                <p className="text-xs text-slate-500 mt-1">
+                  {n.description ||
+                    n.content ||
+                    "New e-waste listing matches your criteria."}
+                </p>
               </div>
+
               <div className="text-right">
                 <p className="text-[10px] font-bold text-slate-300 uppercase">
-                  {new Date(n.created_at).toLocaleDateString()}
+                  {new Date(n.created_at).toLocaleDateString([], {
+                    month: "short",
+                    day: "numeric",
+                  })}
                 </p>
               </div>
             </div>
@@ -511,8 +604,12 @@ const AlertsView = ({ notifications }) => {
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-slate-300">
             <Bell size={48} className="mb-4 opacity-20" />
-            <p className="font-bold text-xs uppercase tracking-widest">
-              No alerts found
+            <p className="font-bold text-xs uppercase tracking-widest text-center">
+              No matches found yet.
+              <br />
+              <span className="text-[9px] font-medium opacity-50">
+                We'll notify you when items match your criteria.
+              </span>
             </p>
           </div>
         )}
@@ -744,6 +841,8 @@ const MenuLink = ({ icon, label }) => (
 );
 
 const ListingCard = ({ item, onBid, isVerified }) => {
+  // A listing is locked if its status is NOT "active"
+  const isLocked = item.status !== "active";
   const displayImage =
     item.images && item.images.length > 0 ? item.images : null;
   return (
@@ -803,14 +902,19 @@ const ListingCard = ({ item, onBid, isVerified }) => {
           </div>
           <button
             onClick={onBid}
-            disabled={!isVerified} // Pass isVerified as a prop to ListingCard
+            // Disable if not verified OR if the listing is locked
+            disabled={!isVerified || isLocked}
             className={`${
-              isVerified
-                ? "bg-[#769c2d] text-white"
+              isVerified && !isLocked
+                ? "bg-[#769c2d] text-white hover:scale-105"
                 : "bg-slate-200 text-slate-400 cursor-not-allowed"
-            } px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-transform`}
+            } px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all`}
           >
-            {isVerified ? "Place Bid" : "Pending Verification"}
+            {!isVerified
+              ? "Pending Verification"
+              : isLocked
+                ? "Bidding Closed"
+                : "Place Bid"}
           </button>
         </div>
       </div>

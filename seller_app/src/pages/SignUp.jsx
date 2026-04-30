@@ -104,33 +104,28 @@ const SignUp = ({ onLoginClick }) => {
         setStep(3);
       }
     } else if (step === 3) {
-      // --- HARVESTER LOGIC ---
       if (accountType === "harvester") {
         const pFile = permitRef.current?.files?.[0];
         const tFile = techRef.current?.files?.[0];
+
+        if (!formData.businessName) {
+            alert("Please enter your Shop/Business Name");
+            return;
+        }
 
         if (!pFile || !tFile) {
           alert("Please ensure BOTH files are selected!");
           return;
         }
 
-        // Update files in state for harvester
         setFormData((prev) => ({
           ...prev,
           businessPermit: pFile,
           techCert: tFile,
         }));
-
         setIsSubmitted(true);
-      }
-      // --- SELLER LOGIC ---
+      } 
       else if (accountType === "seller") {
-        if (!formData.businessName) {
-          alert("Please enter your Shop/Business Name");
-          return;
-        }
-
-        // Optional: If you added a file input for Seller's Valid ID using permitRef
         const idFile = permitRef.current?.files?.[0];
         if (!idFile) {
           alert("Please upload a Valid ID");
@@ -139,9 +134,8 @@ const SignUp = ({ onLoginClick }) => {
 
         setFormData((prev) => ({
           ...prev,
-          businessPermit: idFile, // Saving ID under businessPermit key
+          businessPermit: idFile,
         }));
-
         setIsSubmitted(true);
       }
     }
@@ -485,31 +479,27 @@ const SignUp = ({ onLoginClick }) => {
               <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl mb-2">
                 <p className="text-[10px] text-emerald-800 leading-relaxed">
                   {accountType === "seller"
-                    ? "Please provide your shop name and a valid ID to start selling on Wasteless."
+                    ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts. Your status will remain as 'Pending Verification' until our team has reviewed your ID. This step helps ensure you are recognized as a trusted seller in our community."
                     : "To ensure marketplace integrity, we require all repair shops to verify credentials."}
                 </p>
               </div>
 
               {/* Business Name - Shared by both */}
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">
-                  {accountType === "seller"
-                    ? "Store / Business Name *"
-                    : "Business/Shop Name *"}
-                </label>
-                <input
-                  name="businessName"
-                  type="text"
-                  placeholder={
-                    accountType === "seller"
-                      ? "My E-waste Shop"
-                      : "Tech Repair Shop"
-                  }
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  onChange={handleChange}
-                  value={formData.businessName || ""}
-                />
-              </div>
+              {accountType === "harvester" && (
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">
+                    Store / Business Name *
+                  </label>
+                  <input
+                    name="businessName"
+                    type="text"
+                    placeholder="Enter your business name"
+                    className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm"
+                    onChange={handleChange}
+                    value={formData.businessName || ""}
+                  />
+                </div>
+              )}
 
               {/* SELLER ONLY: Valid ID */}
               {accountType === "seller" && (
@@ -556,10 +546,10 @@ const SignUp = ({ onLoginClick }) => {
 
               {/* Navigation Buttons (Keep as is) */}
               <div className="flex gap-3 pt-4">
-                <button onClick={() => setStep(2)} className="...">
+                <button onClick={() => setStep(2)} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50">
                   Back
                 </button>
-                <button onClick={handleContinue} className="...">
+                <button onClick={handleContinue} className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90">
                   Continue
                 </button>
               </div>
