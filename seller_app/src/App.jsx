@@ -4,6 +4,8 @@ import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 import SellerDashboard from "./pages/SellerDashboard";
 import HarvesterDashboard from "./pages/HarvesterDashboard";
+import AdminDashboard from "./admin/src/AdminDashboard";
+import AdminPanel from "./admin/src/AdminPanel";
 
 function App() {
   const [session, setSession] = useState(null);
@@ -20,39 +22,39 @@ function App() {
   };
   // 🔥 SINGLE SOURCE OF TRUTH
   const loadUser = async (session) => {
-  setLoading(true);
-  setIsChecked(false); // 🔥 reset check
+    setLoading(true);
+    setIsChecked(false); // 🔥 reset check
 
-  if (!session?.user) {
-    setSession(null);
-    setRole(null);
+    if (!session?.user) {
+      setSession(null);
+      setRole(null);
+      setLoading(false);
+      setIsChecked(true);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (!data || error || !data.role) {
+      await supabase.auth.signOut();
+
+      setSession(null);
+      setRole(null);
+      setIsUnauthorized(true);
+      setCurrentPage("login");
+    } else {
+      setSession(session);
+      setRole(data.role);
+      setIsUnauthorized(false);
+    }
+
     setLoading(false);
-    setIsChecked(true);
-    return;
-  }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", session.user.id)
-    .maybeSingle();
-
-  if (!data || error || !data.role) {
-    await supabase.auth.signOut();
-
-    setSession(null);
-    setRole(null);
-    setIsUnauthorized(true);
-    setCurrentPage("login");
-  } else {
-    setSession(session);
-    setRole(data.role);
-    setIsUnauthorized(false);
-  }
-
-  setLoading(false);
-  setIsChecked(true); // 🔥 validation done
-};
+    setIsChecked(true); // 🔥 validation done
+  };
 
   useEffect(() => {
     // INITIAL LOAD
@@ -81,28 +83,28 @@ function App() {
       </div>
     );
   }
-if (isUnauthorized) {
-  return (
-    <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
-      <p className="text-red-500 font-bold text-center">
-        Access Denied: Email not registered.
-      </p>
-      <p className="text-gray-600 mt-2">
-        Please create an account first before using Google login.
-      </p>
+  if (isUnauthorized) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
+        <p className="text-red-500 font-bold text-center">
+          Access Denied: Email not registered.
+        </p>
+        <p className="text-gray-600 mt-2">
+          Please create an account first before using Google login.
+        </p>
 
-      <button
-        onClick={() => {
-          setIsUnauthorized(false);
-          setCurrentPage("signup");
-        }}
-        className="mt-4 px-4 py-2 bg-[#769c2d] text-white rounded"
-      >
-        Create Account
-      </button>
-    </div>
-  );
-}
+        <button
+          onClick={() => {
+            setIsUnauthorized(false);
+            setCurrentPage("signup");
+          }}
+          className="mt-4 px-4 py-2 bg-[#769c2d] text-white rounded"
+        >
+          Create Account
+        </button>
+      </div>
+    );
+  }
   // 🔥 LOGGED IN
   if (session) {
     if (role === "NO_ROLE" || !role) {
@@ -112,6 +114,10 @@ if (isUnauthorized) {
           isCompletingSocial={true}
         />
       );
+    }
+    // In App.jsx
+    if (role === "admin") {
+      return <AdminPanel session={session} onLogout={handleLogout} />;
     }
     if (role === "seller") {
       return <SellerDashboard session={session} />;

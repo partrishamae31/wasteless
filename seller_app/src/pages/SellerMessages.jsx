@@ -109,28 +109,54 @@ const SellerMessages = ({ userId, onTabChange }) => {
         .from("messages")
         .select(
           `
-          listing_id,
-          content,
-          created_at,
-          sender_id,
-          receiver_id,
-          listings (device_model)
-        `,
+    listing_id,
+    content,
+    created_at,
+    sender_id,
+    receiver_id,
+    listings (device_model)
+  `,
         )
         .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
         .order("created_at", { ascending: false });
 
       if (data) {
+        // Get unique user IDs
+        const userIds = [
+          ...new Set(data.flatMap((msg) => [msg.sender_id, msg.receiver_id])),
+        ];
+
+        // Fetch profiles
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", userIds);
+
+        const profileMap = {};
+        profiles?.forEach((p) => {
+          profileMap[p.id] = p.full_name;
+        });
+
         const uniqueConversations = data.reduce((acc, current) => {
           if (!acc.find((item) => item.listing_id === current.listing_id)) {
-            const otherPartyId =
-              current.sender_id === userId
-                ? current.receiver_id
-                : current.sender_id;
-            acc.push({ ...current, other_party_id: otherPartyId });
+            const isSender = current.sender_id === userId;
+
+            const otherPartyId = isSender
+              ? current.receiver_id
+              : current.sender_id;
+
+            const otherPartyName =
+              profileMap[otherPartyId] || "Unknown Harvester";
+
+            acc.push({
+              ...current,
+              other_party_id: otherPartyId,
+              other_party_name: otherPartyName,
+            });
           }
           return acc;
         }, []);
+
         setConversations(uniqueConversations);
       }
     };
@@ -225,7 +251,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
             >
               <div className="flex justify-between items-start mb-1">
                 <span className="font-bold text-xs text-slate-700">
-                  Harvester ID: {conv.other_party_id.slice(0, 5)}
+                  {conv.other_party_name || "Unknown Harvester"}
                 </span>
                 <span className="text-[10px] text-slate-400">
                   {new Date(conv.created_at).toLocaleTimeString([], {
@@ -256,7 +282,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
                 </div>
                 <div>
                   <p className="font-bold text-xs text-slate-700">
-                    {activeChat.listings?.device_model}
+                    {activeChat.other_party_name || "Unknown Harvester"}
                   </p>
                   <p className="text-[10px] text-slate-400">
                     Active Conversation
@@ -398,12 +424,6 @@ const SellerMessages = ({ userId, onTabChange }) => {
                   }
                 >
                   <option value="">Choose a location...</option>
-                  <option value="Valenzuela City Hall">
-                    Valenzuela City Hall - Main Entrance
-                  </option>
-                  <option value="SM City Valenzuela">
-                    SM City Valenzuela - Main Entrance
-                  </option>
                   <option value="Barangay Hall">
                     Barangay Hall - Nearest Hall
                   </option>

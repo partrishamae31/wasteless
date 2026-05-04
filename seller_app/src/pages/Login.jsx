@@ -1,5 +1,17 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
+import {
+  Recycle,
+  Shield,
+  BarChart3,
+  MapPin,
+  Building2,
+  Mail,
+  Lock,
+  ArrowRight,
+  Leaf,
+  Zap,
+} from "lucide-react";
 
 const Login = ({ onSignUpClick }) => {
   const [role, setRole] = useState("seller");
@@ -92,8 +104,65 @@ const Login = ({ onSignUpClick }) => {
   return (
     <div className="flex h-screen w-full bg-white font-sans overflow-hidden">
       {/* LEFT SIDE: Gradient */}
-      <div className="hidden md:flex w-1/2 bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] items-center justify-center relative">
-        <div className="absolute top-20 left-20 w-32 h-32 bg-white/20 rounded-full blur-3xl"></div>
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] p-12 flex-col justify-between text-white relative">
+        <div>
+          <div className="flex items-center gap-2 mb-12">
+            <div className="bg-white/20 p-2 rounded-lg">
+              <Leaf size={24} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Wasteless</h1>
+              <p className="text-xs opacity-80">Valenzuela City</p>
+            </div>
+          </div>
+
+          <h2 className="text-4xl font-bold mb-6 leading-tight">
+            E-waste Management Platform
+          </h2>
+          <p className="text-lg opacity-90 mb-12 max-w-md">
+            Connect households with repair shops and tech-harvesters for
+            component recovery and reuse.
+          </p>
+
+          <div className="space-y-8">
+            <div className="flex gap-4">
+              <div className="bg-white/10 p-3 rounded-xl h-fit">
+                <Zap size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Smart Recovery</h3>
+                <p className="text-sm opacity-70">
+                  AI-powered value calculations for your devices
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="bg-white/10 p-3 rounded-xl h-fit">
+                <MapPin size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Location-Based Matching</h3>
+                <p className="text-sm opacity-70">
+                  Connect with nearby repair shops and harvesters
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="bg-white/10 p-3 rounded-xl h-fit">
+                <BarChart3 size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Environmental Impact</h3>
+                <p className="text-sm opacity-70">
+                  Track carbon savings and circular economy metrics
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p className="text-xs opacity-60">
+          Promoting circular economy practices in Valenzuela City
+        </p>
       </div>
 
       {/* RIGHT SIDE: Form */}
@@ -107,42 +176,70 @@ const Login = ({ onSignUpClick }) => {
           <label className="text-xs font-semibold text-gray-600 mb-2 block">
             Select Your Role
           </label>
-          <div className="flex gap-4 mb-6">
-            <button
-              type="button"
-              onClick={() => setRole("seller")}
-              className={`flex-1 p-4 border rounded-xl text-left transition ${role === "seller" ? "border-teal-500 bg-teal-50" : "border-gray-200"}`}
-            >
-              <p className="text-sm font-bold text-teal-700">E-waste Seller</p>
-              <p className="text-[10px] text-gray-400 leading-tight">
-                List and sell electronic devices
-              </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRole("harvester")}
-              className={`flex-1 p-4 border rounded-xl text-left transition ${role === "harvester" ? "border-teal-500 bg-teal-50" : "border-gray-200"}`}
-            >
-              <p className="text-sm font-bold text-gray-700">
-                Repair Shop / Tech-Harvester
-              </p>
-              <p className="text-[10px] text-gray-400 leading-tight">
-                Browse and bid on components
-              </p>
-            </button>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {[
+              {
+                id: "seller",
+                title: "E-waste Seller",
+                desc: "List and sell electronic devices",
+                icon: <Recycle size={18} />,
+              },
+              {
+                id: "harvester",
+                title: "Repair Shop / Tech-Harvester",
+                desc: "Browse and bid on components",
+                icon: <Shield size={18} />,
+              },
+              {
+                id: "admin",
+                title: "Administrator",
+                desc: "Manage platform operations",
+                icon: <BarChart3 size={18} />,
+              },
+              {
+                id: "environmental",
+                title: "Environmental Officer",
+                desc: "Monitor city metrics",
+                icon: <MapPin size={18} />,
+              },
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setRole(item.id)}
+                className={`p-3 border rounded-xl text-left transition-all ${
+                  role === item.id
+                    ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div
+                  className={`mb-2 ${role === item.id ? "text-blue-600" : "text-gray-400"}`}
+                >
+                  {item.icon}
+                </div>
+                <p className="text-[11px] font-bold text-gray-800 leading-tight">
+                  {item.title}
+                </p>
+                <p className="text-[9px] text-gray-400 leading-tight mt-1">
+                  {item.desc}
+                </p>
+              </button>
+            ))}
           </div>
 
           <div className="space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">
-                Email Address
-              </label>
+            <div className="relative">
+              <Mail
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                size={16}
+              />
               <input
                 type="email"
-                placeholder="Enter email address"
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-teal-500"
-                value={email} // Link to state
-                onChange={(e) => setEmail(e.target.value)} // Update state
+                placeholder="your@email.com"
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-teal-500"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div>

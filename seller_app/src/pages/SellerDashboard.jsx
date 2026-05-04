@@ -25,6 +25,14 @@ import {
   LogOut,
   Star,
   Calendar,
+  Edit3,
+  TrendingUp,
+  Shield,
+  ArrowUpRight,
+  XCircle,
+  CheckCircle2,
+  AlertCircle,
+  Send,
 } from "lucide-react";
 
 const SellerDashboard = ({ session }) => {
@@ -43,7 +51,64 @@ const SellerDashboard = ({ session }) => {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [checkingRole, setCheckingRole] = useState(true);
   const [notifications, setNotifications] = useState([]);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const [transactions, setTransactions] = useState([]);
+  const handleCompleteTransaction = async (txId) => {
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ status: "completed" }) // Ensure this matches your DB constraints
+        .eq("id", txId);
+
+      if (error) throw error;
+
+      // Update local state immediately
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === txId ? { ...t, status: "completed" } : t)),
+      );
+      alert("Transaction marked as completed!");
+    } catch (err) {
+      alert("Failed to update database: " + err.message);
+    }
+  };
+  const handleCancelTransaction = async (txId) => {
+    try {
+      const txToCancel = transactions.find((t) => t.id === txId);
+
+      // 1. Update the transaction status in the DB
+      const { error: txError } = await supabase
+        .from("transactions")
+        .update({
+          status: "cancelled",
+          cancel_reason: cancelReason,
+        })
+        .eq("id", txId);
+
+      if (txError) throw txError;
+
+      // 2. Re-open the listing status so it's active again
+      if (txToCancel?.listing_id) {
+        const { error: listingError } = await supabase
+          .from("listings")
+          .update({ status: "active" }) // Changed from 'closed' back to 'active'
+          .eq("id", txToCancel.listing_id);
+
+        if (listingError) throw listingError;
+      }
+
+      // 3. Update local UI state
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === txId ? { ...t, status: "cancelled" } : t)),
+      );
+
+      setShowCancelModal(false);
+      alert("Transaction cancelled successfully.");
+    } catch (err) {
+      console.error("Error cancelling:", err.message);
+      alert("Failed to cancel: Check your database permissions.");
+    }
+  };
   const totalBidsCount = listings.reduce(
     (sum, item) => sum + (item.bids?.length || 0),
     0,
@@ -84,24 +149,40 @@ const SellerDashboard = ({ session }) => {
 
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
+  {
+    /* Helper component for consistent info rows */
+  }
+  function InfoRow({ label, value, icon }) {
+    return (
+      <div className="flex items-start gap-3">
+        <div className="mt-1 text-slate-400">{icon}</div>
+        <div>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+            {label}
+          </p>
+          <p className="text-xs font-semibold text-slate-700">{value}</p>
+        </div>
+      </div>
+    );
+  }
   // Automatically select the first transaction if none is selected
   useEffect(() => {
     if (transactions.length > 0 && !selectedTxId) {
-      setSelectedTxId(transactions.id);
+      setSelectedTxId(transactions[0].id);
     }
-  }, [transactions]);
+  }, [transactions, selectedTxId]);
   const handleAcceptBid = async (bid) => {
     try {
       // 1. Update the bid status to 'accepted'
-      const { error: bidUpdateError } = await supabase
+      const { data, error: bidUpdateError } = await supabase
         .from("bids")
         .update({ status: "accepted" })
-        .eq("id", bid.id);
+        .eq("id", bid.id)
+        .select();
 
       if (bidUpdateError) throw bidUpdateError;
 
-      // 2. LOCK THE LISTING: Update listing status to 'closed'
-      // This is the step that prevents further bidding
+      // 2. LOCK THE LISTING: Prevents further bidding
       const { error: listingUpdateError } = await supabase
         .from("listings")
         .update({ status: "closed" })
@@ -109,24 +190,41 @@ const SellerDashboard = ({ session }) => {
 
       if (listingUpdateError) throw listingUpdateError;
 
-      // 3. Insert the auto-message
+      // 3. CREATE TRANSACTION: Fixed schedule logic here
+      const { error: transactionError } = await supabase
+        .from("transactions")
+        .insert([
+          {
+            listing_id: selectedListing.id,
+            seller_id: session.user.id,
+            harvester_id: bid.bidder_id,
+            amount: bid.amount,
+            status: "meetup scheduled",
+            barangay: session.user.user_metadata?.barangay || "To be discussed",
+            // FIX: Set to a placeholder so the Harvester knows it's not final
+            meetup_date: new Date().toISOString().split("T")[0],
+            meetup_time: "To be agreed",
+          },
+        ]);
+
+      if (transactionError) throw transactionError;
+
+      // 4. AUTO-MESSAGE: Informs the Harvester immediately
       const { error: messageError } = await supabase.from("messages").insert([
         {
           listing_id: selectedListing.id,
           sender_id: session.user.id,
           receiver_id: bid.bidder_id,
-          content: `Hello! I've accepted your bid of ₱${bid.amount.toLocaleString()} for the ${selectedListing.device_model}`,
+          content: `Hello! I've accepted your bid of ₱${bid.amount.toLocaleString()} for the ${selectedListing.device_model}. Let's coordinate the meetup!`,
           is_read: false,
         },
       ]);
 
       if (messageError) throw messageError;
 
-      alert("Bid accepted! The listing is now closed to further bidding.");
+      alert("Bid accepted! The listing is now closed.");
 
-      // 4. Refresh listings to show the 'closed' status in the UI
       if (typeof fetchListings === "function") fetchListings();
-
       setActiveTab("messages");
     } catch (error) {
       console.error("Error in bid acceptance:", error.message);
@@ -150,6 +248,9 @@ const SellerDashboard = ({ session }) => {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
+
+        // FIX: Ensure you are setting the fresh data,
+        // not appending to an existing array.
         setTransactions(data || []);
       } catch (err) {
         console.error("Error fetching transactions:", err.message);
@@ -701,12 +802,17 @@ const SellerDashboard = ({ session }) => {
                       className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
                         tx.status === "completed"
                           ? "bg-green-100 text-green-700"
-                          : "bg-blue-100 text-blue-700"
+                          : tx.status === "cancelled"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-blue-100 text-blue-700"
                       }`}
                     >
+                      {/* FIX: Use the actual database status */}
                       {tx.status === "completed"
                         ? "Completed"
-                        : "Meetup Scheduled"}
+                        : tx.status === "cancelled"
+                          ? "Cancelled"
+                          : "Meetup Scheduled"}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400">
@@ -736,7 +842,13 @@ const SellerDashboard = ({ session }) => {
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className="bg-white/20 px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                        <span
+                          className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
+                            tx.status === "cancelled"
+                              ? "bg-red-500 text-white"
+                              : "bg-white/20 text-white"
+                          }`}
+                        >
                           Status: {tx.status}
                         </span>
                       </div>
@@ -831,7 +943,7 @@ const SellerDashboard = ({ session }) => {
                               </p>
                               <p className="text-sm font-bold text-slate-700">
                                 {new Date(tx.meetup_date).toLocaleDateString()}{" "}
-                                @ {tx.meetup_time}
+                                at {tx.meetup_time}
                               </p>
                             </div>
                           </div>
@@ -839,10 +951,23 @@ const SellerDashboard = ({ session }) => {
                       </div>
 
                       {/* Confirm Button */}
-                      <div className="mt-12">
-                        <button className="w-full bg-[#16A34A] text-white py-4 rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-[#15803d] transition-all shadow-lg shadow-green-100">
-                          Confirm Handover
-                        </button>
+                      <div className="mt-12 flex flex-col gap-3">
+                        {tx.status !== "cancelled" && (
+                          <>
+                            <button
+                              onClick={() => setShowCancelModal(true)}
+                              className="w-full bg-white text-red-500 border border-red-100 py-4 rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-red-50 transition-all shadow-sm flex items-center justify-center gap-2"
+                            >
+                              <XCircle size={18} /> Cancel Transaction
+                            </button>
+
+                            {/* Small informative text for the seller */}
+                            <p className="text-[10px] text-center text-slate-400 italic">
+                              Need help? Contact support if you are having
+                              issues with this harvester.
+                            </p>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -858,117 +983,187 @@ const SellerDashboard = ({ session }) => {
       </div>
       {/* Profile Modal Overlay */}
       {showProfileModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-lg rounded-[24px] overflow-hidden shadow-2xl animate-in zoom-in duration-300 relative">
-            {/* Modal Header Gradient */}
-            <div className="bg-gradient-to-br from-[#38A3A5] to-[#57CC99] p-10 text-white relative">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
+            {/* Modal Header - Gradient matching the mockup */}
+            <div className="bg-gradient-to-br from-[#448b78] to-[#6da43a] p-6 text-white relative">
               <button
                 onClick={() => setShowProfileModal(false)}
-                className="absolute top-6 right-6 hover:opacity-70 transition-opacity z-10"
+                className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
               >
                 <X size={20} />
               </button>
 
-              <div className="flex items-center gap-5 mb-4">
+              <div className="flex items-center gap-4">
                 <div className="relative">
-                  <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center text-2xl font-semibold border-2 border-white/30">
-                    {session.user.email.charAt(0).toUpperCase()}
+                  <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
+                    {session.user.user_metadata?.full_name
+                      ?.charAt(0)
+                      .toUpperCase()}
                   </div>
-                  <div className="absolute bottom-0 right-0 bg-white p-1.5 rounded-full text-slate-600 shadow-md border border-slate-100">
-                    <Camera
-                      size={12}
-                      fill="currentColor"
-                      className="text-slate-400"
-                    />
-                  </div>
+                  <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
+                    <Camera size={12} />
+                  </button>
                 </div>
-
                 <div>
-                  <h2 className="text-2xl font-bold">
-                    {profileData?.full_name || session.user.email.split("@")[0]}
+                  <h2 className="text-xl font-bold">
+                    {session.user.user_metadata?.full_name || "User Name"}
                   </h2>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="bg-white/20 px-3 py-0.5 rounded-full flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider">
+                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
                       <CheckCircle size={10} /> Verified Seller
                     </span>
-                    <span className="text-[11px] opacity-90">
+                    <span className="text-[10px] opacity-80">
                       Active since{" "}
-                      {formatDate(
-                        profileData?.created_at || session.user?.created_at,
+                      {new Date(session.user.created_at).toLocaleDateString(
+                        "en-US",
+                        { month: "long", year: "numeric" },
                       )}
                     </span>
                   </div>
+                  <div className="flex items-center gap-1 mt-2 text-yellow-300">
+                    <Star size={12} fill="currentColor" />
+                    <span className="text-xs font-bold text-white">
+                      0.0{" "}
+                      <span className="opacity-70 font-normal">
+                        (0 reviews)
+                      </span>
+                    </span>
+                  </div>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 text-sm">
-                <Star size={16} className="fill-yellow-400 text-yellow-400" />
-                <span className="font-bold">0.0</span>
-                <span className="opacity-80 text-xs">(0 reviews)</span>
               </div>
             </div>
 
-            <div className="p-8">
-              <div className="flex justify-end mb-6 -mt-2">
-                <button className="flex items-center gap-2 bg-[#3285a1] hover:bg-[#2a6f87] text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm">
-                  <Pencil size={14} /> Edit Profile
+            {/* Modal Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+              <div className="flex justify-end">
+                <button className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-[#246367] transition shadow-sm">
+                  <Edit3 size={14} /> Edit Profile
                 </button>
               </div>
 
               {/* Stats Grid */}
-              <div className="grid grid-cols-4 gap-3 mb-10">
+              <div className="grid grid-cols-4 gap-3">
                 {[
-                  { label: "Total Listings", val: listings.length },
+                  {
+                    label: "Total Listings",
+                    val: listings.length,
+                    icon: <Package size={16} />,
+                    color: "text-blue-500",
+                    bg: "bg-blue-50",
+                  },
                   {
                     label: "Items Sold",
                     val: listings.filter(
                       (item) =>
                         item.status?.toLowerCase() === "meetup scheduled",
                     ).length,
+                    icon: <TrendingUp size={16} />,
+                    color: "text-green-500",
+                    bg: "bg-green-50",
                   },
-                  { label: "Rating", val: "0.0" },
-                  { label: "Reviews", val: "0" },
-                ].map((s, i) => (
+                  {
+                    label: "Rating",
+                    val: "0.0",
+                    icon: <Star size={16} />,
+                    color: "text-yellow-500",
+                    bg: "bg-yellow-50",
+                  },
+                  {
+                    label: "Reviews",
+                    val: "0",
+                    icon: <MessageSquare size={16} />,
+                    color: "text-purple-500",
+                    bg: "bg-purple-50",
+                  },
+                ].map((stat, i) => (
                   <div
                     key={i}
-                    className="bg-[#F2FFF9] p-4 rounded-xl text-center border border-[#E8F5EE]"
+                    className={`${stat.bg} p-3 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center`}
                   >
-                    <div className="text-xl font-black text-slate-800">
-                      {s.val}
+                    <div className={`${stat.color} mb-1`}>{stat.icon}</div>
+                    <div className="text-sm font-black text-gray-800">
+                      {stat.val}
                     </div>
-                    <div className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter mt-1">
-                      {s.label}
+                    <div className="text-[9px] text-gray-500 font-medium leading-tight">
+                      {stat.label}
                     </div>
                   </div>
                 ))}
               </div>
 
+              {/* Trust Tier Section - Matching the purple card in mockup */}
+              <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
+                <Shield
+                  className="absolute right-4 top-4 opacity-20"
+                  size={60}
+                />
+                <div className="relative z-10">
+                  <h3 className="font-bold text-lg">
+                    {session.user.user_metadata?.full_name}
+                  </h3>
+                  <p className="text-[10px] opacity-80 mb-3">
+                    Member since{" "}
+                    {new Date(session.user.created_at).toLocaleDateString()}
+                  </p>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="bg-yellow-400 text-yellow-900 text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1">
+                      <Award size={10} />
+                    </span>
+                    <span className="text-xs font-bold">
+                      ★ 0.0 <span className="opacity-70">(0)</span>
+                    </span>
+                    <span className="text-[10px] bg-white/20 px-2 py-1 rounded-full">
+                      Recommended
+                    </span>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="space-y-2 bg-white/10 p-3 rounded-xl border border-white/10">
+                    <div className="flex justify-between text-[10px] font-bold">
+                      <span className="flex items-center gap-1 uppercase tracking-wider">
+                        <ArrowUpRight size={10} /> Next Tier:{" "}
+                        <span className="text-cyan-300">N/A</span>
+                      </span>
+                      {/* Updated text to 0% */}
+                      <span>0% complete</span>
+                    </div>
+                    <div className="w-full bg-black/20 h-1.5 rounded-full overflow-hidden">
+                      {/* Updated width to 0% */}
+                      <div className="bg-gradient-to-r from-cyan-400 to-purple-400 h-full w-[0%] shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-500"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Personal Information */}
-              <div className="space-y-6">
-                <h3 className="font-bold text-slate-800 text-base">
+              <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
                   Personal Information
                 </h3>
-
-                <div className="space-y-5">
-                  <InfoItem
-                    icon={<User size={18} className="text-slate-400" />}
+                <div className="grid gap-4">
+                  <InfoRow
                     label="Full Name"
-                    val={profileData?.full_name || "Maria Santos"}
+                    value={session.user.user_metadata?.full_name}
+                    icon={<User size={14} />}
                   />
-                  <InfoItem
-                    icon={<Mail size={18} className="text-slate-400" />}
+                  <InfoRow
                     label="Email Address"
-                    val={session.user.email}
+                    value={session.user.email}
+                    icon={<Mail size={14} />}
                   />
-                  <InfoItem
-                    icon={<Phone size={18} className="text-slate-400" />}
+                  <InfoRow
                     label="Phone Number"
-                    val={profileData?.contact_number || "+63 917 123 4567"}
+                    value={
+                      session.user.user_metadata?.contact_number ||
+                      "+63 917 123 4567"
+                    }
+                    icon={<Phone size={14} />}
                   />
-                  <InfoItem
-                    icon={<MapPin size={18} className="text-slate-400" />}
+                  <InfoRow
                     label="Barangay"
-                    val={profileData?.barangay || "Barangay Karuhatan"}
+                    value={session.user.user_metadata?.barangay || "Not set"}
+                    icon={<MapPin size={14} />}
                   />
                 </div>
               </div>
@@ -976,6 +1171,15 @@ const SellerDashboard = ({ session }) => {
           </div>
         </div>
       )}
+      <CancelTransactionModal
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onConfirm={handleCancelTransaction}
+        transaction={transactions.find((t) => t.id === selectedTxId)}
+        cancelReason={cancelReason}
+        setCancelReason={setCancelReason}
+      />
+
       <CreateListingModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -984,7 +1188,149 @@ const SellerDashboard = ({ session }) => {
     </div>
   );
 };
+const CancelTransactionModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  transaction,
+  // Add these to the destructuring:
+  cancelReason,
+  setCancelReason,
+}) => {
+  if (!isOpen) return null;
 
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+        {/* Header */}
+        <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-red-50 rounded-full text-red-500">
+              <XCircle size={20} />
+            </div>
+            <h2 className="text-lg font-bold text-slate-800">
+              Cancel Transaction
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Warning Banner */}
+          <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex gap-3">
+            <AlertCircle className="text-amber-500 shrink-0" size={18} />
+            <div>
+              <p className="text-xs font-bold text-amber-800">
+                Warning:{" "}
+                <span className="font-normal">
+                  Cancelling this transaction cannot be undone.
+                </span>
+              </p>
+              <p className="text-[10px] text-amber-700 mt-1">
+                The buyer ({transaction?.harvester?.full_name}) will be notified
+                immediately.
+              </p>
+            </div>
+          </div>
+
+          {/* Reason Select */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 block">
+              Cancellation Reason <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400 transition-all appearance-none cursor-pointer"
+              required
+            >
+              <option value="" disabled>
+                Select a reason...
+              </option>
+              <option value="Item no longer available">
+                Item no longer available
+              </option>
+              <option value="Device condition changed">
+                Device condition changed
+              </option>
+              <option value="Cannot meet at scheduled time">
+                Cannot meet at scheduled time
+              </option>
+              <option value="Buyer unresponsive">Buyer unresponsive</option>
+              <option value="Safety concerns">Safety concerns</option>
+              <option value="Other">Other (please specify)</option>
+            </select>
+
+            {/* Optional: Add this if "Other" is selected */}
+            {cancelReason === "Other" && (
+              <textarea
+                placeholder="Please describe your reason for cancelling..."
+                className="w-full mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400 transition-all min-h-[80px]"
+                onChange={(e) => setCancelReason(`Other: ${e.target.value}`)}
+              />
+            )}
+          </div>
+
+          {/* Details Card */}
+          <div className="bg-red-50/30 border border-red-50 p-4 rounded-2xl">
+            <p className="text-[10px] font-black text-red-800 uppercase tracking-widest mb-3">
+              Transaction Details:
+            </p>
+            <ul className="space-y-1.5">
+              <li className="text-[11px] text-red-700 flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full" />
+                Device: {transaction?.listing?.device_model}
+              </li>
+              <li className="text-[11px] text-red-700 flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full" />
+                Buyer: {transaction?.harvester?.full_name}
+              </li>
+              <li className="text-[11px] text-red-700 flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full" />
+                Amount: ₱{transaction?.amount?.toLocaleString()}
+              </li>
+              <li className="text-[11px] text-red-700 flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full" />
+                Status: {transaction?.status}
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="p-6 bg-slate-50 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-all"
+          >
+            Keep Transaction
+          </button>
+
+          {/* Update this button below */}
+          <button
+            type="button" // Explicitly set type to button
+            onClick={() => {
+              console.log("Cancel button clicked"); // Debugging line
+              if (!cancelReason) {
+                alert("Please select a reason for cancellation.");
+                return;
+              }
+              onConfirm(transaction.id);
+            }}
+            className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-700 active:scale-95 transition-all shadow-lg cursor-pointer relative z-[10000]"
+          >
+            <XCircle size={14} /> Cancel Transaction
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 const InfoItem = ({ icon, label, val }) => (
   <div className="flex items-start gap-3">
     <div className="text-slate-300 mt-1">{icon}</div>

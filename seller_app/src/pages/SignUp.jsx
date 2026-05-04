@@ -109,8 +109,8 @@ const SignUp = ({ onLoginClick }) => {
         const tFile = techRef.current?.files?.[0];
 
         if (!formData.businessName) {
-            alert("Please enter your Shop/Business Name");
-            return;
+          alert("Please enter your Shop/Business Name");
+          return;
         }
 
         if (!pFile || !tFile) {
@@ -124,8 +124,7 @@ const SignUp = ({ onLoginClick }) => {
           techCert: tFile,
         }));
         setIsSubmitted(true);
-      } 
-      else if (accountType === "seller") {
+      } else if (accountType === "seller") {
         const idFile = permitRef.current?.files?.[0];
         if (!idFile) {
           alert("Please upload a Valid ID");
@@ -235,22 +234,23 @@ const SignUp = ({ onLoginClick }) => {
 
       // FINAL UPDATE
       const { error: profileError } = await supabase
-      .from("profiles")
-      .update(updates)
-      .eq("id", userId);
+        .from("profiles")
+        .update(updates)
+        .eq("id", userId);
 
-    if (profileError) throw profileError;
+      if (profileError) throw profileError;
 
-    alert(autoVerify 
-      ? "Account created! You can now log in." 
-      : "Registration submitted! Please wait for admin approval.");
-
-  } catch (err) {
-    alert("Registration Error: " + err.message);
-  } finally {
-    setLoading(false);
-  }
-};
+      alert(
+        autoVerify
+          ? "Account created! You can now log in."
+          : "Registration submitted! Please wait for admin approval.",
+      );
+    } catch (err) {
+      alert("Registration Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
   const steps = [1, 2, 3];
 
   return (
@@ -342,78 +342,79 @@ const SignUp = ({ onLoginClick }) => {
           {/* STEP 2: Basic Information */}
           {!isSubmitted && step === 2 && (
             <div className="space-y-4 animate-fadeIn text-left">
-              <h3 className="text-sm font-bold text-gray-700 mb-2">
+              <h3 className="text-lg font-bold text-gray-800 mb-2">
                 Basic Information
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Full Name */}
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">
-                    Full Name
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                    Full Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     name="fullName"
                     type="text"
-                    placeholder="Enter Full Name"
-                    className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.fullName ? "border-red-500 ring-red-500" : "border-gray-100 focus:ring-teal-500"}`}
+                    placeholder="Juan Dela Cruz"
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.fullName ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
                     onChange={handleChange}
                     value={formData.fullName}
                   />
                   {errors.fullName && (
-                    <p className="text-[9px] text-red-500 mt-1">
+                    <p className="text-[10px] text-red-500 mt-1">
                       {errors.fullName}
                     </p>
                   )}
                 </div>
 
+                {/* Email */}
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">
-                    Email Address
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                    Email Address <span className="text-red-500">*</span>
                   </label>
                   <input
                     name="email"
                     type="email"
-                    placeholder="Enter Email Address"
-                    className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.email ? "border-red-500 ring-red-500" : "border-gray-100 focus:ring-teal-500"}`}
+                    placeholder="juan.delacruz@example.com"
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.email ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
                     onChange={handleChange}
                     value={formData.email}
                   />
                   {errors.email && (
-                    <p className="text-[9px] text-red-500 mt-1">
+                    <p className="text-[10px] text-red-500 mt-1">
                       {errors.email}
                     </p>
                   )}
                 </div>
 
+                {/* Contact Number */}
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">
-                    Contact Number
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                    Contact Number <span className="text-red-500">*</span>
                   </label>
                   <input
                     name="contactNumber"
                     type="text"
-                    placeholder="Enter Phone Number"
-                    className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.contactNumber ? "border-red-500 ring-red-500" : "border-gray-100 focus:ring-teal-500"}`}
+                    placeholder="09123456789"
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.contactNumber ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
                     onChange={handleChange}
                     value={formData.contactNumber}
                   />
                   {errors.contactNumber && (
-                    <p className="text-[9px] text-red-500 mt-1">
+                    <p className="text-[10px] text-red-500 mt-1">
                       {errors.contactNumber}
                     </p>
                   )}
                 </div>
 
+                {/* Barangay */}
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">
-                    Barangay of Residence
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                    Barangay of Residence{" "}
+                    <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="barangay"
-                    className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${
-                      errors.barangay
-                        ? "border-red-500 ring-red-500"
-                        : "border-gray-100 focus:ring-teal-500"
-                    }`}
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 appearance-none ${errors.barangay ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
                     onChange={handleChange}
                     value={formData.barangay}
                   >
@@ -425,40 +426,81 @@ const SignUp = ({ onLoginClick }) => {
                     ))}
                   </select>
                   {errors.barangay && (
-                    <p className="text-[9px] text-red-500 mt-1">
+                    <p className="text-[10px] text-red-500 mt-1">
                       {errors.barangay}
                     </p>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    name="password"
-                    type="password"
-                    placeholder="Enter Password"
-                    className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.password ? "border-red-500 ring-red-500" : "border-gray-100 focus:ring-teal-500"}`}
-                    onChange={handleChange}
-                  />
+                {/* Password with Eye Icon and Helper Text */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      name="password"
+                      type="password"
+                      placeholder="........"
+                      className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.password ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
+                      onChange={handleChange}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-gray-400 mt-1.5">
+                    Minimum 8 characters with uppercase, lowercase, and digit
+                  </p>
+                </div>
+
+                {/* Confirm Password */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                    Confirm Password <span className="text-red-500">*</span>
+                  </label>
                   <input
                     name="confirmPassword"
                     type="password"
-                    placeholder="Confirm Password"
-                    className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:outline-none focus:ring-1 ${errors.confirmPassword ? "border-red-500 ring-red-500" : "border-gray-100 focus:ring-teal-500"}`}
+                    placeholder="........"
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.confirmPassword ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
                     onChange={handleChange}
                   />
+                  {errors.confirmPassword && (
+                    <p className="text-[10px] text-red-500 mt-1">
+                      {errors.confirmPassword}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              {/* Buttons aligned with mockup */}
+              <div className="flex gap-4 pt-6">
                 <button
                   onClick={() => setStep(1)}
-                  className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50"
+                  className="flex-1 py-3 border border-gray-200 text-gray-500 rounded-xl font-bold text-sm hover:bg-gray-50 transition-colors"
                 >
                   Back
                 </button>
                 <button
                   onClick={handleContinue}
-                  className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90"
+                  className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm hover:bg-[#246367] transition-all shadow-md"
                 >
                   Continue
                 </button>
@@ -467,7 +509,6 @@ const SignUp = ({ onLoginClick }) => {
           )}
 
           {/* STEP 3: Professional Verification */}
-          {/* STEP 3: Professional Verification / Business Details */}
           {!isSubmitted && step === 3 && (
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-xs font-bold text-emerald-900 mb-1">
@@ -476,8 +517,8 @@ const SignUp = ({ onLoginClick }) => {
                   : "Professional Verification"}
               </h3>
 
-              <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl mb-2">
-                <p className="text-[10px] text-emerald-800 leading-relaxed">
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
+                <p className="text-[11px] text-blue-800 leading-relaxed">
                   {accountType === "seller"
                     ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts. Your status will remain as 'Pending Verification' until our team has reviewed your ID. This step helps ensure you are recognized as a trusted seller in our community."
                     : "To ensure marketplace integrity, we require all repair shops to verify credentials."}
@@ -487,25 +528,33 @@ const SignUp = ({ onLoginClick }) => {
               {/* Business Name - Shared by both */}
               {accountType === "harvester" && (
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">
-                    Store / Business Name *
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                    Business/Shop Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     name="businessName"
                     type="text"
                     placeholder="Enter your business name"
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm"
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 ${errors.businessName ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20"}`}
                     onChange={handleChange}
                     value={formData.businessName || ""}
                   />
+                  {errors.businessName && (
+                    <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                      <span className="inline-block w-3 h-3 border border-red-500 rounded-full text-center leading-[10px]">
+                        !
+                      </span>
+                      {errors.businessName}
+                    </p>
+                  )}
                 </div>
               )}
 
               {/* SELLER ONLY: Valid ID */}
               {accountType === "seller" && (
                 <div className="mt-4">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase">
-                    Valid ID (e.g. PhilID, Driver's License) *
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                    Valid ID (e.g. PhilID, Driver's License) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="file"
@@ -527,7 +576,7 @@ const SignUp = ({ onLoginClick }) => {
                       type="file"
                       ref={permitRef}
                       accept="image/*"
-                      className="..."
+                      className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
                     />
                   </div>
                   <div className="mt-4">
@@ -538,7 +587,7 @@ const SignUp = ({ onLoginClick }) => {
                       type="file"
                       ref={techRef}
                       accept="image/*"
-                      className="..."
+                      className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
                     />
                   </div>
                 </>
@@ -546,10 +595,16 @@ const SignUp = ({ onLoginClick }) => {
 
               {/* Navigation Buttons (Keep as is) */}
               <div className="flex gap-3 pt-4">
-                <button onClick={() => setStep(2)} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50">
+                <button
+                  onClick={() => setStep(2)}
+                  className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50"
+                >
                   Back
                 </button>
-                <button onClick={handleContinue} className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90">
+                <button
+                  onClick={handleContinue}
+                  className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90"
+                >
                   Continue
                 </button>
               </div>
