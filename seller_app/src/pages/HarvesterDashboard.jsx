@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import HarvesterAlerts from "./HarvesterAlerts";
 import UrbanMineMap from "./UrbanMineMap";
 import InventoryView from "./InventoryView";
+import TransactionsView from "./TransactionsView";
 import {
   Search,
   Bell,
@@ -50,17 +51,30 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
   const [showRatingModal, setShowRatingModal] = useState(false);
   const handleCompleteHandover = async (transactionId) => {
-    try {
-      const { error } = await supabase
-        .from("transactions")
-        .update({ status: "completed" })
-        .eq("id", transactionId);
+  try {
+    const updatedTime = new Date().toISOString();
+    
+    // Use { count: 'exact' } to verify if the database actually changed
+    const { data, error, count } = await supabase
+      .from("transactions")
+      .update({
+        status: "completed",
+        updated_at: updatedTime,
+      })
+      .eq("id", transactionId)
+      .select(); // Re-select to confirm update[cite: 7]
 
-      if (error) throw error;
+    if (error) throw error;
+    
+    // If count is 0, the transactionId didn't match anything in the DB[cite: 7]
+    if (!data || data.length === 0) {
+      alert("Database match failed: No transaction found with that ID.");
+      return;
+    }
 
-      const updatedTime = new Date().toISOString();
+      
 
-      // 1. Update the main list
+      // 2. Update the Sidebar List (Local State)
       setTransactions((prev) =>
         prev.map((tx) =>
           tx.id === transactionId
@@ -69,7 +83,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         ),
       );
 
-      // 2. Update the currently viewed transaction explicitly
+      // 3. Update the Detailed View (Local State)
+      // Combined your two calls into one clean update
       setSelectedTransaction((prev) => {
         if (prev?.id === transactionId) {
           return { ...prev, status: "completed", updated_at: updatedTime };
@@ -77,6 +92,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         return prev;
       });
 
+      // 4. Trigger the Feedback UI
       setShowRatingModal(true);
     } catch (err) {
       console.error("Update failed:", err.message);
@@ -87,7 +103,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     if (!session?.user?.id) return;
 
     const { data, error } = await supabase
-      .from("transactions") // Query transactions table directly
+      .from("transactions")
       .select(
         `
       *,
@@ -130,9 +146,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           filter: `bidder_id=eq.${session.user.id}`,
         },
         (payload) => {
-          // When a bid status changes, refresh the list
           fetchMyBids();
-          // Also refresh transactions if the status became 'accepted'
+          // If the bid is accepted, the system logic (often via a DB Trigger)
+          // should create a transaction with status 'pending'
           if (payload.new.status === "accepted") {
             fetchTransactions();
           }
@@ -691,7 +707,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           transactions={transactions}
           selectedTransaction={selectedTransaction}
           onSelect={setSelectedTransaction}
-          handleCompleteHandover={handleCompleteHandover} // Add this prop
+          handleCompleteHandover={handleCompleteHandover}
+          session={session} // Add this prop
         />
       ) : activeTab === "inventory" ? ( // ADD THIS
         <InventoryView userId={session?.user?.id} />
@@ -904,307 +921,6 @@ const MyBidsView = ({ bids }) => {
   );
 };
 
-const TransactionsView = ({
-  transactions = [],
-  selectedTransaction,
-  onSelect,
-  handleCompleteHandover,
-}) => {
-  return (
-    <div className="flex gap-8 h-[700px]">
-      {/* Left Sidebar: Active Transactions List */}
-      <div className="w-1/3 space-y-4 overflow-y-auto pr-2">
-        <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-4">
-          Active Transactions
-        </h2>
-        {transactions.map((tx) => {
-          const isCancelled = tx.status === "cancelled";
-          return (
-            <button
-              key={tx.id}
-              onClick={() => onSelect(tx)}
-              className={`w-full text-left p-6 rounded-3xl border-2 transition-all ${
-                selectedTransaction?.id === tx.id
-                  ? isCancelled
-                    ? "border-red-200 bg-white shadow-md"
-                    : "border-[#769c2d] bg-white shadow-md"
-                  : "border-slate-50 bg-slate-50/50 hover:bg-white"
-              }`}
-            >
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="font-black text-sm text-slate-800">
-                  {tx.listings?.device_model}
-                </h3>
-                <span
-                  className={`text-[8px] font-black px-2 py-1 rounded-lg uppercase ${
-                    isCancelled
-                      ? "bg-red-100 text-red-500"
-                      : "bg-purple-100 text-purple-600"
-                  }`}
-                >
-                  {isCancelled ? "Cancelled" : "Meetup Scheduled"}
-                </span>
-              </div>
-              <p className="text-[10px] font-bold text-slate-400 mb-2">
-                Seller: {tx.listings?.profiles?.full_name}
-              </p>
-              <p
-                className={`text-lg font-black ${isCancelled ? "text-[#3285a1]" : "text-[#3285a1]"}`}
-              >
-                ₱{tx.amount?.toLocaleString()}
-              </p>
-              <div className="flex items-center gap-1 mt-3 text-[9px] font-bold text-slate-300">
-                <MessageSquare size={10} /> 3 messages
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Right Content: Transaction Details & Timeline */}
-      {selectedTransaction ? (
-        <div className="flex-1 bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden flex flex-col shadow-sm">
-          {/* Header */}
-          <div className="bg-[#3285a1] p-8 text-white flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-black">
-                {selectedTransaction.listings?.device_model}
-              </h2>
-              <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest mt-1">
-                ID: {selectedTransaction.id?.slice(0, 8)}
-              </p>
-            </div>
-            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-xl text-[10px] font-black uppercase">
-              {selectedTransaction.status === "cancelled"
-                ? "Cancelled"
-                : "Meetup Scheduled"}
-            </span>
-          </div>
-
-          <div className="p-8 space-y-8 flex-1 overflow-y-auto">
-            {/* Stepper Timeline */}
-            <div className="flex items-center justify-between px-10 relative">
-              <div className="absolute top-1/2 left-10 right-10 h-0.5 bg-slate-100 -translate-y-1/2 z-0"></div>
-              {[
-                { label: "Matched", status: selectedTransaction.status },
-                {
-                  label: "Meetup Scheduled",
-                  status: selectedTransaction.status,
-                },
-                {
-                  label: "Handover Complete",
-                  status: selectedTransaction.status,
-                },
-              ].map((step, i) => {
-                const isCompleted = selectedTransaction.status === "completed";
-                const isCancelled = selectedTransaction.status === "cancelled";
-                const stepFinished = isCompleted || (!isCancelled && i < 2);
-
-                return (
-                  <div
-                    key={i}
-                    className="relative z-10 flex flex-col items-center gap-3"
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
-                        isCancelled
-                          ? "bg-white border-red-400 text-red-500"
-                          : stepFinished
-                            ? "bg-[#769c2d] border-[#769c2d] text-white"
-                            : "bg-white border-slate-200 text-slate-300"
-                      }`}
-                    >
-                      {isCancelled ? (
-                        <XCircle size={16} />
-                      ) : (
-                        <Check size={16} />
-                      )}
-                    </div>
-                    <span
-                      className={`text-[8px] font-black uppercase tracking-widest ${
-                        isCancelled
-                          ? "text-red-800"
-                          : isCompleted
-                            ? "text-[#769c2d]"
-                            : "text-slate-400"
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {selectedTransaction.status === "completed" ? (
-              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 flex items-start gap-4">
-                <div className="p-2 bg-white rounded-full text-[#769c2d] border border-emerald-100">
-                  <CheckCircle size={20} />
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-emerald-800">
-                    Transaction Completed
-                  </h4>
-                  <p className="text-[10px] font-bold text-emerald-400 mt-1">
-                    Finished on{" "}
-                    {new Date(
-                      selectedTransaction.updated_at,
-                    ).toLocaleDateString("en-US", {
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </p>
-                  <p className="text-xs font-medium text-emerald-600 mt-2">
-                    The handover was successful. Thank you for using Wasteless
-                    to manage your e-waste!
-                  </p>
-                </div>
-              </div>
-            ) : selectedTransaction.status === "cancelled" ? (
-              <>
-                {/* Cancelled Indicator Badge */}
-                <div className="flex justify-center">
-                  <span className="bg-red-100 text-red-500 px-6 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest">
-                    Cancelled
-                  </span>
-                </div>
-
-                {/* Seller & Amount Info */}
-                <div className="grid grid-cols-2 gap-8 px-4">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-                      Seller
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-700">
-                        {selectedTransaction.listings?.profiles?.full_name}
-                      </span>
-                      <span className="flex items-center gap-1 text-[#769c2d] text-[10px] font-bold border border-emerald-100 px-2 py-0.5 rounded-md">
-                        <CheckCircle size={10} /> Verified
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1 text-right">
-                      Amount
-                    </p>
-                    <p className="text-xl font-black text-[#3285a1] text-right">
-                      ₱{selectedTransaction.amount?.toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Red Alert Box */}
-                <div className="bg-red-50 border border-red-100 rounded-2xl p-6 flex items-start gap-4">
-                  <div className="p-2 bg-white rounded-full text-red-500 border border-red-100">
-                    <XCircle size={20} />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-red-800">
-                      Transaction Cancelled
-                    </h4>
-                    <p className="text-[10px] font-bold text-red-400 mt-1">
-                      Cancelled on{" "}
-                      {selectedTransaction.updated_at
-                        ? new Date(
-                            selectedTransaction.updated_at,
-                          ).toLocaleDateString("en-US", {
-                            month: "long",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "Recent Date"}
-                    </p>
-                    <p className="text-xs font-medium text-red-500 mt-2">
-                      The seller cancelled this transaction. You can browse for
-                      other listings.
-                    </p>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Standard Meetup Card */}
-                {/* Standard Meetup Card */}
-                <div className="bg-purple-50/50 border border-purple-100 rounded-[2rem] p-8">
-                  <div className="flex items-center gap-3 text-purple-600 font-black text-xs uppercase mb-6">
-                    <Calendar size={18} /> Meetup Scheduled
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-start gap-4">
-                      <MapPin size={16} className="text-slate-400 mt-1" />
-                      <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                          Location
-                        </p>
-                        <p className="text-sm font-bold text-slate-700">
-                          {selectedTransaction.barangay}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-4">
-                      <Clock size={16} className="text-slate-400 mt-1" />
-                      <div className="flex-1">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                          Date & Time
-                        </p>
-                        <p className="text-sm font-bold text-slate-700">
-                          {selectedTransaction.meetup_date} at{" "}
-                          {selectedTransaction.meetup_time}
-                        </p>
-
-                        {/* ADD THIS BUTTON HERE */}
-                        {selectedTransaction.meetup_time === "To be agreed" && (
-                          <button
-                            onClick={() => onSelect(selectedTransaction)} // Or navigate to your Chat tab
-                            className="mt-2 text-[10px] bg-white border border-purple-200 text-purple-600 px-3 py-1 rounded-lg font-black uppercase hover:bg-purple-50 transition-colors"
-                          >
-                            Chat Seller to Finalize Time
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-4">
-                  <button
-                    onClick={() =>
-                      handleCompleteHandover(selectedTransaction.id)
-                    }
-                    className="flex-1 bg-[#3285a1] hover:bg-[#2a6f87] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle size={18} /> Confirm Handover Complete
-                  </button>
-                  <button className="px-8 border border-red-200 text-red-400 hover:bg-red-50 py-4 rounded-2xl font-black text-xs uppercase tracking-widest">
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Messages Placeholder */}
-            <div className="pt-4 border-t border-slate-50">
-              <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest mb-4">
-                Messages
-              </h3>
-              <div className="bg-slate-50/50 h-32 rounded-2xl border border-dashed border-slate-200"></div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/50 rounded-[2.5rem] border border-dashed border-slate-200">
-          <Calendar size={48} className="text-slate-200 mb-4" />
-          <p className="text-slate-400 font-bold">
-            Select a transaction to view details
-          </p>
-        </div>
-      )}
-    </div>
-  );
-};
 const AlertsView = ({ notifications }) => {
   return (
     <div className="bg-white rounded-[3rem] shadow-sm border border-white p-8 min-h-[500px]">

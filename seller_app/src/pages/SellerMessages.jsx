@@ -26,7 +26,6 @@ const SellerMessages = ({ userId, onTabChange }) => {
     notes: "",
   });
 
-  // NEW: Logic to save the meetup to Supabase
   const handleScheduleMeetup = async () => {
     if (!meetupData.date || !meetupData.location || !meetupData.time) {
       alert("Please fill in all fields.");
@@ -34,65 +33,55 @@ const SellerMessages = ({ userId, onTabChange }) => {
     }
 
     try {
-      // 1. Fetch the bid records
-      const { data: bidRecords, error: fetchError } = await supabase
-        .from("bids")
-        .select("amount") // Based on your table screenshot
+      // 🔥 1. GET THE EXISTING PENDING TRANSACTION FIRST
+      const { data: existingTx, error: fetchError } = await supabase
+        .from("transactions")
+        .select("*")
         .eq("listing_id", activeChat.listing_id)
-        .eq("bidder_id", activeChat.other_party_id)
-        .order("created_at", { ascending: false })
-        .limit(1);
+        .eq("harvester_id", activeChat.other_party_id)
+        .eq("status", "pending")
+        .single(); // ensures ONLY ONE
 
-      if (fetchError) throw fetchError;
-
-      // 2. Logic Fix: Extract the value safely
-      let calculatedPrice = 0;
-
-      // Check if bidRecords is an array with at least one item
-      if (bidRecords && bidRecords.length > 0) {
-        // Access the first item in the array
-        calculatedPrice = bidRecords[0].amount;
-      } else {
-        // Fallback: If no bid found, use the asking price from the listing
-        calculatedPrice = activeChat.listings?.asking_price || 0;
+      if (fetchError || !existingTx) {
+        throw new Error("Pending transaction not found.");
       }
 
-      // 3. Insert into transactions
+      // 🔥 2. UPDATE THAT EXACT ROW
       const { error: scheduleError } = await supabase
         .from("transactions")
-        .insert([
-          {
-            listing_id: activeChat.listing_id,
-            seller_id: userId,
-            harvester_id: activeChat.other_party_id,
-            amount: Number(calculatedPrice), // Ensure it's a number, not null
-            barangay: meetupData.location,
-            meetup_date: meetupData.date,
-            meetup_time: meetupData.time,
-            notes: meetupData.notes,
-            status: "pending",
-          },
-        ]);
+        .update({
+          barangay: meetupData.location,
+          meetup_date: meetupData.date,
+          meetup_time: meetupData.time,
+          notes: meetupData.notes,
+          status: "meetup_scheduled",
+        })
+        .eq("id", existingTx.id); // ✅ precise update
 
       if (scheduleError) throw scheduleError;
 
-      // 4. Update Listing Status
+      const finalPrice = existingTx.amount;
+
+      // 3. Update Listing Status for UI consistency
       await supabase
         .from("listings")
         .update({ status: "Meetup Scheduled" })
         .eq("id", activeChat.listing_id);
 
-      // 5. Automated Message
+      // 4. Automated Message
       await supabase.from("messages").insert([
         {
           listing_id: activeChat.listing_id,
           sender_id: userId,
           receiver_id: activeChat.other_party_id,
-          content: `Meetup Scheduled! \nFinal Price: ₱${calculatedPrice.toLocaleString()} \nLocation: ${meetupData.location} \nDate: ${meetupData.date} @ ${meetupData.time}`,
+          content: `Meetup Scheduled! 
+Final Price: ₱${finalPrice.toLocaleString()} 
+Location: ${meetupData.location} 
+Date: ${meetupData.date} @ ${meetupData.time}`,
         },
       ]);
 
-      alert(`Meetup Scheduled for ₱${calculatedPrice.toLocaleString()}`);
+      alert(`Meetup Scheduled for ₱${finalPrice.toLocaleString()}`);
       setIsModalOpen(false);
       if (onTabChange) onTabChange("transactions");
     } catch (err) {

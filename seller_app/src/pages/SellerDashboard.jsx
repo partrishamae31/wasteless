@@ -54,6 +54,11 @@ const SellerDashboard = ({ session }) => {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [transactions, setTransactions] = useState([]);
+  const nextTierGoal = 10;
+  const progressPercent = Math.min(
+    (profileData?.total_reviews / nextTierGoal) * 100,
+    100,
+  );
   const handleCompleteTransaction = async (txId) => {
     try {
       const { error } = await supabase
@@ -174,15 +179,14 @@ const SellerDashboard = ({ session }) => {
   const handleAcceptBid = async (bid) => {
     try {
       // 1. Update the bid status to 'accepted'
-      const { data, error: bidUpdateError } = await supabase
+      const { error: bidUpdateError } = await supabase
         .from("bids")
         .update({ status: "accepted" })
-        .eq("id", bid.id)
-        .select();
+        .eq("id", bid.id);
 
       if (bidUpdateError) throw bidUpdateError;
 
-      // 2. LOCK THE LISTING: Prevents further bidding
+      // 2. LOCK THE LISTING
       const { error: listingUpdateError } = await supabase
         .from("listings")
         .update({ status: "closed" })
@@ -190,26 +194,33 @@ const SellerDashboard = ({ session }) => {
 
       if (listingUpdateError) throw listingUpdateError;
 
-      // 3. CREATE TRANSACTION: Fixed schedule logic here
-      const { error: transactionError } = await supabase
+      // 🔥 3. CHECK IF TRANSACTION ALREADY EXISTS
+      const { data: existingTx } = await supabase
         .from("transactions")
-        .insert([
-          {
-            listing_id: selectedListing.id,
-            seller_id: session.user.id,
-            harvester_id: bid.bidder_id,
-            amount: bid.amount,
-            status: "meetup scheduled",
-            barangay: session.user.user_metadata?.barangay || "To be discussed",
-            // FIX: Set to a placeholder so the Harvester knows it's not final
-            meetup_date: new Date().toISOString().split("T")[0],
-            meetup_time: "To be agreed",
-          },
-        ]);
+        .select("id")
+        .eq("listing_id", selectedListing.id)
+        .eq("harvester_id", bid.bidder_id)
+        .maybeSingle();
 
-      if (transactionError) throw transactionError;
+      if (!existingTx) {
+        // 4. CREATE TRANSACTION ONLY IF NOT EXISTS
+        const { error: transactionError } = await supabase
+          .from("transactions")
+          .insert([
+            {
+              listing_id: selectedListing.id,
+              seller_id: session.user.id,
+              harvester_id: bid.bidder_id,
+              amount: bid.amount,
+              status: "pending",
+              barangay: "Pending Discussion",
+            },
+          ]);
 
-      // 4. AUTO-MESSAGE: Informs the Harvester immediately
+        if (transactionError) throw transactionError;
+      }
+
+      // 5. AUTO-MESSAGE
       const { error: messageError } = await supabase.from("messages").insert([
         {
           listing_id: selectedListing.id,
@@ -223,7 +234,6 @@ const SellerDashboard = ({ session }) => {
       if (messageError) throw messageError;
 
       alert("Bid accepted! The listing is now closed.");
-
       if (typeof fetchListings === "function") fetchListings();
       setActiveTab("messages");
     } catch (error) {
@@ -559,8 +569,11 @@ const SellerDashboard = ({ session }) => {
         {[
           { label: "Active Listings", val: listings.length },
           { label: "Total Bids", val: totalBidsCount },
-          { label: "Messages", val: "0" },
-          { label: "Rating", val: "0.0" },
+          { label: "Messages", val: "0" }, // Replace with message count if available
+          {
+            label: "Rating",
+            val: profileData?.average_rating?.toFixed(1) || "0.0", // Dynamic data
+          },
         ].map((stat, i) => (
           <div
             key={i}
@@ -802,17 +815,21 @@ const SellerDashboard = ({ session }) => {
                       className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
                         tx.status === "completed"
                           ? "bg-green-100 text-green-700"
-                          : tx.status === "cancelled"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-blue-100 text-blue-700"
+                          : tx.status === "pending" // Add this for Pending
+                            ? "bg-emerald-100 text-emerald-700"
+                            : tx.status === "cancelled"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-blue-100 text-blue-700"
                       }`}
                     >
-                      {/* FIX: Use the actual database status */}
+                      {/* FIX: Match the display text to the actual status */}
                       {tx.status === "completed"
                         ? "Completed"
-                        : tx.status === "cancelled"
-                          ? "Cancelled"
-                          : "Meetup Scheduled"}
+                        : tx.status === "pending" // Match the header in your screenshot
+                          ? "Pending"
+                          : tx.status === "cancelled"
+                            ? "Cancelled"
+                            : "Meetup Scheduled"}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400">
@@ -1064,14 +1081,14 @@ const SellerDashboard = ({ session }) => {
                   },
                   {
                     label: "Rating",
-                    val: "0.0",
+                    val: profileData?.average_rating?.toFixed(1) || "0.0", // Dynamic data
                     icon: <Star size={16} />,
                     color: "text-yellow-500",
                     bg: "bg-yellow-50",
                   },
                   {
                     label: "Reviews",
-                    val: "0",
+                    val: profileData?.total_reviews || "0", // Dynamic data
                     icon: <MessageSquare size={16} />,
                     color: "text-purple-500",
                     bg: "bg-purple-50",
@@ -1126,11 +1143,14 @@ const SellerDashboard = ({ session }) => {
                         <span className="text-cyan-300">N/A</span>
                       </span>
                       {/* Updated text to 0% */}
-                      <span>0% complete</span>
+                      <span>{Math.round(progressPercent)}% complete</span>
                     </div>
                     <div className="w-full bg-black/20 h-1.5 rounded-full overflow-hidden">
                       {/* Updated width to 0% */}
-                      <div className="bg-gradient-to-r from-cyan-400 to-purple-400 h-full w-[0%] shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-500"></div>
+                      <div
+                        style={{ width: `${progressPercent}%` }}
+                        className="bg-gradient-to-r from-cyan-400 to-purple-400 h-full shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-500"
+                      ></div>
                     </div>
                   </div>
                 </div>

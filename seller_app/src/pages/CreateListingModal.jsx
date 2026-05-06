@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
+import SanitizationGuideModal from "./SanitizationGuideModal";
 import {
   Smartphone,
   Laptop,
@@ -74,8 +75,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const [loading, setLoading] = useState(false);
   const [isSanitized, setIsSanitized] = useState(false);
   const [estimatedValue, setEstimatedValue] = useState(5000);
+  const [userBarangay, setUserBarangay] = useState("");
   const [reusableValue, setReusableValue] = useState(0);
   const [scrapValue, setScrapValue] = useState(0);
+  const [showHazardGuidelines, setShowHazardGuidelines] = useState(false);
+  const [showSanitizationGuide, setShowSanitizationGuide] = useState(false);
   const [checklist, setChecklist] = useState({
     factoryReset: false,
     accountsRemoved: false,
@@ -109,13 +113,89 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       return {
         ...prev,
         [type]: newList,
-        noDamage: false, // Uncheck "No Damage" if an issue is selected
+        noDamage: false,
       };
     });
   };
-  // Inside CreateListingModal component
-  const [dbModels, setDbModels] = useState([]); // Store models from DB
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      condition: issues.noDamage ? "Working" : "Defective",
+    }));
+  }, [issues.noDamage]);
+  const handleHazardDetection = async (listingId, selectedIssues) => {
+    // Define which issues trigger specific hazards
+    const highRiskIssues = {
+      "Dead/Degraded Battery": "Lithium-Ion Battery",
+      "Won't Power On": "Lithium-Ion Battery",
+      "Water Damage/ Liquid Exposure": "Lithium-Ion Battery",
+    };
 
+    const detectedHazards = [];
+
+    // Logic to identify hazards based on user selection
+    for (const issue of selectedIssues) {
+      if (highRiskIssues[issue]) {
+        // Find the hazard ID from your hazardous_materials table
+        const { data: hazard } = await supabase
+          .from("hazardous_materials")
+          .select("id")
+          .eq("name", highRiskIssues[issue])
+          .single();
+
+        if (hazard)
+          detectedHazards.push({
+            listing_id: listingId,
+            hazard_id: hazard.id,
+            is_detected_automatically: true,
+          });
+      }
+    }
+
+    if (detectedHazards.length > 0) {
+      await supabase.from("listing_hazards").insert(detectedHazards);
+    }
+  };
+  const [dbModels, setDbModels] = useState([]);
+  const isHighRisk =
+    issues.functional.includes("Dead/Degraded Battery") ||
+    issues.functional.includes("Won't Power On") ||
+    issues.physical.includes("Water Damage/ Liquid Exposure");
+  const showHazardWarning = !issues.noDamage && isHighRisk;
+  useEffect(() => {
+    if (isOpen) {
+      // Prevent scrolling on the body when modal is open
+      document.body.style.overflow = "hidden";
+    } else {
+      // Re-enable scrolling when closed
+      document.body.style.overflow = "unset";
+    }
+
+    // Cleanup function to ensure scroll is restored if component unmounts
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!userId) return;
+
+      const { data, error } = await supabase
+        .from("profiles") // Replace 'profiles' with your actual user/profile table name
+        .select("barangay")
+        .eq("id", userId)
+        .single();
+
+      if (data) {
+        setUserBarangay(data.barangay);
+      } else if (error) {
+        console.error("Error fetching user barangay:", error.message);
+      }
+    };
+
+    fetchUserProfile();
+  }, [userId]);
   useEffect(() => {
     const fetchModels = async () => {
       // 1. Reset models when category changes or is empty
@@ -226,7 +306,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     checklist.accountsRemoved &&
     checklist.simRemoved &&
     checklist.filesDeleted &&
-    checklist.hazardAcknowledged &&
+    // Only require hazard check if the warning is actually shown
+    (showHazardWarning ? checklist.hazardAcknowledged : true) &&
     checklist.valuationAcknowledged;
   const checkAndNotifyHarvesters = async (newListing) => {
     try {
@@ -299,7 +380,22 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         imageUrls.push(publicUrl);
       }
 
-      // Logic: If price is empty, use reusableValue (Estimated Recovery Value)
+      const selectedIssues = [
+        ...issues.physical,
+        ...issues.functional,
+        ...issues.cosmetic,
+      ];
+
+      // 2. Create a formatted string of the problems found
+      const problemSummary =
+        selectedIssues.length > 0
+          ? `[SYSTEM DIAGNOSIS: ${selectedIssues.join(", ")}]`
+          : "[SYSTEM DIAGNOSIS: No visible damage]";
+
+      // 3. Combine the automated summary with the user's manual description
+      const finalDescription =
+        `${problemSummary} ${formData.description}`.trim();
+
       const finalPrice =
         formData.price === "" ? reusableValue : parseFloat(formData.price);
 
@@ -311,17 +407,23 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
             seller_id: userId,
             device_model: formData.model,
             condition: formData.condition,
-            asking_price: finalPrice, // Use the determined price
+            asking_price: finalPrice,
             scrap_value: scrapValue,
             images: imageUrls,
             status: "active",
-            description: formData.description,
+            description: finalDescription, // Checklist data is now saved here!
+            barangay: userBarangay,
+            category: formData.category, // Ensure category is saved for filtering
           },
         ])
         .select()
         .single();
 
       if (error) throw error;
+      if (insertedData && selectedIssues.length > 0) {
+        await handleHazardDetection(insertedData.id, selectedIssues); //[cite: 8]
+      }
+
       if (insertedData) await checkAndNotifyHarvesters(insertedData);
 
       alert("Listing Created!");
@@ -915,7 +1017,9 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     size={18}
                     className="text-orange-500 shrink-0"
                   />
-                  <div className="space-y-2">
+
+                  {/* STEP 1: Add 'relative' and 'z-index' to this wrapper */}
+                  <div className="space-y-2 relative z-[60]">
                     <p className="text-sm font-bold text-gray-800">
                       Data Sanitization Required
                     </p>
@@ -923,7 +1027,16 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       Before listing your device, please ensure all personal
                       data has been removed.
                     </p>
-                    <button className="flex items-center gap-2 px-3 py-1.5 border border-orange-200 rounded-lg text-orange-600 text-[10px] font-bold bg-white">
+
+                    {/* STEP 2: Ensure the button has 'cursor-pointer' and 'pointer-events-auto' */}
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation(); // Prevents the click from triggering parent scroll events
+                        setShowSanitizationGuide(true);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 border border-orange-200 rounded-lg text-orange-600 text-[10px] font-bold bg-white hover:bg-orange-50 active:scale-95 transition-all cursor-pointer pointer-events-auto"
+                    >
                       <ExternalLink size={12} /> View Sanitization Guide
                     </button>
                   </div>
@@ -961,6 +1074,12 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       label: "Personal files deleted",
                       sub: "Photos, documents, contacts, and all personal data removed",
                     },
+                    // ADD THIS NEW OBJECT BELOW:
+                    {
+                      id: "hazardAcknowledged",
+                      label: "Hazardous Materials Disclosure",
+                      sub: "Confirm no bloated batteries or leaking components are present",
+                    },
                   ].map((item) => (
                     <div
                       key={item.id}
@@ -968,7 +1087,14 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       onClick={() => handleChecklistToggle(item.id)}
                     >
                       <div
-                        className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center transition-all ${checklist[item.id] ? "bg-[#2d7a7f] border-[#2d7a7f]" : "border-gray-200"}`}
+                        className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center transition-all 
+    ${
+      checklist[item.id]
+        ? item.id === "hazardAcknowledged"
+          ? "bg-amber-500 border-amber-500"
+          : "bg-[#2d7a7f] border-[#2d7a7f]"
+        : "border-gray-200"
+    }`}
                       >
                         {checklist[item.id] && (
                           <CheckCircle2 size={14} className="text-white" />
@@ -988,49 +1114,53 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               </div>
 
               {/* 4. Hazardous Materials Section */}
-              <div className="bg-orange-50/30 border border-orange-100 rounded-2xl p-5 space-y-4">
-                <div className="flex items-start gap-3">
-                  <ShieldCheck size={20} className="text-orange-500 shrink-0" />
-                  <div className="space-y-3">
-                    <p className="text-sm font-bold text-gray-800">
-                      Hazardous Materials Detected
-                    </p>
-                    <p className="text-[10px] text-gray-500 leading-tight">
-                      This device contains components classified as hazardous
-                      waste. Special handling and disposal procedures are
-                      required by law.
-                    </p>
-                    <span className="inline-block bg-white border border-gray-200 px-3 py-1 rounded-full text-[9px] font-bold text-gray-600">
-                      Lithium-Ion Battery
-                    </span>
-                    <button className="flex items-center gap-2 w-full justify-center py-2.5 bg-white border border-gray-200 rounded-xl text-[10px] font-bold text-gray-700 shadow-sm">
-                      <ExternalLink size={12} /> View Handling & Disposal
-                      Guidelines
-                    </button>
+              {showHazardWarning && (
+                <div className="bg-orange-50/30 border border-orange-100 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck
+                      size={20}
+                      className="text-orange-500 shrink-0"
+                    />
+                    <div className="space-y-3 w-full">
+                      <p className="text-sm font-bold text-gray-800">
+                        Hazardous Materials Detected
+                      </p>
+                      <p className="text-[10px] text-gray-500 leading-tight">
+                        This device contains components (Lithium-Ion Battery)
+                        classified as hazardous waste due to reported
+                        conditions.
+                      </p>
+                      <button
+                        onClick={() => setShowHazardGuidelines(true)}
+                        className="flex items-center gap-2 w-full justify-center py-2.5 bg-white border border-gray-200 rounded-xl text-[10px] font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+                      >
+                        <ExternalLink size={12} /> View Handling & Disposal
+                        Guidelines
+                      </button>
 
-                    <label className="flex items-start gap-3 p-4 bg-white border border-gray-100 rounded-2xl cursor-pointer mt-2">
-                      <input
-                        type="checkbox"
-                        checked={checklist.hazardAcknowledged}
-                        onChange={() =>
-                          handleChecklistToggle("hazardAcknowledged")
-                        }
-                        className="mt-1 w-4 h-4 rounded border-gray-300 text-[#2d7a7f]"
-                      />
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-gray-800">
-                          I acknowledge the presence of hazardous materials
-                        </p>
-                        <p className="text-[9px] text-gray-400 leading-tight">
-                          I have read the handling guidelines and agree to
-                          comply with all safety and regulatory requirements for
-                          disposal or transfer.
-                        </p>
-                      </div>
-                    </label>
+                      <label className="flex items-start gap-3 p-4 bg-white border border-gray-100 rounded-2xl cursor-pointer mt-2">
+                        <input
+                          type="checkbox"
+                          checked={checklist.hazardAcknowledged}
+                          onChange={() =>
+                            handleChecklistToggle("hazardAcknowledged")
+                          }
+                          className="mt-1 w-4 h-4 rounded border-gray-300 text-[#2d7a7f]"
+                        />
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-gray-800">
+                            I acknowledge the presence of hazardous materials
+                          </p>
+                          <p className="text-[9px] text-gray-400 leading-tight">
+                            I have read the guidelines and agree to comply with
+                            safety requirements for disposal or transfer.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Footer Acknowledgement Section */}
               <div className="space-y-4 pt-4">
@@ -1083,6 +1213,155 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           )}
         </div>
       </div>
+      {showHazardGuidelines && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          {/* 1. Backdrop: Fixed to the viewport, not the parent modal */}
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setShowHazardGuidelines(false)}
+          />
+
+          {/* 2. Modal Card: Independent of Step 3's scroll state */}
+          <div className="relative bg-white w-full max-w-lg rounded-[32px] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Fixed Header */}
+            <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-white shrink-0">
+              <div className="flex items-center gap-3 text-amber-600">
+                <div className="p-2 bg-amber-50 rounded-lg">
+                  <AlertTriangle size={20} />
+                </div>
+                <h3 className="font-extrabold text-gray-800 tracking-tight">
+                  Hazardous Material Guidelines
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowHazardGuidelines(false)}
+                className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* The ONLY Scrollable Area */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+              <div className="p-5 rounded-2xl border border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                <div>
+                  <p className="font-bold text-gray-800 text-sm">
+                    Lithium-Ion Battery
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-medium">
+                    LiCoO2
+                  </p>
+                </div>
+                <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                  High Risk
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-red-500 text-xs font-bold uppercase tracking-wide">
+                  <AlertTriangle size={14} /> Health & Environmental Risks
+                </div>
+                <ul className="grid grid-cols-1 gap-3 text-[12px] text-gray-600 ml-4">
+                  <li className="flex gap-2">
+                    •{" "}
+                    <span>Fire and explosion risk if damaged or punctured</span>
+                  </li>
+                  <li className="flex gap-2">
+                    • <span>Toxic fumes if burned</span>
+                  </li>
+                  <li className="flex gap-2">
+                    • <span>Chemical burns from electrolyte leakage</span>
+                  </li>
+                  <li className="flex gap-2">
+                    •{" "}
+                    <span>
+                      Soil and water contamination from lithium and cobalt
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-amber-600 text-xs font-bold uppercase tracking-wide">
+                  <ShieldCheck size={14} /> Safe Handling Guidelines
+                </div>
+                <ul className="grid grid-cols-1 gap-3 text-[12px] text-gray-600 ml-4">
+                  <li className="flex gap-2">
+                    •{" "}
+                    <span>Store in cool, dry place away from heat sources</span>
+                  </li>
+                  <li className="flex gap-2">
+                    •{" "}
+                    <span>
+                      Keep terminals covered to prevent short circuits
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    • <span>Do not puncture, crush, or disassemble</span>
+                  </li>
+                  <li className="flex gap-2">
+                    • <span>Handle swollen batteries with extreme caution</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-5 space-y-3">
+                <div className="flex items-center gap-2 text-blue-700 text-xs font-bold uppercase tracking-wide">
+                  <Info size={14} /> Disposal Procedure
+                </div>
+                <ul className="space-y-2 text-[11px] text-blue-800/80 ml-1">
+                  <li className="flex gap-2">
+                    <span>1.</span>{" "}
+                    <span>Discharge battery to below 25% if possible</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span>2.</span>{" "}
+                    <span>Cover terminals with non-conductive tape</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span>3.</span>{" "}
+                    <span>Place in approved collection container</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span>4.</span>{" "}
+                    <span>Transport to certified recycling facility</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="pt-2">
+                <p className="text-[10px] text-gray-400 italic leading-relaxed text-center px-4">
+                  Regulatory Info: Class 9 Hazardous Material | Regulated by:
+                  Department of Environment and Natural Resources (DENR)
+                </p>
+              </div>
+            </div>
+
+            {/* Footer: Fixed at the bottom */}
+            <div className="p-6 bg-gray-50 border-t border-gray-100 shrink-0">
+              <button
+                onClick={() => {
+                  setChecklist((prev) => ({
+                    ...prev,
+                    hazardAcknowledged: true,
+                  }));
+                  setShowHazardGuidelines(false);
+                }}
+                className="w-full py-4 bg-[#2d7a7f] hover:bg-[#246367] text-white rounded-2xl font-bold text-sm shadow-lg transition-all"
+              >
+                I Understand & Acknowledge
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showSanitizationGuide && (
+        <SanitizationGuideModal
+          isOpen={showSanitizationGuide}
+          onClose={() => setShowSanitizationGuide(false)}
+          deviceModel={formData.model}
+        />
+      )}
     </div>
   );
 };

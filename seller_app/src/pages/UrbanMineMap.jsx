@@ -13,6 +13,7 @@ const UrbanMineMap = ({ isVerified }) => {
   const [mapData, setMapData] = useState([]);
   const [filter, setFilter] = useState("All Listings"); // REQ-2
   const [loading, setLoading] = useState(true);
+  const [selectedBarangay, setSelectedBarangay] = useState(null);
 
   useEffect(() => {
     fetchMapData();
@@ -50,10 +51,16 @@ const UrbanMineMap = ({ isVerified }) => {
         return acc;
       }, {});
 
-      const formattedData = Object.keys(barangayGroups).map((key) => ({
+      let formattedData = Object.keys(barangayGroups).map((key) => ({
         name: key,
         ...barangayGroups[key],
       }));
+      if (filter === "High Value") {
+        // Sorts by totalValue in ascending order (lowest to highest)
+        formattedData = formattedData.sort(
+          (a, b) => b.totalValue - a.totalValue,
+        );
+      }
 
       setMapData(formattedData);
     }
@@ -141,29 +148,61 @@ const UrbanMineMap = ({ isVerified }) => {
         <div className="absolute inset-0 opacity-10 grayscale pointer-events-none bg-[url('https://www.valenzuela.gov.ph/images/map_valenzuela.png')] bg-center bg-no-repeat bg-contain" />
 
         {/* Render Pins based on Data Density (REQ-1) */}
-        <div className="relative w-full h-full">
+        <div
+          className="relative w-full h-full"
+          onClick={() => setSelectedBarangay(null)}
+        >
           {mapData.map((b, i) => (
             <div
               key={i}
-              className="absolute group cursor-pointer"
+              className="absolute cursor-pointer z-10"
               style={{
                 top: `${20 + ((i * 12) % 60)}%`,
                 left: `${15 + ((i * 18) % 70)}%`,
               }}
+              onClick={(e) => {
+                e.stopPropagation(); // Prevents clearing selection when clicking the pin
+                setSelectedBarangay(
+                  b.name === selectedBarangay?.name ? null : b,
+                );
+              }}
             >
+              {/* The Pin Icon */}
               <div
-                className={`p-2 rounded-full ${getDensityColor(b.count)} text-white shadow-lg group-hover:scale-110 transition-transform`}
+                className={`p-2 rounded-full ${getDensityColor(b.count)} text-white shadow-lg hover:scale-110 transition-transform`}
               >
                 <MapPin size={16} />
               </div>
-              <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 rounded-lg shadow-xl border border-slate-100 hidden group-hover:block z-50 whitespace-nowrap">
-                <p className="text-[10px] font-black text-slate-800 uppercase">
-                  {b.name}
-                </p>
-                <p className="text-[9px] font-bold text-slate-400">
-                  {b.count} active listings
-                </p>
-              </div>
+
+              {/* The Detail Card (Requirement: Click to Show) */}
+              {selectedBarangay?.name === b.name && (
+                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-white p-4 rounded-2xl shadow-2xl border border-slate-100 z-50 min-w-[180px] animate-in zoom-in-95 duration-200">
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-black text-slate-800 uppercase">
+                      Barangay {b.name}
+                    </h4>
+                    <p className="text-[10px] font-bold text-slate-500">
+                      {b.count} devices
+                    </p>
+                    <div className="pt-2 mt-2 border-t border-slate-50">
+                      <p className="text-[10px] font-bold text-slate-400">
+                        Value:{" "}
+                        <span className="text-slate-800">
+                          ₱{b.totalValue.toLocaleString()}
+                        </span>
+                      </p>
+                      <p className="text-[10px] font-bold text-purple-500">
+                        {b.highValue} high-value
+                      </p>
+                    </div>
+                    <p className="text-[8px] font-bold text-slate-300 mt-2 italic capitalize">
+                      {b.count > 10 ? "High Density" : "Low Density"}
+                    </p>
+                  </div>
+                  {/* Arrow Pointer */}
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-white" />
+                </div>
+              )}
             </div>
           ))}
         </div>
