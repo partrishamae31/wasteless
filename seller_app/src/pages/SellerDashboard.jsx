@@ -130,6 +130,27 @@ const SellerDashboard = ({ session }) => {
       year: "numeric",
     });
   };
+  const [messageUserCount, setMessageUserCount] = useState(0);
+
+  useEffect(() => {
+    const fetchMessageUserCount = async () => {
+      if (!session?.user) return;
+
+      // We fetch all messages sent TO the seller
+      const { data, error } = await supabase
+        .from("messages")
+        .select("sender_id")
+        .eq("receiver_id", session.user.id);
+
+      if (!error && data) {
+        // We use a Set to get only UNIQUE sender_ids
+        const uniqueSenders = new Set(data.map((msg) => msg.sender_id));
+        setMessageUserCount(uniqueSenders.size);
+      }
+    };
+
+    fetchMessageUserCount();
+  }, [session]);
   const deleteNotification = async (id) => {
     console.log("Deleting ID:", id);
 
@@ -524,7 +545,11 @@ const SellerDashboard = ({ session }) => {
                   <div className="text-[10px] opacity-70 flex items-center justify-center gap-1">
                     <Star size={10} /> Rating
                   </div>
-                  <div className="text-xs font-bold">0.0</div>
+                  <div className="text-xs font-bold">
+                    {profileData?.average_rating
+                      ? Number(profileData.average_rating).toFixed(1)
+                      : "0.0"}
+                  </div>
                 </div>
                 <div className="flex-1 bg-white/10 rounded-lg p-1.5 text-center">
                   <div className="text-[10px] opacity-70 flex items-center justify-center gap-1">
@@ -569,7 +594,7 @@ const SellerDashboard = ({ session }) => {
         {[
           { label: "Active Listings", val: listings.length },
           { label: "Total Bids", val: totalBidsCount },
-          { label: "Messages", val: "0" }, // Replace with message count if available
+          { label: "Messages", val: messageUserCount.toString() }, 
           {
             label: "Rating",
             val: profileData?.average_rating?.toFixed(1) || "0.0", // Dynamic data
@@ -1124,15 +1149,32 @@ const SellerDashboard = ({ session }) => {
                     {new Date(session.user.created_at).toLocaleDateString()}
                   </p>
                   <div className="flex items-center gap-2 mb-4">
+                    {/* Badge/Award Icon */}
                     <span className="bg-yellow-400 text-yellow-900 text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1">
                       <Award size={10} />
+                      {/* Logic: Change label based on review count */}
+                      {profileData?.total_reviews > 5
+                        ? "Top Seller"
+                        : "Rising Star"}
                     </span>
-                    <span className="text-xs font-bold">
-                      ★ 0.0 <span className="opacity-70">(0)</span>
+
+                    {/* Star Rating & Review Count */}
+                    <span className="text-xs font-bold flex items-center gap-1 text-white">
+                      <span className="text-yellow-400">★</span>
+                      {profileData?.average_rating
+                        ? Number(profileData.average_rating).toFixed(1)
+                        : "0.0"}
+                      <span className="opacity-70 font-normal ml-0.5">
+                        ({profileData?.total_reviews || 0})
+                      </span>
                     </span>
-                    <span className="text-[10px] bg-white/20 px-2 py-1 rounded-full">
-                      Recommended
-                    </span>
+
+                    {/* Dynamic Recommended Tag */}
+                    {profileData?.average_rating >= 4.0 && (
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                        Recommended
+                      </span>
+                    )}
                   </div>
 
                   {/* Progress Bar */}

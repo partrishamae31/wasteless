@@ -77,7 +77,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
           content: `Meetup Scheduled! 
 Final Price: ₱${finalPrice.toLocaleString()} 
 Location: ${meetupData.location} 
-Date: ${meetupData.date} @ ${meetupData.time}`,
+Date: ${meetupData.date} at ${meetupData.time}`,
         },
       ]);
 
