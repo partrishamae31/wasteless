@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-// 1. Add this import at the top of the file
 import CreateListingModal from "./CreateListingModal"; // Adjust path as needed
 import SellerMessages from "./SellerMessages"; // Ensure the filename matches
+import DonationModal from "./DonationModal";
+import RateBuyerModal from "./RateBuyerModal";
 
 import {
   X,
@@ -33,6 +34,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Send,
+  Check,
 } from "lucide-react";
 
 const SellerDashboard = ({ session }) => {
@@ -55,6 +57,31 @@ const SellerDashboard = ({ session }) => {
   const [cancelReason, setCancelReason] = useState("");
   const [transactions, setTransactions] = useState([]);
   const nextTierGoal = 10;
+  const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
+  const [listingToDonate, setListingToDonate] = useState(null);
+  const [showRateModal, setShowRateModal] = useState(false);
+
+  const handleOpenDonation = (listing) => {
+    setListingToDonate(listing);
+    setIsDonationModalOpen(true);
+  };
+
+  const handleConfirmDonation = async (listingId) => {
+    try {
+      const { error } = await supabase
+        .from("listings")
+        .update({ status: "donated" })
+        .eq("id", listingId);
+
+      if (error) throw error;
+
+      setDonatedListings((prev) => [...prev, listingId]);
+      setIsDonationModalOpen(false);
+      alert("Thank you! Your donation has been recorded.");
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  };
   const progressPercent = Math.min(
     (profileData?.total_reviews / nextTierGoal) * 100,
     100,
@@ -433,68 +460,76 @@ const SellerDashboard = ({ session }) => {
 
           {/* Notifications Dropdown */}
           {showNotifications && (
-            <div className="absolute top-12 right-0 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="p-4 border-b border-slate-50 flex justify-between items-center">
+            <div className="absolute top-14 right-0 w-85 bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z- overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              {/* Header */}
+              <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-white">
                 <div>
-                  <h3 className="font-bold text-slate-800 text-sm">
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">
                     Notifications
                   </h3>
-                  <p className="text-[10px] text-slate-400">
-                    {notifications.filter((n) => !n.is_read).length} unread
-                  </p>
-                </div>
-                <div className="flex gap-3 items-center">
-                  <button className="text-[10px] text-[#3285a1] font-bold hover:underline">
-                    Mark all read
+                  <button className="text-[10px] text-blue-500 font-bold hover:underline mt-0.5">
+                    Mark all read (
+                    {notifications.filter((n) => !n.is_read).length})
                   </button>
-                  <X
-                    className="text-slate-400 cursor-pointer hover:text-slate-600"
-                    size={16}
-                    onClick={() => setShowNotifications(false)}
-                  />
                 </div>
+                <button className="text-[10px] bg-slate-50 text-slate-500 px-4 py-2 rounded-full font-black uppercase tracking-tighter hover:bg-slate-100 transition">
+                  Clear All
+                </button>
               </div>
 
-              <div className="max-h-[400px] overflow-y-auto">
+              {/* Scrollable List */}
+              <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                {/* 1. Static System Notification (from Mockup) */}
+                <NotificationItem
+                  icon={<AlertCircle />}
+                  bg="bg-[#f97316]" // Orange
+                  title="Listing Expiring Soon"
+                  desc="Your iPhone 11 listing will expire in 2 days. Convert to donation now to get tax credits!"
+                  time="2m ago"
+                  unread={true}
+                  onDelete={() => console.log("Static delete")}
+                />
+
+                {/* 2. Dynamic Notifications (Bids, Messages, etc.) */}
                 {notifications.length > 0 ? (
                   notifications.map((notif) => (
                     <NotificationItem
                       key={notif.id}
                       icon={
                         notif.type === "bid" ? (
-                          <Plus className="text-emerald-500" size={14} />
+                          <TrendingUp />
                         ) : notif.type === "message" ? (
-                          <MessageSquare className="text-blue-500" size={14} />
+                          <MessageSquare />
                         ) : (
-                          <ArrowLeftRight
-                            className="text-purple-500"
-                            size={14}
-                          />
+                          <CheckCircle2 />
                         )
                       }
                       bg={
                         notif.type === "bid"
-                          ? "bg-emerald-50"
+                          ? "bg-[#3b82f6]" // Blue for Bids
                           : notif.type === "message"
-                            ? "bg-blue-50"
-                            : "bg-purple-50"
+                            ? "bg-purple-500" // Purple for Messages
+                            : "bg-[#10b981]" // Green for Donations/Success
                       }
                       title={notif.title}
                       desc={notif.description}
-                      time={new Date(notif.created_at).toLocaleDateString()}
+                      time={new Date(notif.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                       unread={!notif.is_read}
-                      // Add the delete prop here
                       onDelete={() => deleteNotification(notif.id)}
                     />
                   ))
                 ) : (
-                  <div className="p-10 text-center text-slate-400 text-[10px] font-medium">
-                    No new notifications
+                  <div className="p-10 text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                    No new activities
                   </div>
                 )}
               </div>
 
-              <button className="w-full py-3 text-center text-[#3285a1] text-[11px] font-bold border-t border-slate-50 hover:bg-slate-50 transition">
+              {/* Footer Link */}
+              <button className="w-full py-4 text-[10px] font-black text-slate-400 bg-slate-50/30 hover:bg-slate-50 transition uppercase tracking-[0.2em] border-t border-slate-50">
                 View All Notifications
               </button>
             </div>
@@ -594,18 +629,22 @@ const SellerDashboard = ({ session }) => {
         {[
           { label: "Active Listings", val: listings.length },
           { label: "Total Bids", val: totalBidsCount },
-          { label: "Messages", val: messageUserCount.toString() }, 
+          { label: "Messages", val: messageUserCount },
           {
             label: "Rating",
-            val: profileData?.average_rating?.toFixed(1) || "0.0", // Dynamic data
+            val: profileData?.average_rating?.toFixed(1) || "4.8",
           },
         ].map((stat, i) => (
           <div
             key={i}
-            className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center"
+            className="bg-white py-8 rounded-2xl shadow-sm border border-slate-100 text-center"
           >
-            <div className="text-2xl font-bold mb-1">{stat.val}</div>
-            <div className="text-xs text-slate-400">{stat.label}</div>
+            <div className="text-3xl font-black mb-1 text-slate-800">
+              {stat.val}
+            </div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              {stat.label}
+            </div>
           </div>
         ))}
       </div>
@@ -636,6 +675,58 @@ const SellerDashboard = ({ session }) => {
           <div className="grid grid-cols-3 gap-6">
             {/* Listings Section */}
             <div className="col-span-2">
+              {/* Stale Listing Alert */}
+              <div className="bg-[#FFF8F1] border border-[#FFE4C4] rounded-2xl p-5 mb-8 flex items-start justify-between relative overflow-hidden">
+                <div className="flex gap-4">
+                  <div className="bg-[#FF9F43] p-2 rounded-xl text-white mt-1">
+                    <AlertCircle size={20} />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-sm text-[#854d0e]">
+                        Stale Listing Detected
+                      </h3>
+                      <span className="bg-[#FF9F43]/10 text-[#FF9F43] text-[10px] px-2 py-0.5 rounded-md font-bold">
+                        31 days
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#a16207]">
+                      Your listing{" "}
+                      <span className="font-bold">"iPhone 11"</span> hasn't
+                      received offers in a while.
+                    </p>
+                    <div className="flex items-center gap-2 text-[11px] text-[#a16207] py-2">
+                      <span className="opacity-60">📅 Listed on 2/28/2026</span>
+                      <span className="opacity-60">Est. Value: ₱8,500</span>
+                    </div>
+                    <p className="text-xs text-[#854d0e] flex items-center gap-1 mt-2">
+                      <span className="font-bold">Consider donating:</span>{" "}
+                      Convert your listing into a donation to a local Barangay
+                      e-waste center. You'll get tax benefits and help the
+                      environment!
+                    </p>
+                    <div className="flex gap-3 mt-4">
+                      <button
+                        onClick={() =>
+                          handleOpenDonation({
+                            id: "some-id",
+                            device_model: "iPhone 11",
+                          })
+                        } // Example static data
+                        className="bg-[#FF9F43] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#e68a2e] transition"
+                      >
+                        Convert to Donation
+                      </button>
+                      <button className="bg-white border border-[#FFE4C4] text-[#a16207] px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#FFF3E0] transition">
+                        Remind Me Later
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button className="text-[#a16207] opacity-50 hover:opacity-100">
+                  <X size={18} />
+                </button>
+              </div>
               <div className="flex justify-between items-center mb-4">
                 <h2 className="font-bold text-lg">My Listings</h2>
                 <button
@@ -663,68 +754,46 @@ const SellerDashboard = ({ session }) => {
                       } p-6 rounded-2xl border shadow-sm relative overflow-hidden`}
                     >
                       {/* ... listing card content ... */}
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-slate-800">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-slate-800 text-lg">
                               {item.device_model}
-                            </span>
-                            <span className="bg-blue-100 text-blue-600 text-[10px] px-2 py-0.5 rounded-full font-medium uppercase">
+                            </h3>
+                            <span className="bg-emerald-100 text-emerald-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">
                               {item.status}
                             </span>
                           </div>
-                          <div className="text-xs text-slate-400 mb-2">
-                            {item.condition}
-                          </div>
+                          <p className="text-xs text-slate-400 font-medium">
+                            {item.device_id || "A2111"} • {item.condition}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-2">
+                            {item.description ||
+                              "Screen not working, battery still good"}
+                          </p>
                         </div>
-                        <Package className="text-slate-200" size={32} />
+                        <div className="bg-slate-50 p-3 rounded-xl">
+                          <Package className="text-slate-300" size={24} />
+                        </div>
                       </div>
                       {/* ... inside listings.map((item) => ( ... */}
-                      <div className="flex justify-between items-center border-t border-slate-50 pt-4 mt-4">
-                        <div className="flex gap-6 items-center">
+                      <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-50">
+                        <div className="flex gap-8">
                           {/* Asking Price Section */}
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">
-                              Asking Price
+                          <div className="flex items-center gap-2">
+                            <span className="text-[#3285a1] font-bold text-sm">
+                              ₱{item.asking_price?.toLocaleString()}
                             </span>
-                            <div className="text-sm font-bold text-slate-400">
-                              ₱ {item.asking_price?.toLocaleString() || "0.00"}
-                            </div>
                           </div>
-                          <div className="flex flex-col border-l border-slate-100 pl-6">
-                            <span className="text-[10px] text-[#3285a1] uppercase font-black tracking-widest mb-1">
-                              Current Highest Bid
+                          <div className="flex items-center gap-2 text-slate-400">
+                            <MessageSquare size={14} />
+                            <span className="text-xs font-bold">
+                              {item.bids?.length || 0} bids
                             </span>
-                            <div className="text-sm font-bold text-[#3285a1]">
-                              {item.bids && item.bids.length > 0 ? (
-                                <>
-                                  ₱{" "}
-                                  {Math.max(
-                                    ...item.bids.map((b) => b.amount),
-                                  ).toLocaleString()}
-                                </>
-                              ) : (
-                                <span className="text-slate-300 font-medium">
-                                  No bids yet
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Bids Count Section */}
-                          <div className="flex flex-col border-l border-slate-100 pl-6">
-                            <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">
-                              Bids Received
-                            </span>
-                            <div className="text-sm font-bold text-slate-700">
-                              {item.bids?.length || 0}{" "}
-                              {item.bids?.length === 1 ? "Bid" : "Bids"}
-                            </div>
                           </div>
                         </div>
-
-                        <div className="text-[10px] text-emerald-500 flex items-center gap-1 font-bold bg-emerald-50 px-2 py-1 rounded-md">
-                          <CheckCircle size={10} /> Verified
+                        <div className="flex items-center gap-1 text-[10px] text-emerald-500 font-bold">
+                          <CheckCircle2 size={12} /> Data cleared
                         </div>
                       </div>
                     </div>
@@ -755,38 +824,57 @@ const SellerDashboard = ({ session }) => {
                       ✕
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  <div className="flex-1 overflow-y-auto p-5 space-y-4">
                     {listingBids.map((bid) => (
                       <div
                         key={bid.id}
-                        className="p-4 rounded-xl border border-slate-50 bg-slate-50/30"
+                        className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm"
                       >
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            {/* Displays the Harvester's Name instead of ID */}
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                              Bidder
-                            </p>
-                            <p className="text-xs font-bold text-slate-700">
-                              {bid.profiles?.full_name || "Anonymous Harvester"}
-                            </p>
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-[#3285a1] rounded-lg flex items-center justify-center text-white">
+                              <User size={16} />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-slate-800">
+                                {bid.profiles?.full_name}
+                              </p>
+                              <p className="text-[10px] text-slate-400">
+                                Apr 26
+                              </p>
+                            </div>
                           </div>
-                          <span className="text-sm font-bold text-[#3285a1]">
+                          <span className="text-sm font-black text-[#3285a1]">
                             ₱{bid.amount.toLocaleString()}
                           </span>
                         </div>
 
-                        <div className="flex gap-2 mt-4">
-                          <button
-                            onClick={() => handleAcceptBid(bid)}
-                            className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold hover:bg-[#2a6f87] transition-colors"
-                          >
-                            Accept
-                          </button>
-                          <button className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-[10px] font-bold">
-                            Decline
-                          </button>
-                        </div>
+                        <p className="text-[11px] text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg italic">
+                          "Interested in the battery and camera module"
+                        </p>
+
+                        {bid.status === "accepted" ? (
+                          <div className="space-y-2">
+                            <div className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 justify-center mb-1">
+                              Bid Accepted <CheckCircle size={10} />
+                            </div>
+                            <button className="w-full bg-[#3285a1] text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                              <Calendar size={14} /> Schedule Meetup
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleAcceptBid(bid)}
+                              className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold hover:bg-[#2a6f87] transition-colors"
+                            >
+                              Accept
+                            </button>
+                            <button className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-[10px] font-bold">
+                              Decline
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -819,207 +907,267 @@ const SellerDashboard = ({ session }) => {
         {/* --- TRANSACTIONS TAB --- */}
         {/* --- TRANSACTIONS TAB --- */}
         {activeTab === "transactions" && (
-          <div className="animate-in fade-in duration-500 max-w-5xl mx-auto space-y-6">
-            {/* 1. TOP SELECTION BAR (The cards at the top) */}
-            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-              {transactions.map((tx) => (
-                <button
-                  key={tx.id}
-                  onClick={() => setSelectedTxId(tx.id)}
-                  className={`flex-shrink-0 w-64 p-4 rounded-2xl border-2 transition-all text-left ${
-                    selectedTxId === tx.id
-                      ? "border-[#2d7a7f] bg-teal-50/30 ring-4 ring-teal-50"
-                      : "border-slate-100 bg-white hover:border-slate-200"
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-bold text-xs truncate w-32">
-                      {tx.listing?.device_model}
-                    </h4>
-                    <span
-                      className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                        tx.status === "completed"
-                          ? "bg-green-100 text-green-700"
-                          : tx.status === "pending" // Add this for Pending
-                            ? "bg-emerald-100 text-emerald-700"
+          <div className="animate-in fade-in duration-500 max-w-6xl mx-auto">
+            <h3 className="text-sm font-bold text-slate-700 mb-4">
+              Active Transactions
+            </h3>
+
+            <div className="grid grid-cols-12 gap-6">
+              {/* 1. LEFT SIDEBAR SELECTION */}
+              <div className="col-span-4 space-y-3 overflow-y-auto max-h-[600px] pr-2 no-scrollbar">
+                {transactions.map((tx) => (
+                  <button
+                    key={tx.id}
+                    onClick={() => setSelectedTxId(tx.id)}
+                    className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${
+                      selectedTxId === tx.id
+                        ? "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
+                        : "border-slate-100 bg-white hover:border-slate-200"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <h4 className="font-bold text-sm text-slate-800">
+                        {tx.listing?.device_model}
+                      </h4>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                          tx.status === "completed"
+                            ? "bg-green-50 text-green-600 border-green-200"
                             : tx.status === "cancelled"
-                              ? "bg-red-100 text-red-700"
-                              : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {/* FIX: Match the display text to the actual status */}
-                      {tx.status === "completed"
-                        ? "Completed"
-                        : tx.status === "pending" // Match the header in your screenshot
-                          ? "Pending"
-                          : tx.status === "cancelled"
-                            ? "Cancelled"
-                            : "Meetup Scheduled"}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-400">
-                    ID: {tx.id.slice(0, 8)}
-                  </p>
-                  <p className="text-sm font-black text-[#2d7a7f] mt-1">
-                    ₱{tx.amount?.toLocaleString()}
-                  </p>
-                </button>
-              ))}
-            </div>
-
-            {/* 2. DETAILED VIEW (The one-by-one section) */}
-            {transactions.find((t) => t.id === selectedTxId) ? (
-              (() => {
-                const tx = transactions.find((t) => t.id === selectedTxId);
-                return (
-                  <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-                    {/* Header matches Mockup */}
-                    <div className="bg-gradient-to-r from-[#2d7a7f] to-[#16A34A] p-8 text-white flex justify-between items-end">
-                      <div>
-                        <h2 className="text-3xl font-black mb-1">
-                          {tx.listing?.device_model}
-                        </h2>
-                        <p className="text-xs opacity-70 font-mono tracking-tighter">
-                          TRANSACTION ID: {tx.id}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span
-                          className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                            tx.status === "cancelled"
-                              ? "bg-red-500 text-white"
-                              : "bg-white/20 text-white"
-                          }`}
-                        >
-                          Status: {tx.status}
-                        </span>
-                      </div>
+                              ? "bg-red-50 text-red-600 border-red-200"
+                              : "bg-emerald-50 text-emerald-600 border-emerald-200"
+                        }`}
+                      >
+                        {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
+                      </span>
                     </div>
-
-                    <div className="p-10">
-                      <h3 className="text-xs font-black text-slate-300 uppercase tracking-[0.3em] mb-10">
-                        Transaction Progress
-                      </h3>
-
-                      {/* Vertical Progress Tracker */}
-                      <div className="relative space-y-10 mb-16 ml-2">
-                        <div className="flex items-start">
-                          <div className="relative z-10 p-2 rounded-full border-2 bg-blue-50 border-blue-500 text-blue-500">
-                            <CheckCheck size={18} />
-                          </div>
-                          <div className="ml-8">
-                            <p className="text-sm font-bold text-slate-800">
-                              Matched with Buyer
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              {new Date(tx.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-start">
-                          <div className="relative z-10 p-2 rounded-full border-2 bg-white border-slate-200 text-slate-300">
-                            <Clock size={18} />
-                          </div>
-                          <div className="ml-8">
-                            <p className="text-sm font-bold text-slate-400">
-                              Handover Confirmed
-                            </p>
-                            <p className="text-xs text-slate-300 italic">
-                              In Progress
-                            </p>
-                          </div>
-                        </div>
-                        {/* Connector */}
-                        <div className="absolute left-[17px] top-[34px] w-0.5 h-[40px] bg-slate-100"></div>
-                      </div>
-
-                      {/* Grid Information */}
-                      <div className="grid grid-cols-2 gap-16 pt-10 border-t border-slate-50">
-                        <div className="space-y-6">
-                          <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                            Transaction Details
-                          </h4>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-400">Buyer</span>
-                            <span className="font-bold text-slate-700">
-                              {tx.harvester?.full_name}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center pt-4 border-t border-slate-50">
-                            <span className="text-slate-400 font-bold">
-                              Total Amount
-                            </span>
-                            <span className="text-2xl font-black text-[#2d7a7f]">
-                              ₱{tx.amount?.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-6">
-                          <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                            Meetup Information
-                          </h4>
-                          <div className="flex items-start">
-                            <MapPin
-                              className="text-[#2d7a7f] mr-4 mt-1"
-                              size={20}
-                            />
-                            <div>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase">
-                                Location
-                              </p>
-                              <p className="text-sm font-bold text-slate-700">
-                                {tx.barangay}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-start">
-                            <Calendar
-                              className="text-[#2d7a7f] mr-4 mt-1"
-                              size={20}
-                            />
-                            <div>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase">
-                                Scheduled Time
-                              </p>
-                              <p className="text-sm font-bold text-slate-700">
-                                {new Date(tx.meetup_date).toLocaleDateString()}{" "}
-                                at {tx.meetup_time}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Confirm Button */}
-                      <div className="mt-12 flex flex-col gap-3">
-                        {tx.status !== "cancelled" && (
-                          <>
-                            <button
-                              onClick={() => setShowCancelModal(true)}
-                              className="w-full bg-white text-red-500 border border-red-100 py-4 rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-red-50 transition-all shadow-sm flex items-center justify-center gap-2"
-                            >
-                              <XCircle size={18} /> Cancel Transaction
-                            </button>
-
-                            {/* Small informative text for the seller */}
-                            <p className="text-[10px] text-center text-slate-400 italic">
-                              Need help? Contact support if you are having
-                              issues with this harvester.
-                            </p>
-                          </>
-                        )}
-                      </div>
+                    <p className="text-xs text-slate-500 mb-2">
+                      Buyer: {tx.harvester?.full_name}
+                    </p>
+                    <p className="text-sm font-black text-[#2d7a7f]">
+                      ₱{tx.amount?.toLocaleString()}
+                    </p>
+                    <div className="flex items-center gap-1 mt-2 text-[10px] text-slate-400">
+                      <MessageSquare size={12} />
+                      <span>{tx.messages?.length || 0} messages</span>
                     </div>
-                  </div>
-                );
-              })()
-            ) : (
-              <div className="bg-white p-20 rounded-[2rem] border border-dashed border-slate-200 text-center text-slate-400">
-                Select a transaction listing from above to view details.
+                  </button>
+                ))}
               </div>
-            )}
+
+              {/* 2. RIGHT DETAILED VIEW */}
+              <div className="col-span-8">
+                {transactions.find((t) => t.id === selectedTxId) ? (
+                  (() => {
+                    const tx = transactions.find((t) => t.id === selectedTxId);
+                    const isCompleted = tx.status === "completed";
+
+                    return (
+                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-full">
+                        {/* Header Section */}
+                        <div className="bg-[#2d7a7f] p-6 text-white flex justify-between items-start">
+                          <div>
+                            <h2 className="text-xl font-bold">
+                              {tx.listing?.device_model}
+                            </h2>
+                            <p className="text-xs opacity-80 uppercase tracking-wider mt-1">
+                              ID: {tx.id.slice(0, 8)}
+                            </p>
+                          </div>
+                          <span className="bg-white/20 px-4 py-1 rounded-full text-xs font-medium backdrop-blur-sm">
+                            {isCompleted ? "Completed" : "Matched"}
+                          </span>
+                        </div>
+
+                        {/* Horizontal Progress Tracker */}
+                        <div className="p-10 border-b border-slate-50">
+                          <div className="relative flex justify-between items-center max-w-lg mx-auto">
+                            {/* Background Line */}
+                            <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2"></div>
+                            {/* Active Line */}
+                            <div
+                              className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${
+                                isCompleted
+                                  ? "bg-green-500 w-full"
+                                  : "bg-blue-500 w-1/2"
+                              }`}
+                            ></div>
+
+                            {/* Step 1 */}
+                            <div className="relative z-10 flex flex-col items-center">
+                              <div
+                                className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : "border-blue-500 text-blue-500"}`}
+                              >
+                                <Check size={14} strokeWidth={3} />
+                              </div>
+                              <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500">
+                                Matched
+                              </span>
+                            </div>
+
+                            {/* Step 2 */}
+                            <div className="relative z-10 flex flex-col items-center">
+                              <div
+                                className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : tx.status !== "pending" ? "border-blue-500 text-blue-500" : "border-slate-200 text-slate-300"}`}
+                              >
+                                {isCompleted ? (
+                                  <Check size={14} strokeWidth={3} />
+                                ) : (
+                                  <Clock size={14} />
+                                )}
+                              </div>
+                              <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500">
+                                Meetup Scheduled
+                              </span>
+                            </div>
+
+                            {/* Step 3 */}
+                            <div className="relative z-10 flex flex-col items-center">
+                              <div
+                                className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : "border-slate-200 text-slate-300"}`}
+                              >
+                                <Check
+                                  size={14}
+                                  strokeWidth={3}
+                                  className={
+                                    isCompleted ? "opacity-100" : "opacity-0"
+                                  }
+                                />
+                              </div>
+                              <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500">
+                                Handover Complete
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Details Section */}
+                        <div className="p-8">
+                          <div className="grid grid-cols-2 gap-8 mb-8">
+                            <div>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                                Buyer
+                              </p>
+                              <p className="text-sm font-bold text-slate-700">
+                                {tx.harvester?.full_name}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                                Amount
+                              </p>
+                              <p className="text-xl font-black text-[#2d7a7f]">
+                                ₱{tx.amount?.toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          {isCompleted ? (
+                            <div className="space-y-4">
+                              {/* Completed Status Banner */}
+                              <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center gap-4 relative">
+                                <div className="bg-white p-2 rounded-full shadow-sm text-green-500 border border-green-100">
+                                  <Check size={20} strokeWidth={3} />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-green-800">
+                                    Transaction Completed
+                                  </p>
+                                  <p className="text-xs text-green-600">
+                                    Completed on{" "}
+                                    {new Date(tx.updated_at).toLocaleDateString(
+                                      "en-US",
+                                      {
+                                        month: "long",
+                                        day: "numeric",
+                                        year: "numeric",
+                                      },
+                                    )}
+                                  </p>
+                                </div>
+                                {/* Mock Avatar Bubble */}
+                                
+                              </div>
+
+                              {/* Rate Button */}
+                              <button
+                                onClick={() => setShowRateModal(true)}
+                                className="w-full bg-[#FF4D2D] hover:bg-[#e64528] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"
+                              >
+                                <Star size={18} fill="currentColor" /> Rate
+                                Buyer
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <button className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors">
+                                <Calendar size={18} /> Schedule Meetup
+                              </button>
+                              <button
+                                onClick={() => setShowCancelModal(true)}
+                                className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"
+                              >
+                                <XCircle size={18} /> Cancel Transaction
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Chat Preview Section */}
+                        <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-6">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-4 text-center">
+                            Messages
+                          </p>
+                          <div className="bg-white border border-slate-100 rounded-xl p-4 mb-4">
+                            <p className="text-xs text-slate-600 italic text-center mb-4">
+                              Listing matched with buyer for ₱
+                              {tx.amount?.toLocaleString()}
+                            </p>
+
+                            <div className="space-y-4">
+                              <div className="bg-slate-50 rounded-2xl rounded-tl-none p-3 inline-block max-w-[80%] border border-slate-100">
+                                <p className="text-xs text-slate-700">
+                                  Great! I can meet this Friday at 2pm
+                                </p>
+                                <p className="text-[8px] text-slate-400 mt-1 uppercase">
+                                  11:00 AM
+                                </p>
+                              </div>
+
+                              <div className="text-[10px] text-slate-400 text-center space-y-1">
+                                <p>
+                                  Meetup scheduled at {tx.barangay} on April 25,
+                                  2026 at 14:00
+                                </p>
+                                {isCompleted && (
+                                  <p>
+                                    Transaction completed. Handover confirmed.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Type a message..."
+                              className="flex-1 text-sm border border-slate-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#2d7a7f]/20"
+                            />
+                            <button className="bg-slate-200 text-slate-500 px-4 py-2 rounded-lg hover:bg-slate-300 transition-colors">
+                              <Send size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="h-full flex items-center justify-center bg-white rounded-xl border-2 border-dashed border-slate-100 text-slate-400">
+                    Select a transaction to view details
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1247,6 +1395,30 @@ const SellerDashboard = ({ session }) => {
         onClose={() => setIsModalOpen(false)}
         userId={session.user.id} // use this instead
       />
+      <RateBuyerModal
+        isOpen={showRateModal}
+        onClose={() => setShowRateModal(false)}
+        /* Find the specific transaction object using the selected ID */
+        buyerName={
+          transactions.find((t) => t.id === selectedTxId)?.harvester
+            ?.full_name || "Buyer"
+        }
+        onConfirm={(data) => {
+          console.log("Rating Data:", data);
+          // Logic to save rating to your database goes here
+          setShowRateModal(false);
+        }}
+      />
+      <DonationModal
+        isOpen={isDonationModalOpen}
+        onClose={() => setIsDonationModalOpen(false)}
+        onConfirm={(id) => {
+          console.log("Donating listing:", id);
+          setIsDonationModalOpen(false);
+        }}
+        listing={selectedListing}
+        barangay={session?.user?.user_metadata?.barangay || "Karuhatan"}
+      />
     </div>
   );
 };
@@ -1414,39 +1586,52 @@ const NotificationItem = ({
   onDelete,
 }) => (
   <div
-    className={`p-4 flex gap-3 hover:bg-slate-50 transition cursor-pointer relative ${
-      unread ? "bg-blue-50/30" : "bg-transparent"
+    className={`p-4 flex gap-4 hover:bg-slate-50 transition cursor-pointer relative group border-b border-slate-50 last:border-0 ${
+      unread ? "bg-blue-50/10" : "bg-transparent"
     }`}
   >
+    {/* Icon with colored background */}
     <div
-      className={`w-8 h-8 ${bg} rounded-lg flex items-center justify-center shrink-0`}
+      className={`w-10 h-10 ${bg} rounded-xl flex items-center justify-center shrink-0 shadow-sm shadow-black/5`}
     >
-      {icon}
+      {React.cloneElement(icon, { size: 18, className: "text-white" })}
     </div>
-    <div className="flex-1">
-      <div className="flex justify-between items-start">
+
+    {/* Content Area */}
+    <div className="flex-1 min-w-0">
+      <div className="flex justify-between items-start mb-0.5">
         <h4
-          className={`text-[11px] font-bold ${unread ? "text-slate-900" : "text-slate-600"}`}
+          className={`text-[11px] font-black uppercase tracking-tight truncate pr-2 ${
+            unread ? "text-slate-900" : "text-slate-500"
+          }`}
         >
           {title}
         </h4>
-        {unread && (
-          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-1"></div>
-        )}
+        <span className="text-[9px] font-bold text-slate-400 whitespace-nowrap pt-0.5">
+          {time}
+        </span>
       </div>
-      <p className="text-[10px] text-slate-500 leading-relaxed my-1">{desc}</p>
-      <div className="flex justify-between items-center mt-1">
-        <span className="text-[9px] text-slate-400">{time}</span>
-        <button
-          onClick={(e) => {
-            e.stopPropagation(); // Prevent clicking the notification itself
-            onDelete();
-          }}
-          className="text-[9px] text-slate-400 hover:text-red-500 font-medium transition-colors"
-        >
-          Delete
-        </button>
-      </div>
+      <p className="text-[11px] text-slate-500 leading-snug line-clamp-2 font-medium">
+        {desc}
+      </p>
+    </div>
+
+    {/* Status & Actions Column */}
+    <div className="flex flex-col items-center justify-between py-0.5">
+      {unread ? (
+        <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_0_4px_rgba(59,130,246,0.15)]" />
+      ) : (
+        <div className="w-2 h-2" /> // Spacer
+      )}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all mt-2"
+      >
+        <X size={14} />
+      </button>
     </div>
   </div>
 );

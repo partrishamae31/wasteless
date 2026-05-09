@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
+import { Upload } from "lucide-react";
 
 const SignUp = ({ onLoginClick }) => {
   const [step, setStep] = useState(1);
@@ -513,7 +514,7 @@ const SignUp = ({ onLoginClick }) => {
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-xs font-bold text-emerald-900 mb-1">
                 {accountType === "seller"
-                  ? "Business Details"
+                  ? "Professional Verification"
                   : "Professional Verification"}
               </h3>
 
@@ -550,48 +551,116 @@ const SignUp = ({ onLoginClick }) => {
                 </div>
               )}
 
-              {/* SELLER ONLY: Valid ID */}
-              {accountType === "seller" && (
-                <div className="mt-4">
-                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
-                    Valid ID (e.g. PhilID, Driver's License) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="file"
-                    ref={permitRef} // You can reuse the permitRef for the ID file
-                    accept="image/*"
-                    className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
-                  />
-                </div>
-              )}
+              <div className="space-y-6 mt-6">
+                {/* SELLER ONLY: Valid ID */}
+                {accountType === "seller" && (
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Valid Government ID{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <div
+                      onClick={() => permitRef.current?.click()}
+                      className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 transition-colors cursor-pointer group"
+                    >
+                      <input
+                        type="file"
+                        ref={permitRef}
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          console.log("ID selected:", e.target.files[0]?.name)
+                        }
+                      />
+                      <Upload
+                        className="text-gray-400 group-hover:text-teal-500 mb-2"
+                        size={24}
+                      />
+                      <span className="text-teal-600 font-semibold text-sm">
+                        Click to upload
+                      </span>
+                      <span className="text-gray-400 text-[10px] mt-1">
+                        PDF or JPEG (max 5MB)
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-              {/* HARVESTER ONLY: Existing Permit & Tech Cert */}
-              {accountType === "harvester" && (
-                <>
-                  <div className="mt-4">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">
-                      Business Permit *
-                    </label>
-                    <input
-                      type="file"
-                      ref={permitRef}
-                      accept="image/*"
-                      className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
-                    />
-                  </div>
-                  <div className="mt-4">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">
-                      Technical Certification *
-                    </label>
-                    <input
-                      type="file"
-                      ref={techRef}
-                      accept="image/*"
-                      className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
-                    />
-                  </div>
-                </>
-              )}
+                {/* HARVESTER ONLY: Existing Permit & Tech Cert */}
+                {accountType === "harvester" && (
+                  <>
+                    {/* Business Permit */}
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                        Business Permit / DTI Registration{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <div
+                        onClick={() => permitRef.current?.click()}
+                        className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 transition-colors cursor-pointer group"
+                      >
+                        <input
+                          type="file"
+                          ref={permitRef}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            console.log(
+                              "Permit selected:",
+                              e.target.files[0]?.name,
+                            )
+                          }
+                        />
+                        <Upload
+                          className="text-gray-400 group-hover:text-teal-500 mb-2"
+                          size={24}
+                        />
+                        <span className="text-teal-600 font-semibold text-sm">
+                          Click to upload
+                        </span>
+                        <span className="text-gray-400 text-[10px] mt-1">
+                          PDF or JPEG (max 5MB)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Technical Certification */}
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                        Technical Certification{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <div
+                        onClick={() => techRef.current?.click()}
+                        className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 transition-colors cursor-pointer group"
+                      >
+                        <input
+                          type="file"
+                          ref={techRef}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            console.log(
+                              "Tech Cert selected:",
+                              e.target.files[0]?.name,
+                            )
+                          }
+                        />
+                        <Upload
+                          className="text-gray-400 group-hover:text-teal-500 mb-2"
+                          size={24}
+                        />
+                        <span className="text-teal-600 font-semibold text-sm">
+                          Click to upload
+                        </span>
+                        <span className="text-gray-400 text-[10px] mt-1">
+                          PDF or JPEG (max 5MB)
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
 
               {/* Navigation Buttons (Keep as is) */}
               <div className="flex gap-3 pt-4">
@@ -616,38 +685,35 @@ const SignUp = ({ onLoginClick }) => {
               <h3 className="text-sm font-bold text-gray-700">
                 Complete Registration
               </h3>
-              <div className="bg-emerald-50 border border-emerald-100 p-8 rounded-xl flex flex-col items-center justify-center space-y-4">
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
-                  <svg
-                    className="w-8 h-8 text-[#6da43a]"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="3"
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+
+              {/* Notice Box - Styled according to image_90c07d.jpg / image_90a63d.jpg */}
+              <div className="bg-[#fffdf0] border border-[#fdf5d3] p-8 rounded-xl flex flex-col items-center justify-center space-y-4">
+                <div className="flex items-center justify-center">
+                  {/* Warning Icon from image_90c07d.jpg */}
+                  <div className="w-10 h-10 border-2 border-orange-400 rounded-full flex items-center justify-center">
+                    <span className="text-orange-400 font-bold text-xl">!</span>
+                  </div>
                 </div>
-                <p className="text-[10px] text-emerald-800 font-medium text-center px-4">
-                  You're all set! Click "Complete Registration" to create your
-                  account.
-                </p>
+                <div className="text-center space-y-1">
+                  <p className="text-[11px] text-gray-600 leading-relaxed max-w-[280px]">
+                    Click "Complete Registration" to submit your account for
+                    verification. Your account will be activated after
+                    administrator approval.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              {/* Footer Buttons */}
+              <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setIsSubmitted(false)}
-                  className="flex-1 py-3 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm"
+                  className="flex-1 py-2.5 border border-gray-100 text-gray-500 rounded-lg font-medium text-xs hover:bg-gray-50 transition-colors"
                 >
                   Back
                 </button>
                 <button
                   onClick={handleFinalSubmit}
-                  className="flex-1 py-3 bg-[#6da43a] text-white rounded-lg font-bold text-sm shadow-md hover:opacity-90"
+                  className="flex-1 py-2.5 bg-[#6da43a] text-white rounded-lg font-medium text-xs shadow-sm hover:bg-[#5f8f32] transition-colors"
                 >
                   Complete Registration
                 </button>

@@ -104,66 +104,7 @@ const Login = ({ onSignUpClick }) => {
   return (
     <div className="flex h-screen w-full bg-white font-sans overflow-hidden">
       {/* LEFT SIDE: Gradient */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] p-12 flex-col justify-between text-white relative">
-        <div>
-          <div className="flex items-center gap-2 mb-12">
-            <div className="bg-white/20 p-2 rounded-lg">
-              <Leaf size={24} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Wasteless</h1>
-              <p className="text-xs opacity-80">Valenzuela City</p>
-            </div>
-          </div>
-
-          <h2 className="text-4xl font-bold mb-6 leading-tight">
-            E-waste Management Platform
-          </h2>
-          <p className="text-lg opacity-90 mb-12 max-w-md">
-            Connect households with repair shops and tech-harvesters for
-            component recovery and reuse.
-          </p>
-
-          <div className="space-y-8">
-            <div className="flex gap-4">
-              <div className="bg-white/10 p-3 rounded-xl h-fit">
-                <Zap size={20} />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">Smart Recovery</h3>
-                <p className="text-sm opacity-70">
-                  AI-powered value calculations for your devices
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <div className="bg-white/10 p-3 rounded-xl h-fit">
-                <MapPin size={20} />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">Location-Based Matching</h3>
-                <p className="text-sm opacity-70">
-                  Connect with nearby repair shops and harvesters
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <div className="bg-white/10 p-3 rounded-xl h-fit">
-                <BarChart3 size={20} />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">Environmental Impact</h3>
-                <p className="text-sm opacity-70">
-                  Track carbon savings and circular economy metrics
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <p className="text-xs opacity-60">
-          Promoting circular economy practices in Valenzuela City
-        </p>
-      </div>
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] p-12 flex-col justify-between text-white relative"></div>
 
       {/* RIGHT SIDE: Form */}
       <div className="w-full md:w-1/2 flex flex-col justify-center px-12 lg:px-24">
@@ -190,18 +131,18 @@ const Login = ({ onSignUpClick }) => {
                 desc: "Browse and bid on components",
                 icon: <Shield size={18} />,
               },
-              {
-                id: "admin",
-                title: "Administrator",
-                desc: "Manage platform operations",
-                icon: <BarChart3 size={18} />,
-              },
-              {
-                id: "environmental",
-                title: "Environmental Officer",
-                desc: "Monitor city metrics",
-                icon: <MapPin size={18} />,
-              },
+              // {
+              //   id: "admin",
+              //   title: "Administrator",
+              //   desc: "Manage platform operations",
+              //   icon: <BarChart3 size={18} />,
+              // },
+              // {
+              //   id: "environmental",
+              //   title: "Environmental Officer",
+              //   desc: "Monitor city metrics",
+              //   icon: <MapPin size={18} />,
+              // },
             ].map((item) => (
               <button
                 key={item.id}
@@ -246,13 +187,25 @@ const Login = ({ onSignUpClick }) => {
               <label className="text-xs font-semibold text-gray-600 block mb-1">
                 Password
               </label>
-              <input
-                type="password"
-                placeholder="Enter your password"
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-teal-500"
-                value={password} // Link to state
-                onChange={(e) => setPassword(e.target.value)} // Update state
+              <Lock
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                size={16}
               />
+              <div className="relative">
+                {" "}
+                {/* Added relative wrapper here */}
+                <Lock
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  size={16}
+                />
+                <input
+                  type="password"
+                  placeholder="Enter your password"
+                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={password} // Link to state
+                  onChange={(e) => setPassword(e.target.value)} // Update state
+                />
+              </div>
             </div>
           </div>
 
@@ -292,7 +245,7 @@ const Login = ({ onSignUpClick }) => {
               className="flex-1 flex items-center justify-center gap-2 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
             >
               <img
-                src="https://www.svgrepo.com/show/303114/facebook-3.svg"
+               src="https://www.svgrepo.com/show/475647/facebook-color.svg"
                 className="w-4 h-4"
                 alt="Facebook"
               />{" "}

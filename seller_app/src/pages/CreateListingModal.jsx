@@ -69,7 +69,66 @@ const DiagnosisSection = ({ title, count, items, selected, onToggle }) => {
     </div>
   );
 };
+const ConditionSection = ({ selected, onChange }) => {
+  const options = [
+    {
+      id: "Working",
+      label: "Working",
+      sub: "Device is fully functional",
+      activeStyles: "border-emerald-500 bg-emerald-50/30 text-emerald-700",
+    },
+    {
+      id: "Defective",
+      label: "Defective",
+      sub: "Some components not working",
+      activeStyles: "border-blue-500 bg-blue-50/30 text-blue-700",
+    },
+    {
+      id: "Parts Only",
+      label: "Parts Only",
+      sub: "For harvesting components",
+      activeStyles: "border-slate-500 bg-slate-50/30 text-slate-700",
+    },
+  ];
 
+  return (
+    <div className="space-y-3 w-full">
+      <label className="text-sm font-semibold text-slate-700 block text-left">
+        Device Condition
+      </label>
+
+      <div className="flex flex-col gap-2">
+        {options.map((opt) => {
+          const isSelected = selected === opt.id;
+
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => onChange(opt.id)}
+              className={`w-full p-4 rounded-xl border transition-all text-left flex flex-col justify-center gap-1 ${
+                isSelected
+                  ? `${opt.activeStyles} ring-1 ring-inset ring-opacity-50`
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <span
+                className={`text-[15px] font-bold ${
+                  isSelected ? "" : "text-slate-700"
+                }`}
+              >
+                {opt.label}
+              </span>
+              <span className="text-xs text-slate-500 font-medium">
+                {opt.sub}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -96,6 +155,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     images: [],
     price: "",
   });
+
   const fileInputRef = useRef(null);
   const [issues, setIssues] = useState({
     physical: [],
@@ -656,6 +716,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   <CheckCircle2 size={24} className="text-emerald-500" />
                 )}
               </button>
+              <ConditionSection
+                selected={formData.condition}
+                onChange={(val) => setFormData({ ...formData, condition: val })}
+              />
 
               {/* ISSUE SECTIONS */}
               {!issues.noDamage && (

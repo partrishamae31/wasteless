@@ -5,11 +5,13 @@ import {
   Send,
   ShieldAlert,
   CheckCheck,
+  Check,
   Calendar,
   User,
   X,
   MapPin,
   Clock,
+  Navigation,
 } from "lucide-react";
 
 const SellerMessages = ({ userId, onTabChange }) => {
@@ -344,109 +346,169 @@ Date: ${meetupData.date} at ${meetupData.time}`,
       </div>
       {/* MODAL OVERLAY */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-[1.5rem] w-full max-w-lg overflow-hidden shadow-xl animate-in fade-in zoom-in duration-200">
             {/* Header */}
-            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+            <div className="p-8 pb-4 flex justify-between items-start">
               <div>
-                <h2 className="font-bold text-slate-800 text-sm">
+                <h2 className="font-bold text-[#2d3748] text-xl">
                   Schedule Meetup
                 </h2>
-                <p className="text-[10px] text-slate-400">
-                  Re: {activeChat.listings?.device_model}
+                <p className="text-sm text-slate-500 mt-1">
+                  With {activeChat.shop_name || "Shop"} for{" "}
+                  {activeChat.listings?.device_model}
                 </p>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 transition-colors"
               >
-                <X size={18} />
+                <X size={24} />
               </button>
             </div>
 
-            {/* Form Body */}
-            <div className="p-6 space-y-4">
+            <div className="px-8 pb-8 space-y-6 max-h-[80vh] overflow-y-auto">
+              {/* Accepted Bid Card */}
+              <div className="bg-gradient-to-r from-emerald-50/50 to-teal-50/50 border border-emerald-100 rounded-2xl p-6 flex justify-between items-center">
+                <div>
+                  <p className="text-[11px] font-semibold text-emerald-700/70 uppercase tracking-wider">
+                    Accepted Bid Amount
+                  </p>
+                  <p className="text-2xl font-bold text-[#2d7a7f] mt-1">
+                    ₱
+                    {activeChat.accepted_bid_amount?.toLocaleString() ||
+                      "0,000"}
+                  </p>
+                </div>
+                <div className="bg-emerald-500 rounded-full p-1">
+                  <Check size={20} className="text-white" />
+                </div>
+              </div>
+
+              {/* Date Selection */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 flex items-center gap-2 mb-2">
-                  <Calendar size={12} /> Select Date
+                <label className="text-xs font-bold text-slate-600 flex items-center gap-2 mb-3">
+                  <Calendar size={16} className="text-[#2d7a7f]" /> Select Date
                 </label>
                 <input
                   type="date"
-                  className="w-full p-3 bg-slate-50 border-none rounded-xl text-xs outline-none"
+                  className="w-full p-4 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500/20 outline-none transition-all"
                   onChange={(e) =>
                     setMeetupData({ ...meetupData, date: e.target.value })
                   }
                 />
               </div>
 
+              {/* Time Selection */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 flex items-center gap-2 mb-2">
-                  <Clock size={12} /> Select Time
+                <label className="text-xs font-bold text-slate-600 flex items-center gap-2 mb-3">
+                  <Clock size={16} className="text-[#2d7a7f]" /> Select Time
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-3">
                   {[
                     "09:00 AM",
+                    "10:00 AM",
                     "11:00 AM",
-                    "01:00 PM",
+                    "02:00 PM",
                     "03:00 PM",
-                    "05:00 PM",
+                    "04:00 PM",
                   ].map((t) => (
                     <button
                       key={t}
                       onClick={() => setMeetupData({ ...meetupData, time: t })}
-                      className={`p-2 text-[9px] rounded-lg border transition-all ${meetupData.time === t ? "bg-teal-50 border-[#2d7a7f] text-[#2d7a7f] font-bold" : "border-slate-100 text-slate-500"}`}
+                      className={`p-3 text-xs rounded-xl border transition-all duration-200 ${
+                        meetupData.time === t
+                          ? "bg-[#9bc2c9] border-[#9bc2c9] text-white font-bold"
+                          : "border-slate-200 text-slate-600 hover:border-teal-200"
+                      }`}
                     >
                       {t}
                     </button>
                   ))}
                 </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 flex items-center gap-2 mb-2">
-                  <MapPin size={12} /> Meeting Location
-                </label>
-                <select
-                  className="w-full p-3 bg-slate-50 border-none rounded-xl text-xs outline-none"
+                <input
+                  type="time"
+                  placeholder="--:-- --"
+                  className="w-full mt-3 p-4 border border-slate-200 rounded-xl text-sm outline-none"
                   onChange={(e) =>
-                    setMeetupData({ ...meetupData, location: e.target.value })
+                    setMeetupData({ ...meetupData, time: e.target.value })
                   }
-                >
-                  <option value="">Choose a location...</option>
-                  <option value="Barangay Hall">
-                    Barangay Hall - Nearest Hall
-                  </option>
-                </select>
+                />
               </div>
 
+              {/* Location Selection */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 mb-2 block">
-                  Notes (Optional)
+                <label className="text-xs font-bold text-slate-600 flex items-center gap-2 mb-3">
+                  <MapPin size={16} className="text-[#2d7a7f]" /> Meeting
+                  Location
+                </label>
+                <div className="space-y-2">
+                  {[
+                    "Valenzuela City Hall - Main Entrance",
+                    "Barangay Hall - Your Barangay",
+                    "SM City Valenzuela - Main Entrance",
+                  ].map((loc) => (
+                    <button
+                      key={loc}
+                      onClick={() =>
+                        setMeetupData({ ...meetupData, location: loc })
+                      }
+                      className={`w-full p-4 flex items-center gap-3 text-left text-sm rounded-xl border transition-all ${
+                        meetupData.location === loc
+                          ? "border-[#2d7a7f] bg-teal-50/30 text-[#2d7a7f] font-medium"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <Navigation
+                        size={14}
+                        className={
+                          meetupData.location === loc
+                            ? "text-[#2d7a7f]"
+                            : "text-slate-400"
+                        }
+                      />
+                      {loc}
+                    </button>
+                  ))}
+                  <input
+                    placeholder="Or enter custom location"
+                    className="w-full p-4 border border-slate-200 rounded-xl text-sm outline-none mt-2"
+                    onChange={(e) =>
+                      setMeetupData({ ...meetupData, location: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-bold text-slate-600 mb-3 block">
+                  Additional Notes (Optional)
                 </label>
                 <textarea
-                  placeholder="e.g. I'll be at the lobby wearing a white cap"
-                  className="w-full p-3 bg-slate-50 border-none rounded-xl text-xs outline-none h-20 resize-none"
+                  placeholder="e.g., I'll be wearing a blue jacket, bring the device in original packaging..."
+                  className="w-full p-4 border border-slate-200 rounded-xl text-sm outline-none h-28 resize-none focus:ring-2 focus:ring-teal-500/20"
                   onChange={(e) =>
                     setMeetupData({ ...meetupData, notes: e.target.value })
                   }
                 />
               </div>
-            </div>
 
-            {/* Footer Buttons */}
-            <div className="p-6 flex gap-3">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="flex-1 py-3 text-[11px] font-bold text-slate-400"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleScheduleMeetup}
-                className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl text-[11px] font-bold"
-              >
-                Schedule Meetup
-              </button>
+              {/* Action Buttons */}
+              <div className="flex gap-4 pt-4">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-4 px-6 border border-slate-200 text-slate-500 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleScheduleMeetup}
+                  className="flex-1 py-4 px-6 bg-[#9bc2c9] hover:bg-[#8ab1b8] text-white rounded-xl text-sm font-bold transition-colors shadow-md"
+                >
+                  Schedule Meetup
+                </button>
+              </div>
             </div>
           </div>
         </div>
