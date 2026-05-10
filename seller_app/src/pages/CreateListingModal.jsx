@@ -133,7 +133,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [isSanitized, setIsSanitized] = useState(false);
-  const [estimatedValue, setEstimatedValue] = useState(5000);
+  // const [estimatedValue, setEstimatedValue] = useState(5000);
   const [userBarangay, setUserBarangay] = useState("");
   const [reusableValue, setReusableValue] = useState(0);
   const [scrapValue, setScrapValue] = useState(0);
@@ -859,7 +859,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           {step === 3 && (
             <div className="space-y-6 max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
               {/* Estimated Recovery Value Header (Green Card) */}
-              <div className="bg-[#00c853] text-white rounded-3xl p-6 relative shadow-lg">
+              {/* <div className="bg-[#00c853] text-white rounded-3xl p-6 relative shadow-lg">
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <p className="text-[10px] uppercase tracking-wider opacity-90">
@@ -914,7 +914,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     on buyer assessment and market conditions.
                   </p>
                 </div>
-              </div>
+              </div> */}
 
               {/* Component Breakdown was removed from here */}
 

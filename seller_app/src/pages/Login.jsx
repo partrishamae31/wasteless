@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
+import AdminLogin from "./AdminLogin";
+import EnvOfficerLogin from "./EnvOfficerLogin";
 import {
   Recycle,
   Shield,
@@ -13,12 +15,22 @@ import {
   Zap,
 } from "lucide-react";
 
-const Login = ({ onSignUpClick }) => {
+const Login = ({ onSignUpClick, onEnvClick }) => {
   const [role, setRole] = useState("seller");
+  const [isAdminView, setIsAdminView] = useState(false);
+  const [isOfficerView, setIsOfficerView] = useState(false);
   // 1. ADD THESE STATES
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  if (isOfficerView) {
+    return (
+      <EnvOfficerLogin onBackToUserLogin={() => setIsOfficerView(false)} />
+    );
+  }
+  if (isAdminView) {
+    return <AdminLogin onBackToUserLogin={() => setIsAdminView(false)} />;
+  }
 
   // 2. ADD THIS LOGIN FUNCTION
   const handleEmailLogin = async (e) => {
@@ -187,10 +199,7 @@ const Login = ({ onSignUpClick }) => {
               <label className="text-xs font-semibold text-gray-600 block mb-1">
                 Password
               </label>
-              <Lock
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                size={16}
-              />
+
               <div className="relative">
                 {" "}
                 {/* Added relative wrapper here */}
@@ -245,7 +254,7 @@ const Login = ({ onSignUpClick }) => {
               className="flex-1 flex items-center justify-center gap-2 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
             >
               <img
-               src="https://www.svgrepo.com/show/475647/facebook-color.svg"
+                src="https://www.svgrepo.com/show/475647/facebook-color.svg"
                 className="w-4 h-4"
                 alt="Facebook"
               />{" "}
@@ -262,6 +271,31 @@ const Login = ({ onSignUpClick }) => {
               Create Account
             </span>
           </p>
+          <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center">
+            <button
+              onClick={() => setIsAdminView(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-full transition-all group"
+            >
+              <div className="w-6 h-6 bg-slate-200 group-hover:bg-purple-100 rounded-lg flex items-center justify-center transition-colors">
+                <Shield
+                  size={12}
+                  className="text-slate-500 group-hover:text-purple-600"
+                />
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                Admin Portal
+              </span>
+            </button>
+            <button
+              onClick={onEnvClick} // Change from () => setIsOfficerView(true)
+              className="flex items-center gap-2 px-4 py-2 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-full transition-all group w-max"
+            >
+              <Leaf size={12} className="text-teal-600" />
+              <span className="text-[9px] font-bold text-teal-600 uppercase tracking-widest">
+                Officer Portal
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

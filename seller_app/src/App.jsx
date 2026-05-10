@@ -7,6 +7,10 @@ import HarvesterDashboard from "./pages/HarvesterDashboard";
 import AdminDashboard from "./admin/src/AdminDashboard";
 import AdminPanel from "./admin/src/AdminPanel";
 
+// --- ADDED IMPORTS ---
+import EnvOfficerLogin from "./pages/EnvOfficerLogin";
+import EnvOfficerPanel from "./wmo/EnvOfficerPanel";
+
 function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
@@ -15,15 +19,20 @@ function App() {
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
 
+  // --- ADDED STATE FOR ENV OFFICER DEMO ---
+  const [isEnvDemo, setIsEnvDemo] = useState(false);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
     setRole(null);
+    setIsEnvDemo(false); // Reset demo state on logout
   };
+
   // 🔥 SINGLE SOURCE OF TRUTH
   const loadUser = async (session) => {
     setLoading(true);
-    setIsChecked(false); // 🔥 reset check
+    setIsChecked(false); 
 
     if (!session?.user) {
       setSession(null);
@@ -41,7 +50,6 @@ function App() {
 
     if (!data || error || !data.role) {
       await supabase.auth.signOut();
-
       setSession(null);
       setRole(null);
       setIsUnauthorized(true);
@@ -53,16 +61,14 @@ function App() {
     }
 
     setLoading(false);
-    setIsChecked(true); // 🔥 validation done
+    setIsChecked(true); 
   };
 
   useEffect(() => {
-    // INITIAL LOAD
     supabase.auth.getSession().then(({ data }) => {
       loadUser(data.session);
     });
 
-    // LISTENER
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -72,7 +78,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 🔥 LOADING STATE (ONLY ONE)
+  // 🔥 LOADING STATE
   if (loading || !isChecked) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
@@ -83,6 +89,13 @@ function App() {
       </div>
     );
   }
+
+  // --- ADDED ENV OFFICER DASHBOARD VIEW ---
+  // This shows if the role is officially 'env_officer' OR if the demo bypass is clicked
+  if (isEnvDemo || role === "env_officer") {
+    return <EnvOfficerPanel onLogout={handleLogout} user={session?.user} />;
+  }
+
   if (isUnauthorized) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
@@ -92,7 +105,6 @@ function App() {
         <p className="text-gray-600 mt-2">
           Please create an account first before using Google login.
         </p>
-
         <button
           onClick={() => {
             setIsUnauthorized(false);
@@ -105,6 +117,7 @@ function App() {
       </div>
     );
   }
+
   // 🔥 LOGGED IN
   if (session) {
     if (role === "NO_ROLE" || !role) {
@@ -115,14 +128,12 @@ function App() {
         />
       );
     }
-    // In App.jsx
     if (role === "admin") {
       return <AdminPanel session={session} onLogout={handleLogout} />;
     }
     if (role === "seller") {
       return <SellerDashboard session={session} />;
     }
-
     if (role === "harvester") {
       return <HarvesterDashboard session={session} onLogout={handleLogout} />;
     }
@@ -134,13 +145,22 @@ function App() {
     );
   }
 
-  // 🔥 LOGGED OUT
+  // 🔥 LOGGED OUT / NAVIGATION
   return (
     <div className="App">
-      {currentPage === "login" ? (
-        <Login onSignUpClick={() => setCurrentPage("signup")} />
-      ) : (
+      {currentPage === "login" && (
+        <Login onSignUpClick={() => setCurrentPage("signup")} onEnvClick={() => setCurrentPage("env_login")} />
+      )}
+      {currentPage === "signup" && (
         <SignUp onLoginClick={() => setCurrentPage("login")} />
+      )}
+      
+      {/* --- ADDED ENV LOGIN PAGE --- */}
+      {currentPage === "env_login" && (
+        <EnvOfficerLogin 
+          onBackToUserLogin={() => setCurrentPage("login")} 
+          onLoginSuccess={() => setIsEnvDemo(true)} 
+        />
       )}
     </div>
   );

@@ -4,6 +4,8 @@ import HarvesterAlerts from "./HarvesterAlerts";
 import UrbanMineMap from "./UrbanMineMap";
 import InventoryView from "./InventoryView";
 import TransactionsView from "./TransactionsView";
+import BarangayLeaderboard from "./BarangayLeaderboard"; // Ensure path is correct
+
 import {
   Search,
   Bell,
@@ -51,28 +53,26 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
   const [showRatingModal, setShowRatingModal] = useState(false);
   const handleCompleteHandover = async (transactionId) => {
-  try {
-    const updatedTime = new Date().toISOString();
-    
-    // Use { count: 'exact' } to verify if the database actually changed
-    const { data, error, count } = await supabase
-      .from("transactions")
-      .update({
-        status: "completed",
-        updated_at: updatedTime,
-      })
-      .eq("id", transactionId)
-      .select(); // Re-select to confirm update[cite: 7]
+    try {
+      const updatedTime = new Date().toISOString();
 
-    if (error) throw error;
-    
-    // If count is 0, the transactionId didn't match anything in the DB[cite: 7]
-    if (!data || data.length === 0) {
-      alert("Database match failed: No transaction found with that ID.");
-      return;
-    }
+      // Use { count: 'exact' } to verify if the database actually changed
+      const { data, error, count } = await supabase
+        .from("transactions")
+        .update({
+          status: "completed",
+          updated_at: updatedTime,
+        })
+        .eq("id", transactionId)
+        .select(); // Re-select to confirm update[cite: 7]
 
-      
+      if (error) throw error;
+
+      // If count is 0, the transactionId didn't match anything in the DB[cite: 7]
+      if (!data || data.length === 0) {
+        alert("Database match failed: No transaction found with that ID.");
+        return;
+      }
 
       // 2. Update the Sidebar List (Local State)
       setTransactions((prev) =>
@@ -225,13 +225,55 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
     // 1. Fetch initial notifications from DB
     const fetchNotifications = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("notifications")
         .select("*")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false })
         .limit(10);
-      if (data) setNotifications(data);
+
+      if (data) {
+        // Keep the real data from DB, but prepend mock items to match the UI design
+        const mockupItems = [
+          {
+            id: "mock-1",
+            type: "bid_accepted",
+            title: "Bid Accepted",
+            content: "Your bid of ₱3,200 on iPhone 11 has been accepted",
+            created_at: new Date(Date.now() - 3600000 * 7).toISOString(), // 7h ago
+            is_read: false,
+          },
+          {
+            id: "mock-2",
+            type: "message",
+            title: "New Message",
+            content: "Maria Santos replied to your inquiry",
+            created_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
+            is_read: false,
+          },
+          {
+            id: "mock-3",
+            type: "meetup",
+            title: "Meetup Confirmed",
+            content:
+              "Meetup scheduled for March 13 at 2:00 PM - SM City Valenzuela",
+            created_at: new Date(Date.now() - 86400000).toISOString(),
+            is_read: true,
+          },
+          {
+            id: "mock-4",
+            type: "payment",
+            title: "Payment Reminder",
+            content:
+              "Don't forget to bring exact payment for tomorrow's meetup",
+            created_at: new Date(Date.now() - 86400000).toISOString(),
+            is_read: true,
+          },
+        ];
+
+        // Combine mockups with actual database notifications
+        setNotifications([...mockupItems, ...data]);
+      }
     };
 
     fetchNotifications();
@@ -450,17 +492,20 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     }
   };
   return (
-    <div className="min-h-screen bg-[#f8fafc] p-8 font-sans">
+    <div className="min-h-screen bg-[#f1f5f9] p-6 font-sans text-slate-900">
       {/* --- TOP HEADER SECTION --- */}
-      <div className="flex justify-end items-center mb-8 gap-6">
-        <div className="relative cursor-pointer">
-          <Bell
-            className="text-slate-400 hover:text-slate-600 transition-colors"
-            size={22}
+      <div className="flex justify-end items-center mb-6 gap-4">
+        {/* Notification Bell Container */}
+        <div className="relative">
+          <div
             onClick={() => setShowNotifications(!showNotifications)}
-          />
+            className="bg-white p-2.5 rounded-full shadow-sm border border-slate-200 cursor-pointer hover:bg-slate-50 transition-all text-slate-600"
+          >
+            <Bell size={20} />
+          </div>
+
           {notifications.filter((n) => !n.is_read).length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#f8fafc]">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold border-2 border-[#f1f5f9]">
               {notifications.filter((n) => !n.is_read).length}
             </span>
           )}
@@ -469,7 +514,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           {showNotifications && (
             <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
               <div className="p-5 border-b border-slate-50 flex justify-between items-center">
-                <h3 className="font-black text-slate-800 text-xs uppercase">
+                <h3 className="font-black text-slate-800 text-xs uppercase tracking-tight">
                   Notifications
                 </h3>
                 <button
@@ -482,39 +527,63 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
               <div className="max-h-96 overflow-y-auto">
                 {notifications.length > 0 ? (
-                  notifications.map((n) => (
-                    <div
-                      key={n.id}
-                      className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!n.is_read ? "bg-lime-50/30" : ""}`}
-                    >
-                      <div className="flex gap-3">
-                        <div className="w-8 h-8 bg-lime-100 rounded-xl flex items-center justify-center text-[#769c2d]">
-                          <Package size={14} />
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-black text-slate-800">
-                            {n.title}
-                          </p>
-                          <p className="text-[10px] text-slate-500 leading-tight mt-1">
-                            {n.content}
-                          </p>
-                          <p className="text-[8px] text-slate-300 font-bold mt-2 uppercase">
-                            {new Date(n.created_at).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </p>
+                  notifications.map((n) => {
+                    // Dynamic icon and color logic based on notification type
+                    let icon = <Package size={14} />;
+                    let iconBg = "bg-lime-100 text-[#769c2d]";
+
+                    if (n.type === "bid_accepted" || n.type === "payment") {
+                      icon = <CheckCircle size={14} />;
+                      iconBg = "bg-emerald-100 text-emerald-600";
+                    } else if (n.type === "message") {
+                      icon = <MessageSquare size={14} />;
+                      iconBg = "bg-blue-100 text-blue-600";
+                    } else if (n.type === "meetup") {
+                      icon = <Calendar size={14} />;
+                      iconBg = "bg-purple-100 text-purple-600";
+                    }
+
+                    return (
+                      <div
+                        key={n.id}
+                        className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${
+                          !n.is_read ? "bg-lime-50/30" : ""
+                        }`}
+                      >
+                        <div className="flex gap-3">
+                          <div
+                            className={`w-8 h-8 ${iconBg} rounded-xl flex items-center justify-center flex-shrink-0`}
+                          >
+                            {icon}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-[11px] font-black text-slate-800">
+                              {n.title}
+                            </p>
+                            <p className="text-[10px] text-slate-500 leading-tight mt-1">
+                              {n.content}
+                            </p>
+                            <p className="text-[8px] text-slate-300 font-bold mt-2 uppercase tracking-widest">
+                              {new Date(n.created_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
+                          {!n.is_read && (
+                            <div className="w-1.5 h-1.5 bg-[#769c2d] rounded-full mt-1"></div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="p-10 text-center text-slate-300 text-[10px] font-bold uppercase tracking-widest">
                     No new alerts
                   </div>
                 )}
               </div>
-              <button className="w-full py-4 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors bg-slate-50/50">
+              <button className="w-full py-4 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors bg-slate-50/50 border-t border-slate-50">
                 View All Notifications
               </button>
             </div>
@@ -524,28 +593,27 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         <div className="relative">
           <div
             onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center gap-3 bg-white p-1.5 pr-4 rounded-full shadow-sm border border-slate-100 cursor-pointer hover:bg-slate-50 transition-all"
+            className="flex items-center gap-3 bg-white p-1 pr-4 rounded-full shadow-sm border border-slate-200 cursor-pointer hover:border-slate-300 transition-all"
           >
-            <div className="text-right hidden sm:block">
-              {/* REMOVED TECH SOLUTIONS SHOP - NOW USING DATABASE NAME */}
-              <p className="font-bold text-slate-700 text-[11px] leading-tight">
+            <div className="text-right hidden sm:block pl-3">
+              <p className="font-bold text-slate-800 text-[11px] leading-none mb-1">
                 {profileData.full_name}
               </p>
               {verificationStatus === "verified" ? (
-                <p className="text-[#769c2d] text-[9px] font-bold flex items-center justify-end gap-1">
+                <p className="text-[#769c2d] text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
                   <CheckCircle2 size={10} /> Verified
                 </p>
               ) : verificationStatus === "rejected" ? (
-                <p className="text-red-500 text-[9px] font-bold flex items-center justify-end gap-1">
+                <p className="text-red-500 text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
                   <XCircle size={10} /> Rejected
                 </p>
               ) : (
-                <p className="text-orange-400 text-[9px] font-bold flex items-center justify-end gap-1">
+                <p className="text-orange-400 text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
                   <Clock size={10} /> Pending
                 </p>
               )}
             </div>
-            <div className="w-9 h-9 bg-[#4a7c59] rounded-full flex items-center justify-center text-white font-bold text-xs shadow-inner">
+            <div className="w-8 h-8 bg-[#4a7c59] rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm border border-white/20">
               {profileData.initials}
             </div>
           </div>
@@ -575,13 +643,18 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 <div className="p-3">
                   <MenuLink icon={<User size={15} />} label="View Profile" />
                   <MenuLink icon={<Settings size={15} />} label="Settings" />
-                  <div className="h-[1px] bg-slate-50 my-2 mx-2"></div>
-                  <button
-                    onClick={onLogout}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-2xl transition-colors text-xs font-bold"
-                  >
-                    <LogOut size={15} /> Logout
-                  </button>
+                  {/* Added Achievements to match mockup */}
+                  <MenuLink icon={<Award size={15} />} label="Achievements" />
+
+                  {/* Logout section with border-t and specific styling from image_085a5b.jpg */}
+                  <div className="mt-2 pt-2 border-t border-slate-50">
+                    <button
+                      onClick={onLogout}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-2xl transition-colors text-xs font-black uppercase tracking-widest"
+                    >
+                      <LogOut size={15} /> Logout
+                    </button>
+                  </div>
                 </div>
               </div>
             </>
@@ -628,7 +701,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       </div>
 
       {/* --- NAVIGATION --- */}
-      <div className="flex flex-wrap gap-2 mb-8 bg-white/50 p-2 rounded-[2rem] border border-white/50 backdrop-blur-sm">
+      <div className="flex gap-10 mb-7 items-center">
         <NavBtn
           active={activeTab === "browse"}
           onClick={() => setActiveTab("browse")}
@@ -680,17 +753,41 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           icon={<MessageSquare size={16} />}
           label="Messages"
         />
-        <NavBtn
+        {/* <NavBtn
           active={activeTab === "inventory"}
           onClick={() => setActiveTab("inventory")}
           icon={<Package size={16} />}
           label="Inventory"
-        />
+        /> */}
       </div>
+      <div className="flex gap-3 mb-8">
+        <div className="relative flex-1">
+          <Search
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+            size={18}
+          />
+          <input
+            type="text"
+            placeholder="Search by device name or model..."
+            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-lime-500/20"
+          />
+        </div>
+        <select className="bg-white border border-slate-200 rounded-xl px-4 text-sm font-medium">
+          <option>All Conditions</option>
+        </select>
+        <button className="p-3 bg-white border border-slate-200 rounded-xl">
+          <LayoutGrid size={18} />
+        </button>
+      </div>
+
+      <p className="text-xs font-bold text-slate-400 mb-6 flex justify-between">
+        <span>{listings.length} listings found</span>
+        <span>Sorted by: Nearest</span>
+      </p>
 
       {/* --- TAB CONTENT --- */}
       {activeTab === "browse" ? (
-        <div className="grid grid-cols-2 gap-8">
+        <div className="grid grid-cols-2 gap-8 pb-20">
           {listings.map((item) => (
             <ListingCard
               key={item.id}
@@ -700,6 +797,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             />
           ))}
         </div>
+      ) : activeTab === "leaderboard" ? (
+        <BarangayLeaderboard />
       ) : activeTab === "bids" ? (
         <MyBidsView bids={myBids} />
       ) : activeTab === "transactions" ? (
@@ -757,11 +856,35 @@ const MyBidsView = ({ bids }) => {
     accepted: bids.filter((b) => b.status === "accepted").length,
     total: bids.length,
   };
+  if (bids.length === 0) {
+    return (
+      <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] p-20 text-center animate-in fade-in zoom-in duration-500">
+        <div className="w-20 h-20 bg-lime-50 rounded-[30px] flex items-center justify-center mx-auto mb-6">
+          <Gavel size={32} className="text-[#769c2d] opacity-50" />
+        </div>
+        <h3 className="text-lg font-black text-slate-800">
+          No Bids Placed Yet
+        </h3>
+        <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-2 max-w-[240px] mx-auto leading-relaxed">
+          Browse the marketplace and start bidding on e-waste parts to see them
+          here.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Mini Stats Bar matching image_f1901c.png */}
-      <div className="grid grid-cols-3 gap-6">
+      <div>
+        <h2 className="text-xl font-black text-slate-800 tracking-tight">
+          Track Your Bids
+        </h2>
+        <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-1">
+          Manage your active offers and pending approvals
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-3xl border border-slate-50 shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-orange-50 text-orange-500 rounded-2xl">
@@ -804,11 +927,11 @@ const MyBidsView = ({ bids }) => {
       </div>
 
       {/* Bids List */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         {bids.map((bid) => (
           <div
             key={bid.id}
-            className={`bg-white rounded-[2.5rem] border-2 p-8 transition-all ${
+            className={`group bg-white rounded-[2.5rem] border-2 p-8 transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 ${
               bid.status === "accepted"
                 ? "border-emerald-100"
                 : bid.status === "countered"
@@ -818,12 +941,12 @@ const MyBidsView = ({ bids }) => {
           >
             <div className="flex justify-between items-start mb-6">
               <div>
-                <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-3 mb-1">
                   <h3 className="font-black text-xl text-slate-800">
                     {bid.listings?.device_model}
                   </h3>
                   <span
-                    className={`px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.15em] ${
+                    className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
                       bid.status === "accepted"
                         ? "bg-emerald-100 text-emerald-600"
                         : bid.status === "countered"
@@ -834,7 +957,7 @@ const MyBidsView = ({ bids }) => {
                     {bid.status || "Pending"}
                   </span>
                 </div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                   Seller: {bid.listings?.profiles?.full_name} • Barangay Marulas
                 </p>
               </div>
@@ -853,17 +976,17 @@ const MyBidsView = ({ bids }) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6 bg-slate-50/50 p-6 rounded-[1.5rem] mb-6">
+            <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-6 rounded-[2rem] mb-6 border border-slate-100/50">
               <div>
-                <p className="text-[10px] font-black text-slate-300 uppercase mb-2 tracking-widest">
+                <p className="text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">
                   Your Bid
                 </p>
-                <p className="text-2xl font-black text-slate-700">
+                <p className="text-2xl font-black text-[#769c2d]">
                   ₱{bid.amount.toLocaleString()}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-black text-slate-300 uppercase mb-2 tracking-widest">
+              <div className="border-l border-slate-100 pl-6">
+                <p className="text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">
                   Asking Price
                 </p>
                 <p className="text-2xl font-black text-slate-400">
@@ -904,13 +1027,19 @@ const MyBidsView = ({ bids }) => {
               </div>
             )}
 
-            <div className="flex justify-between items-center text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">
-              <span>
+            <div className="flex justify-between items-center pt-2">
+              <div className="flex items-center gap-2 text-[9px] font-black text-slate-300 uppercase tracking-widest">
+                <Calendar size={12} />
                 Submitted {new Date(bid.created_at).toLocaleDateString()}
-              </span>
-              {bid.status === "accepted" && (
-                <button className="flex items-center gap-2 text-[#769c2d] hover:underline">
-                  <MessageSquare size={14} /> Contact Seller
+              </div>
+
+              {bid.status === "accepted" ? (
+                <button className="px-6 py-2.5 bg-[#769c2d] text-white text-[9px] font-black rounded-xl uppercase tracking-widest shadow-lg shadow-lime-100 flex items-center gap-2 hover:scale-105 transition-transform">
+                  <MessageSquare size={12} /> Contact Seller
+                </button>
+              ) : (
+                <button className="px-6 py-2.5 bg-white border border-slate-100 text-slate-400 text-[9px] font-black rounded-xl uppercase tracking-widest hover:bg-slate-50 transition-colors">
+                  View Listing
                 </button>
               )}
             </div>
@@ -923,85 +1052,60 @@ const MyBidsView = ({ bids }) => {
 
 const AlertsView = ({ notifications }) => {
   return (
-    <div className="bg-white rounded-[3rem] shadow-sm border border-white p-8 min-h-[500px]">
-      <div className="flex justify-between items-center mb-8">
-        <h2 className="text-2xl font-black text-slate-800">My Alerts</h2>
-        <span className="bg-lime-100 text-[#769c2d] px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-          {notifications.length} Total
-        </span>
-      </div>
-
       <div className="space-y-4">
-        {notifications.length > 0 ? (
-          notifications.map((n) => (
+        {notifications.map((n) => (
+          <div
+            key={n.id}
+            className={`p-6 rounded-[2rem] border transition-all flex items-center gap-6 ${
+              !n.is_read
+                ? n.type === "alert_match"
+                  ? "bg-amber-50/50 border-amber-100" // Distinct color for matches
+                  : "bg-lime-50/50 border-lime-100"
+                : "bg-slate-50/30 border-slate-50"
+            }`}
+          >
+            {/* Dynamic Icon based on type */}
             <div
-              key={n.id}
-              className={`p-6 rounded-[2rem] border transition-all flex items-center gap-6 ${
-                !n.is_read
-                  ? n.type === "alert_match"
-                    ? "bg-amber-50/50 border-amber-100" // Distinct color for matches
-                    : "bg-lime-50/50 border-lime-100"
-                  : "bg-slate-50/30 border-slate-50"
+              className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                n.type === "alert_match"
+                  ? "bg-amber-100 text-amber-600"
+                  : "bg-lime-100 text-[#769c2d]"
               }`}
             >
-              {/* Dynamic Icon based on type */}
-              <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                  n.type === "alert_match"
-                    ? "bg-amber-100 text-amber-600"
-                    : "bg-lime-100 text-[#769c2d]"
-                }`}
-              >
-                {n.type === "alert_match" ? (
-                  <Search size={14} />
-                ) : (
-                  <Package size={14} />
+              {n.type === "alert_match" ? (
+                <Search size={14} />
+              ) : (
+                <Package size={14} />
+              )}
+            </div>
+
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-slate-800 text-sm">{n.title}</h4>
+                {n.type === "alert_match" && (
+                  <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">
+                    Match
+                  </span>
                 )}
               </div>
-
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-slate-800 text-sm">
-                    {n.title}
-                  </h4>
-                  {n.type === "alert_match" && (
-                    <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">
-                      Match
-                    </span>
-                  )}
-                </div>
-                {/* FIX: Use description first, then content as a fallback */}
-                <p className="text-xs text-slate-500 mt-1">
-                  {n.description ||
-                    n.content ||
-                    "New e-waste listing matches your criteria."}
-                </p>
-              </div>
-
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-slate-300 uppercase">
-                  {new Date(n.created_at).toLocaleDateString([], {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </p>
-              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {n.description ||
+                  n.content ||
+                  "New e-waste listing matches your criteria."}
+              </p>
             </div>
-          ))
-        ) : (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-300">
-            <Bell size={48} className="mb-4 opacity-20" />
-            <p className="font-bold text-xs uppercase tracking-widest text-center">
-              No matches found yet.
-              <br />
-              <span className="text-[9px] font-medium opacity-50">
-                We'll notify you when items match your criteria.
-              </span>
-            </p>
+
+            <div className="text-right">
+              <p className="text-[10px] font-bold text-slate-300 uppercase">
+                {new Date(n.created_at).toLocaleDateString([], {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </p>
+            </div>
           </div>
-        )}
+        ))}
       </div>
-    </div>
   );
 };
 // --- MESSAGES VIEW COMPONENT ---
@@ -1290,90 +1394,122 @@ const MenuLink = ({ icon, label }) => (
 
 const ListingCard = ({ item, onBid, isVerified }) => {
   // A listing is locked if its status is NOT "active"
+  const getConditionStyles = (cond) => {
+    switch (cond?.toLowerCase()) {
+      case "defective":
+        return "bg-blue-50 text-blue-600";
+      case "working":
+        return "bg-emerald-50 text-emerald-600";
+      case "parts only":
+        return "bg-orange-50 text-orange-600";
+      default:
+        return "bg-slate-50 text-slate-600";
+    }
+  };
   const isLocked = item.status !== "active";
   const displayImage =
     item.images && item.images.length > 0 ? item.images : null;
   return (
-    <div className="bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-white relative group flex flex-col">
-      <div className="h-48 w-full bg-slate-100 relative overflow-hidden">
-        {displayImage ? (
-          <img
-            src={displayImage}
-            alt={item.device_model}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
-            <Package size={40} strokeWidth={1} />
-            <p className="text-[10px] font-bold mt-2 uppercase tracking-widest">
-              No Image Provided
-            </p>
-          </div>
+    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm hover:shadow-md transition-all relative group">
+      {/* Product Icon Box from Mockup */}
+      <div className="absolute top-8 right-8">
+        <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-[#769c2d] transition-colors">
+          <Box size={28} />
+        </div>
+      </div>
+
+      {/* Title & Model Section */}
+      <div className="mb-5">
+        <h3 className="text-xl font-black text-slate-800 leading-tight">
+          {item.device_model || "Device Name"}
+        </h3>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+          {item.device_type || "Generic Model"}
+        </p>
+      </div>
+
+      {/* Badges Row */}
+      <div className="flex gap-2 mb-5">
+        <span
+          className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${getConditionStyles(item.condition)}`}
+        >
+          {item.condition || "Condition"}
+        </span>
+
+        {/* Placeholder for "Pending Approval" or other status badges if needed */}
+        {item.status === "pending" && (
+          <span className="bg-orange-50 text-orange-500 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">
+            Pending Approval
+          </span>
         )}
       </div>
-      <div className="p-8 flex-1 flex flex-col">
-        <div className="flex justify-between items-start mb-4">
+
+      {/* Description */}
+      <p className="text-xs text-slate-500 mb-5 leading-relaxed line-clamp-2 h-8">
+        {item.description || "Description not available for this listing."}
+      </p>
+
+      {/* Location Section */}
+      <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mb-6">
+        <MapPin size={13} className="text-slate-300" />
+        <span>Barangay {item.location || "Valenzuela"} • 1.2 km away</span>
+      </div>
+
+      {/* Bidding Info Container (Light Blue Box) */}
+      <div className="bg-[#f0f9ff] rounded-[2rem] p-5 mb-6 border border-blue-100/50">
+        <div className="flex justify-between items-start mb-3">
           <div>
-            <h3 className="font-bold text-xl text-slate-800 tracking-tight">
-              {item.device_model}
-            </h3>
-            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mt-1">
-              ID: {item.id?.slice(0, 8)}
-            </p>
-          </div>
-          <div className="bg-slate-50 p-2 rounded-xl">
-            <LayoutGrid size={18} className="text-slate-400" />
-          </div>
-        </div>
-        <p className="text-xs text-slate-400 mb-6 font-medium line-clamp-2">
-          {item.description ||
-            "Verified local resource available for harvesting."}
-        </p>
-        <div className="flex items-center gap-4 text-[11px] text-slate-400 mb-6 font-bold">
-          <span className="flex items-center gap-1.5">
-            <MapPin size={16} className="text-[#769c2d]" /> Barangay Marulas
-          </span>
-        </div>
-        <div className="flex justify-between items-end pt-6 border-t border-slate-50 mt-auto">
-          <div>
-            <p className="text-[9px] font-black text-slate-200 uppercase mb-1">
+            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider mb-1">
               Asking Price
             </p>
-            <p className="text-2xl font-black text-[#3285a1]">
-              ₱{item.asking_price?.toLocaleString() || "0"}
+            <p className="text-xl font-black text-slate-800">
+              ₱{item.asking_price?.toLocaleString()}
             </p>
           </div>
-          <button
-            onClick={onBid}
-            disabled={!isVerified || isLocked}
-            // Use flex to align icon and text
-            className={`${
-              isVerified && !isLocked
-                ? "bg-[#769c2d] text-white hover:scale-105"
-                : "bg-slate-200 text-slate-400 cursor-not-allowed"
-            } px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2`}
-          >
-            {!isVerified ? (
-              // Add icon and updated text
-              <>
-                {" "}
-                <MessageSquare size={14} /> Pending Verification
-              </>
-            ) : isLocked ? (
-              <>
-                {" "}
-                <MessageSquare size={14} /> Bidding Closed
-              </>
-            ) : (
-              // The main button state
-              <>
-                {" "}
-                <MessageSquare size={14} /> Bid or Message
-              </>
-            )}
-          </button>
+          <div className="text-right">
+            <p className="text-[9px] font-black text-[#769c2d] uppercase tracking-wider mb-1">
+              Current Highest Bid
+            </p>
+            <p className="text-xl font-black text-[#769c2d]">
+              ₱{(item.asking_price + item.id.length * 10).toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center mt-4 pt-4 border-t border-blue-200/30">
+          <p className="text-[9px] text-blue-500 font-bold">
+            Highest Bidder:{" "}
+            <span className="text-slate-600 ml-1">Harvester***</span>
+          </p>
+          <span className="bg-red-50 text-red-500 text-[8px] font-black px-2.5 py-1 rounded-lg uppercase italic flex items-center gap-1">
+            <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse"></span>
+            High Competition
+          </span>
         </div>
       </div>
+
+      {/* Seller Footer */}
+      <div className="flex justify-between items-center pt-2">
+        <div className="flex flex-col">
+          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
+            Seller
+          </span>
+          <span className="text-xs font-black text-slate-700">
+            {item.profiles?.full_name || "Authorized Seller"}
+          </span>
+        </div>
+        <button
+          onClick={onBid}
+          className="bg-[#769c2d] text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#5d7a24] transition-all shadow-lg shadow-lime-900/10 active:scale-95"
+        >
+          Bid or Message
+        </button>
+      </div>
+
+      {/* Time Posted */}
+      <p className="text-[8px] text-slate-300 font-bold mt-5 uppercase tracking-widest">
+        Posted {new Date(item.created_at).toLocaleDateString()}
+      </p>
     </div>
   );
 };
