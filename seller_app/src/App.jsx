@@ -67,10 +67,12 @@ function App() {
   useEffect(() => {
     // 🌍 DETECT LITERALLY TYPED URL PATHS (e.g., /admin or /wmo)
     const path = window.location.pathname.toLowerCase();
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get("view")?.toLowerCase();
 
-    if (path === "/admin") {
+    if (path === "/admin" || viewParam === "admin") {
       setCurrentPage("admin_login");
-    } else if (path === "/wmo") {
+    } else if (path === "/wmo" || viewParam === "wmo") {
       setCurrentPage("env_login");
     }
 
