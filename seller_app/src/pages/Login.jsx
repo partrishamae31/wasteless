@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
 import AdminLogin from "./AdminLogin";
 import EnvOfficerLogin from "./EnvOfficerLogin";
+import AdminSignup from "./AdminSignup";
 import {
   Recycle,
   Shield,
@@ -20,16 +21,26 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
   const [isAdminView, setIsAdminView] = useState(false);
   const [isOfficerView, setIsOfficerView] = useState(false);
   // 1. ADD THESE STATES
+  const [isSignupView, setIsSignupView] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  if (isSignupView) {
+    return <AdminSignup onBackToLogin={() => setIsSignupView(false)} />;
+  } 
   if (isOfficerView) {
     return (
       <EnvOfficerLogin onBackToUserLogin={() => setIsOfficerView(false)} />
     );
   }
   if (isAdminView) {
-    return <AdminLogin onBackToUserLogin={() => setIsAdminView(false)} />;
+    return (
+    <AdminLogin 
+      onBackToUserLogin={() => setIsAdminView(false)} 
+      onSignUpClick={() => setIsSignupView(true)} // This function is what was missing
+    />
+  );
   }
 
   // 2. ADD THIS LOGIN FUNCTION
@@ -272,7 +283,7 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
             </span>
           </p>
           <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center">
-            <button
+            {/* <button
               onClick={() => setIsAdminView(true)}
               className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-full transition-all group"
             >
@@ -294,7 +305,7 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
               <span className="text-[9px] font-bold text-teal-600 uppercase tracking-widest">
                 Officer Portal
               </span>
-            </button>
+            </button> */}
           </div>
         </div>
       </div>

@@ -7,10 +7,11 @@ import {
   Eye, 
   EyeOff, 
   ArrowLeft,
-  Shield
+  Shield,
+  UserPlus
 } from "lucide-react";
 
-const AdminLogin = ({ onBackToUserLogin }) => {
+const AdminLogin = ({ onBackToUserLogin, onSignUpClick }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -106,15 +107,27 @@ const AdminLogin = ({ onBackToUserLogin }) => {
             >
               Access Admin Portal
             </button>
-          </form>          
-          {/* BACK TO LOGIN */}
-          <button
-            onClick={onBackToUserLogin}
-            className="mt-6 flex items-center gap-2 text-purple-600 hover:text-purple-700 text-xs font-bold transition-colors"
-          >
-            <ArrowLeft size={14} />
-            Back to User Login
-          </button>
+          </form>         
+          {/* INSERTED: REGISTRATION LINK */}
+          <div className="mt-6 flex flex-col items-center gap-4 w-full">
+            <button
+              onClick={onSignUpClick}
+              className="group flex items-center gap-2 text-slate-500 hover:text-purple-600 text-xs font-bold transition-colors"
+            >
+              <UserPlus size={14} className="group-hover:animate-bounce" />
+              Request Administrator Access
+            </button>
+
+            <div className="w-16 h-[1px] bg-slate-100" />
+
+            <button
+              onClick={onBackToUserLogin}
+              className="flex items-center gap-2 text-purple-600 hover:text-purple-700 text-xs font-bold transition-colors"
+            >
+              <ArrowLeft size={14} />
+              Back to User Login
+            </button>
+          </div>
         </div>
       </div>
 

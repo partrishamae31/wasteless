@@ -14,8 +14,8 @@ import {
   Database,
 } from "lucide-react";
 
-import VerifyCredentialsModal from "./components/modals/VerifyCredentialsModal";
-import UserDetailsModal from "./components/modals/UserDetailsModal";
+import VerifyCredentialsModal from "./src/components/modals/VerifyCredentialsModal";
+import UserDetailsModal from "./src/components/modals/UserDetailsModal";
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);

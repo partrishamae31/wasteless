@@ -4,12 +4,13 @@ import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 import SellerDashboard from "./pages/SellerDashboard";
 import HarvesterDashboard from "./pages/HarvesterDashboard";
-import AdminDashboard from "./admin/src/AdminDashboard";
-import AdminPanel from "./admin/src/AdminPanel";
+import AdminDashboard from "./admin/AdminDashboard";
+import AdminPanel from "./admin/AdminPanel";
 
 // --- ADDED IMPORTS ---
 import EnvOfficerLogin from "./pages/EnvOfficerLogin";
 import EnvOfficerPanel from "./wmo/EnvOfficerPanel";
+import AdminLogin from "./pages/AdminLogin";
 
 function App() {
   const [session, setSession] = useState(null);
@@ -32,7 +33,7 @@ function App() {
   // 🔥 SINGLE SOURCE OF TRUTH
   const loadUser = async (session) => {
     setLoading(true);
-    setIsChecked(false); 
+    setIsChecked(false);
 
     if (!session?.user) {
       setSession(null);
@@ -61,8 +62,30 @@ function App() {
     }
 
     setLoading(false);
-    setIsChecked(true); 
+    setIsChecked(true);
   };
+  useEffect(() => {
+    // 🌍 DETECT LITERALLY TYPED URL PATHS (e.g., /admin or /wmo)
+    const path = window.location.pathname.toLowerCase();
+
+    if (path === "/admin") {
+      setCurrentPage("admin_login");
+    } else if (path === "/wmo") {
+      setCurrentPage("env_login");
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      loadUser(data.session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      loadUser(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -149,17 +172,23 @@ function App() {
   return (
     <div className="App">
       {currentPage === "login" && (
-        <Login onSignUpClick={() => setCurrentPage("signup")} onEnvClick={() => setCurrentPage("env_login")} />
+        <Login
+          onSignUpClick={() => setCurrentPage("signup")}
+          onEnvClick={() => setCurrentPage("env_login")}
+        />
       )}
       {currentPage === "signup" && (
         <SignUp onLoginClick={() => setCurrentPage("login")} />
       )}
-      
+      {currentPage === "admin_login" && (
+        <AdminLogin onBackToUserLogin={() => setCurrentPage("login")} />
+      )}
+
       {/* --- ADDED ENV LOGIN PAGE --- */}
       {currentPage === "env_login" && (
-        <EnvOfficerLogin 
-          onBackToUserLogin={() => setCurrentPage("login")} 
-          onLoginSuccess={() => setIsEnvDemo(true)} 
+        <EnvOfficerLogin
+          onBackToUserLogin={() => setCurrentPage("login")}
+          onLoginSuccess={() => setIsEnvDemo(true)}
         />
       )}
     </div>
