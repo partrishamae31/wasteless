@@ -20,6 +20,9 @@ import {
   ShieldCheck,
   Zap,
   BarChart3,
+  HelpCircle,
+  Settings,
+  Film,
 } from "lucide-react";
 
 const DiagnosisSection = ({ title, count, items, selected, onToggle }) => {
@@ -69,6 +72,7 @@ const DiagnosisSection = ({ title, count, items, selected, onToggle }) => {
     </div>
   );
 };
+
 const ConditionSection = ({ selected, onChange }) => {
   const options = [
     {
@@ -133,12 +137,14 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [isSanitized, setIsSanitized] = useState(false);
-  // const [estimatedValue, setEstimatedValue] = useState(5000);
+  const [estimatedValue, setEstimatedValue] = useState(5000);
   const [userBarangay, setUserBarangay] = useState("");
   const [reusableValue, setReusableValue] = useState(0);
   const [scrapValue, setScrapValue] = useState(0);
+  const [componentBreakdown, setComponentBreakdown] = useState([]);
   const [showHazardGuidelines, setShowHazardGuidelines] = useState(false);
   const [showSanitizationGuide, setShowSanitizationGuide] = useState(false);
+  const [hasMarketHistory, setHasMarketHistory] = useState(true);
   const [checklist, setChecklist] = useState({
     factoryReset: false,
     accountsRemoved: false,
@@ -147,12 +153,332 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     hazardAcknowledged: false,
     valuationAcknowledged: false,
   });
+
+  // Add this helper object inside your file to handle dynamic breakdown mapping
+  const CATEGORY_COMPONENTS_MAP = {
+    Smartphone: {
+      display: {
+        label: "OLED/LCD Display Assembly",
+        weight: 0.32,
+        issues: [
+          "Cracked/Shattered Screen",
+          "Display Not Working (black screen, lines)",
+          "Touch Screen Not Responding",
+          "Screen Burn-in or Dead Pixels",
+          "Scratched Screen",
+        ],
+      },
+
+      motherboard: {
+        label: "Logic Board & IC Components",
+        weight: 0.33,
+        issues: [
+          "Won't Power On",
+          "Charging Problems",
+          "Water Damage / Liquid Exposure",
+          "Wi-Fi/Bluetooth Not Working",
+          "No Signal / SIM Detection Issue",
+          "Boot Loop / Stuck on Logo",
+        ],
+      },
+
+      battery: {
+        label: "Lithium-ion Battery Pack",
+        weight: 0.15,
+        issues: ["Dead/Degraded Battery", "Battery Swelling", "Overheating"],
+      },
+
+      camera: {
+        label: "Front & Rear Camera Modules",
+        weight: 0.08,
+        issues: ["Camera Not Working", "Blurry Camera", "Camera Focus Failure"],
+      },
+
+      ports: {
+        label: "Charging Port & Audio Components",
+        weight: 0.07,
+        issues: [
+          "Charging Port Loose/Damaged",
+          "Microphone Not Working",
+          "Speaker Distortion",
+          "Headphone Jack Failure",
+        ],
+      },
+
+      body: {
+        label: "Housing Frame & Back Cover",
+        weight: 0.05,
+        issues: [
+          "Cracked Back Panel",
+          "Bent or Damaged Frame",
+          "Minor Dents/Scratches",
+          "Paint Chipping/Fading",
+          "Missing Buttons or SIM Tray",
+        ],
+      },
+    },
+
+    Laptop: {
+      display: {
+        label: "LCD/LED Display Panel",
+        weight: 0.22,
+        issues: [
+          "Cracked/Shattered Screen",
+          "Display Flickering",
+          "Backlight Failure",
+          "Dead Pixels",
+          "Scratched Screen",
+        ],
+      },
+
+      motherboard: {
+        label: "Motherboard, CPU & GPU",
+        weight: 0.32,
+        issues: [
+          "Won't Power On",
+          "Overheating",
+          "Water Damage / Liquid Exposure",
+          "GPU Failure",
+          "Random Shutdowns",
+          "Charging Problems",
+        ],
+      },
+
+      battery: {
+        label: "Laptop Battery Pack",
+        weight: 0.13,
+        issues: ["Dead/Degraded Battery", "Battery Swelling", "Not Charging"],
+      },
+
+      storage: {
+        label: "SSD/HDD Storage Drive",
+        weight: 0.1,
+        issues: ["Drive Not Detected", "Slow Performance", "Corrupted Storage"],
+      },
+
+      keyboard: {
+        label: "Keyboard & Trackpad",
+        weight: 0.1,
+        issues: [
+          "Buttons Not Working",
+          "Trackpad Not Responding",
+          "Missing Keys",
+        ],
+      },
+
+      ports: {
+        label: "USB, HDMI & I/O Ports",
+        weight: 0.07,
+        issues: [
+          "USB Port Failure",
+          "HDMI Port Not Working",
+          "Audio Jack Problems",
+        ],
+      },
+
+      body: {
+        label: "Chassis & Hinges",
+        weight: 0.06,
+        issues: [
+          "Broken Hinges",
+          "Bent or Damaged Frame",
+          "Minor Dents/Scratches",
+        ],
+      },
+    },
+
+    Tablet: {
+      display: {
+        label: "Touchscreen & Display Panel",
+        weight: 0.38,
+        issues: [
+          "Cracked/Shattered Screen",
+          "Touch Screen Not Responding",
+          "Display Not Working",
+          "Dead Pixels",
+        ],
+      },
+
+      motherboard: {
+        label: "Logic Board Components",
+        weight: 0.28,
+        issues: [
+          "Won't Power On",
+          "Charging Problems",
+          "Water Damage / Liquid Exposure",
+          "Boot Loop",
+        ],
+      },
+
+      battery: {
+        label: "Internal Battery Module",
+        weight: 0.18,
+        issues: ["Dead/Degraded Battery", "Battery Swelling", "Overheating"],
+      },
+
+      ports: {
+        label: "Charging & Audio Ports",
+        weight: 0.08,
+        issues: ["Charging Port Loose/Damaged", "Speaker Not Working"],
+      },
+
+      body: {
+        label: "Aluminum/Plastic Housing",
+        weight: 0.08,
+        issues: [
+          "Bent or Damaged Frame",
+          "Cracked Back Panel",
+          "Minor Dents/Scratches",
+        ],
+      },
+    },
+
+    Monitor: {
+      display: {
+        label: "LCD/LED Display Matrix",
+        weight: 0.65,
+        issues: [
+          "Cracked/Shattered Screen",
+          "Dead Pixels",
+          "Display Flickering",
+          "Backlight Failure",
+          "Display Not Working",
+        ],
+      },
+
+      motherboard: {
+        label: "Power Supply & Main Board",
+        weight: 0.2,
+        issues: [
+          "Won't Power On",
+          "Power Fluctuation",
+          "Display Signal Failure",
+        ],
+      },
+
+      ports: {
+        label: "HDMI/VGA/Display Ports",
+        weight: 0.08,
+        issues: ["HDMI Port Not Working", "Loose Display Ports"],
+      },
+
+      body: {
+        label: "Stand, Bezel & Housing",
+        weight: 0.07,
+        issues: ["Broken Stand", "Bent Frame", "Minor Dents/Scratches"],
+      },
+    },
+
+    Desktop: {
+      motherboard: {
+        label: "Motherboard & Processor",
+        weight: 0.28,
+        issues: ["Won't Power On", "Overheating", "Random Shutdowns"],
+      },
+
+      gpu: {
+        label: "Graphics Card (GPU)",
+        weight: 0.18,
+        issues: ["No Display Output", "GPU Artifacting", "Overheating"],
+      },
+
+      ram: {
+        label: "Memory Modules (RAM)",
+        weight: 0.1,
+        issues: ["Memory Not Detected", "Random Crashes"],
+      },
+
+      storage: {
+        label: "SSD/HDD Storage",
+        weight: 0.12,
+        issues: ["Drive Failure", "Slow Boot", "Corrupted Storage"],
+      },
+
+      psu: {
+        label: "Power Supply Unit",
+        weight: 0.15,
+        issues: ["Won't Power On", "Power Failure"],
+      },
+
+      cooling: {
+        label: "Cooling System & Fans",
+        weight: 0.07,
+        issues: ["Fan Failure", "Overheating"],
+      },
+
+      body: {
+        label: "PC Case & Panels",
+        weight: 0.1,
+        issues: ["Bent Frame", "Missing Panels", "Minor Dents/Scratches"],
+      },
+    },
+
+    Others: {
+      motherboard: {
+        label: "Primary Circuit Components",
+        weight: 0.5,
+        issues: [
+          "Won't Power On",
+          "Water Damage / Liquid Exposure",
+          "Short Circuit",
+        ],
+      },
+
+      ports: {
+        label: "Connectivity Interfaces",
+        weight: 0.2,
+        issues: ["Port Failure", "Loose Connections"],
+      },
+
+      body: {
+        label: "External Housing & Structure",
+        weight: 0.3,
+        issues: [
+          "Bent or Damaged Frame",
+          "Minor Dents/Scratches",
+          "Missing Parts",
+        ],
+      },
+    },
+
+    Parts: {
+      motherboard: {
+        label: "Logic Board / PCB",
+        weight: 0.4,
+        issues: ["Burnt Components", "Short Circuit", "Water Damage"],
+      },
+
+      display: {
+        label: "Display Components",
+        weight: 0.25,
+        issues: ["Cracked Screen", "Dead Pixels"],
+      },
+
+      battery: {
+        label: "Battery Components",
+        weight: 0.15,
+        issues: ["Battery Swelling", "Dead Battery"],
+      },
+
+      ports: {
+        label: "Ports & Connectors",
+        weight: 0.1,
+        issues: ["Loose Connector", "Damaged Port"],
+      },
+
+      body: {
+        label: "Casing & Structural Parts",
+        weight: 0.1,
+        issues: ["Broken Housing", "Missing Parts"],
+      },
+    },
+  };
   const [formData, setFormData] = useState({
     category: "",
     model: "",
     condition: "Defective", // Default condition
     description: "",
-    images: [],
+    attachments: [],
     price: "",
   });
 
@@ -163,6 +489,42 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     cosmetic: [],
     noDamage: false,
   });
+
+  const isLargeApplianceDetected = () => {
+    if (
+      !formData.model ||
+      (formData.category !== "Others" && formData.category !== "Parts")
+    ) {
+      return false;
+    }
+
+    const prohibitedKeywords = [
+      "refrigerator",
+      "fridge",
+      "ref",
+      "washing machine",
+      "washer",
+      "dryer",
+      "aircon",
+      "air con",
+      "air conditioner",
+      "ac",
+      "microwave",
+      "oven",
+      "stove",
+      "range hood",
+      "freezer",
+      "dishwasher",
+      "chiller",
+      "water dispenser",
+    ];
+
+    const inputLower = formData.model.toLowerCase().trim();
+    return prohibitedKeywords.some((keyword) => inputLower.includes(keyword));
+  };
+
+  const hasFormError = isLargeApplianceDetected();
+
   const toggleIssue = (type, item) => {
     setIssues((prev) => {
       const currentList = prev[type];
@@ -257,6 +619,76 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     fetchUserProfile();
   }, [userId]);
   useEffect(() => {
+    const determineMarketValue = async () => {
+      if (!formData.model || !formData.category) return;
+
+      try {
+        const { data: matchedListings, error } = await supabase
+          .from("listings")
+          .select("asking_price")
+          .ilike("device_model", formData.model.trim());
+
+        if (error) throw error;
+
+        // Requirement: Checked if model has been specified 3 or more times
+        if (matchedListings && matchedListings.length >= 3) {
+          setHasMarketHistory(true);
+          const totalMarketPrice = matchedListings.reduce(
+            (sum, item) => sum + Number(item.asking_price || 0),
+            0,
+          );
+          const computedAverage = totalMarketPrice / matchedListings.length;
+
+          setFormData((prev) => ({
+            ...prev,
+            base_part_value: computedAverage,
+            base_scrap_value: computedAverage * 0.15,
+          }));
+        } else {
+          // Trigger the 'No transaction history available' mode
+          setHasMarketHistory(false);
+
+          // Fetch baseline category rates for safety behind the scenes
+          const { data: fallbackRates } = await supabase
+            .from("device_valuation_rates")
+            .select("base_part_value, scrap_value")
+            .eq("category", formData.category)
+            .limit(1);
+
+          if (fallbackRates && fallbackRates.length > 0) {
+            setFormData((prev) => ({
+              ...prev,
+              base_part_value: fallbackRates.base_part_value,
+              base_scrap_value: fallbackRates.scrap_value,
+            }));
+          } else {
+            const categoricalDefaults = {
+              Smartphone: { part: 3500, scrap: 500 },
+              Laptop: { part: 7000, scrap: 1000 },
+              Tablet: { part: 4500, scrap: 600 },
+              Monitor: { part: 2500, scrap: 400 },
+              Parts: { part: 2000, scrap: 300 },
+              Others: { part: 1500, scrap: 200 },
+            };
+            const activeDefault =
+              categoricalDefaults[formData.category] ||
+              categoricalDefaults.Others;
+            setFormData((prev) => ({
+              ...prev,
+              base_part_value: activeDefault.part,
+              base_scrap_value: activeDefault.scrap,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Market Valuation Engine Failure:", err.message);
+      }
+    };
+
+    determineMarketValue();
+  }, [formData.model, formData.category]);
+
+  useEffect(() => {
     const fetchModels = async () => {
       // 1. Reset models when category changes or is empty
       if (!formData.category || formData.category === "Others") {
@@ -292,28 +724,65 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   };
 
   useEffect(() => {
-    if (isOpen) {
-      calculateRecoveryValue();
-    }
-  }, [issues, isOpen]);
+    calculateRecoveryValue();
+  }, [issues, formData.base_part_value, formData.category]);
+
   const calculateRecoveryValue = () => {
-    // Use the base value from the DB model selected in Step 1
-    let baseValue = formData.base_part_value || 0;
-    let scrap = formData.base_scrap_value || 0;
+    const baseValue = formData.base_part_value || 0;
+    const scrap = formData.base_scrap_value || 0;
+    const currentCategory = formData.category || "Others";
 
-    if (baseValue === 0) return; // Fallback if no model is selected
+    // Dynamic extraction based on user selection
+    const activeComponentSchema =
+      CATEGORY_COMPONENTS_MAP[currentCategory] ||
+      CATEGORY_COMPONENTS_MAP.Others;
 
-    // Apply condition-based deductions
-    if (issues.physical.includes("Cracked/Shattered Screen")) baseValue *= 0.7; // 30% deduction
-    if (issues.functional.includes("Won't Power On")) baseValue *= 0.5; // 50% deduction
-    if (issues.functional.includes("Dead/Degraded Battery")) baseValue -= 800;
+    const selectedIssues = [
+      ...issues.physical,
+      ...issues.functional,
+      ...issues.cosmetic,
+    ];
 
-    const finalPartsValue = Math.max(baseValue, scrap);
+    let sumOfIntactComponents = 0;
+    const breakdownReport = [];
+
+    Object.keys(activeComponentSchema).forEach((key) => {
+      const component = activeComponentSchema[key];
+
+      // 1. Compute individual component baseline value
+      const componentBaseValue = Math.round(baseValue * component.weight);
+
+      // 2. Evaluate if user-selected diagnostics hit this component matrix
+      const hasDamage = component.issues.some((issue) =>
+        selectedIssues.includes(issue),
+      );
+
+      const isComponentIntact = issues.noDamage || !hasDamage;
+
+      // 3. Accumulate only the intact component rows to guarantee alignment
+      if (isComponentIntact) {
+        sumOfIntactComponents += componentBaseValue;
+      }
+
+      breakdownReport.push({
+        label: component.label,
+        status: isComponentIntact ? "Intact" : "Damaged",
+        value: isComponentIntact ? componentBaseValue : 0,
+        weightPercentage: Math.round(component.weight * 100),
+      });
+    });
+
+    // CRITICAL FIX: Base total reusable calculation directly on the sum of what is intact
+    // This completely removes individual rounding conflicts
+    const finalPartsValue = Math.max(sumOfIntactComponents, scrap);
 
     setReusableValue(Math.round(finalPartsValue));
     setScrapValue(scrap);
+    setComponentBreakdown(breakdownReport);
   };
+
   if (!isOpen) return null;
+
   const handleNoDamageToggle = () => {
     setIssues({
       physical: [],
@@ -348,13 +817,20 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       id: "Others",
       icon: <Package size={32} strokeWidth={1.5} />,
       label: "Others",
-    }, // Added per mockup
+    },
+    {
+      id: "Parts",
+      icon: <Settings size={32} strokeWidth={1.5} />, // Matches the packaging/box style icon layout
+      label: "Parts",
+    },
   ];
+
   const allSelectedIssues = [
     ...issues.physical,
     ...issues.functional,
     ...issues.cosmetic,
   ];
+
   const isAssessmentComplete =
     issues.noDamage ||
     issues.physical.length > 0 ||
@@ -369,6 +845,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     // Only require hazard check if the warning is actually shown
     (showHazardWarning ? checklist.hazardAcknowledged : true) &&
     checklist.valuationAcknowledged;
+
   const checkAndNotifyHarvesters = async (newListing) => {
     try {
       // Matches your schema: device_model, max_price, is_active
@@ -394,6 +871,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       console.error("Alert Engine Error:", err.message);
     }
   };
+
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
 
@@ -409,7 +887,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       alert("Only PNG and JPEG files are allowed.");
     }
 
-    if (validFiles.length + formData.images.length > 5) {
+    if (validFiles.length + formData.attachments.length > 5) {
       alert("You can only upload up to 5 images.");
     }
 
@@ -427,17 +905,77 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
   if (!isOpen) return null;
 
+  const handleAssetAttachment = (e) => {
+    const files = Array.from(e.target.files);
+    const newAttachments = [];
+
+    for (const file of files) {
+      const isImage =
+        file.type.startsWith("image/png") ||
+        file.type.startsWith("image/jpeg") ||
+        file.type.startsWith("image/jpg");
+      const isVideo =
+        file.type.startsWith("video/mp4") ||
+        file.type.startsWith("video/quicktime") ||
+        file.type.startsWith("video/mov");
+
+      if (!isImage && !isVideo) {
+        alert(
+          `Unsupported file type: ${file.name}. Only images (PNG, JPEG) and videos (MP4, MOV) are accepted.`,
+        );
+        continue;
+      }
+
+      // Check max limits (Combined 5 item limit)
+      if (formData.attachments.length + newAttachments.length >= 5) {
+        alert("Maximum upload allowance is capped at 5 files.");
+        break;
+      }
+
+      newAttachments.push({
+        file,
+        type: isImage ? "image" : "video",
+        previewUrl: URL.createObjectURL(file),
+      });
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      attachments: [...prev.attachments, ...newAttachments],
+    }));
+  };
+
+  const removeAttachment = (index) => {
+    setFormData((prev) => {
+      const copy = [...prev.attachments];
+      URL.revokeObjectURL(copy[index].previewUrl);
+      copy.splice(index, 1);
+      return { ...prev, attachments: copy };
+    });
+  };
+
   const handleFinish = async () => {
     setLoading(true);
     try {
-      const imageUrls = [];
-      for (const file of formData.images) {
-        const fileName = `${userId}/${Date.now()}-${file.name}`;
-        await supabase.storage.from("listing-images").upload(fileName, file);
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("listing-images").getPublicUrl(fileName);
-        imageUrls.push(publicUrl);
+      // 1. Combine all processed asset URLs into a single media array
+      const uploadedMediaUrls = [];
+
+      if (formData.attachments && formData.attachments.length > 0) {
+        for (const item of formData.attachments) {
+          const fileName = `${userId}/${Date.now()}-${item.file.name}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("listing-images") // Keep uploading to your existing bucket
+            .upload(fileName, item.file);
+
+          if (uploadError) throw uploadError;
+
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("listing-images").getPublicUrl(fileName);
+
+          uploadedMediaUrls.push(publicUrl);
+        }
       }
 
       const selectedIssues = [
@@ -446,20 +984,17 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         ...issues.cosmetic,
       ];
 
-      // 2. Create a formatted string of the problems found
       const problemSummary =
         selectedIssues.length > 0
           ? `[SYSTEM DIAGNOSIS: ${selectedIssues.join(", ")}]`
           : "[SYSTEM DIAGNOSIS: No visible damage]";
 
-      // 3. Combine the automated summary with the user's manual description
       const finalDescription =
         `${problemSummary} ${formData.description}`.trim();
-
       const finalPrice =
         formData.price === "" ? reusableValue : parseFloat(formData.price);
 
-      // Aligned with your 'listings' table columns
+      // 2. Map the array to the existing images column
       const { data: insertedData, error } = await supabase
         .from("listings")
         .insert([
@@ -469,31 +1004,33 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
             condition: formData.condition,
             asking_price: finalPrice,
             scrap_value: scrapValue,
-            images: imageUrls,
+            images: uploadedMediaUrls, // Pass all combined assets here
             status: "active",
-            description: finalDescription, // Checklist data is now saved here!
+            description: finalDescription,
             barangay: userBarangay,
-            category: formData.category, // Ensure category is saved for filtering
+            category: formData.category,
           },
         ])
         .select()
         .single();
 
       if (error) throw error;
+
       if (insertedData && selectedIssues.length > 0) {
-        await handleHazardDetection(insertedData.id, selectedIssues); //[cite: 8]
+        await handleHazardDetection(insertedData.id, selectedIssues);
       }
 
       if (insertedData) await checkAndNotifyHarvesters(insertedData);
 
-      alert("Listing Created!");
+      alert("Listing Created Successfully!");
       onClose();
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
-      setLoading(false);
+      setLoading(false); // Safeguard against sticking at "Processing..."
     }
   };
+  const activeLabel = formData.category || "Device";
   const steps = [1, 2, 3];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
@@ -566,84 +1103,46 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 ))}
               </div>
 
+              {/* Dynamic Input field replacing the static Dropdown structure */}
               <div className="mt-6">
                 <label className="text-sm font-semibold text-slate-700 block mb-2">
-                  {formData.category === "Others"
-                    ? "Specific Model / Device Name"
-                    : "Select Model"}
+                  Device Model / Name
                 </label>
-
-                {formData.category === "Others" ? (
-                  /* Text Input for 'Others' category as seen in image_5e05b5.png */
-                  <input
-                    type="text"
-                    placeholder="e.g., Smartwatch, Router, E-reader..."
-                    className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 focus:ring-teal-500/10"
-                    value={formData.model}
-                    onChange={(e) =>
-                      setFormData({ ...formData, model: e.target.value })
-                    }
-                  />
-                ) : (
-                  /* Dropdown for predefined categories */
-                  <div className="relative">
-                    <select
-                      className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none appearance-none focus:ring-2 focus:ring-teal-500/10"
-                      value={formData.model}
-                      onChange={(e) => {
-                        const selectedModel = dbModels.find(
-                          (m) => m.model_name === e.target.value,
-                        );
-                        setFormData({
-                          ...formData,
-                          model: e.target.value,
-                          base_part_value: selectedModel?.base_part_value || 0,
-                          base_scrap_value: selectedModel?.scrap_value || 0,
-                        });
-                      }}
-                    >
-                      {/* Default placeholder */}
-                      <option value="" disabled>
-                        {!formData.category
-                          ? "Select a category first..."
-                          : dbModels.length > 0
-                            ? "Choose a model..."
-                            : "No models found for this category"}
-                      </option>
-
-                      {/* Map through the models from your database */}
-                      {dbModels.map((m) => (
-                        <option key={m.id || m.model_name} value={m.model_name}>
-                          {m.model_name}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* Dropdown Arrow Icon */}
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <svg
-                        className="w-4 h-4 text-slate-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                )}
+                <input
+                  type="text"
+                  disabled={!formData.category}
+                  placeholder={
+                    formData.category
+                      ? "e.g., iPhone 13 Pro, MacBook Pro 2021, etc..."
+                      : "Please choose a category first..."
+                  }
+                  className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 focus:ring-teal-500/10 disabled:bg-slate-50 disabled:cursor-not-allowed"
+                  value={formData.model}
+                  onChange={(e) =>
+                    setFormData({ ...formData, model: e.target.value })
+                  }
+                />
               </div>
 
+              {hasFormError && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex gap-3 animate-in fade-in duration-200">
+                  <AlertTriangle
+                    size={18}
+                    className="text-red-500 shrink-0 mt-0.5"
+                  />
+                  <p className="text-[11px] font-medium text-red-700 leading-normal">
+                    <span className="font-bold">Error:</span> This is a
+                    non-small form factor device. Large household appliances
+                    cannot be listed on this platform.
+                  </p>
+                </div>
+              )}
+
               <button
-                disabled={!formData.category || !formData.model}
+                disabled={!formData.category || !formData.model || hasFormError}
                 onClick={() => setStep(2)}
                 className={`w-full py-4 mt-4 rounded-xl font-bold text-sm transition-all ${
-                  formData.category && formData.model
+                  formData.category && formData.model && !hasFormError
                     ? "bg-[#2d7a7f] text-white shadow-lg shadow-teal-900/10"
                     : "bg-slate-200 text-slate-400 cursor-not-allowed"
                 }`}
@@ -657,23 +1156,75 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               {/* Photo Upload (Simplified for brevity) */}
               <div className="space-y-3">
                 <p className="text-sm font-bold text-gray-700">
-                  Photos ({formData.images.length}/5)
+                  Photos and Videos ({formData.attachments.length}/5)
                 </p>
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-gray-200 rounded-2xl p-10 flex flex-col items-center justify-center bg-gray-50/50 cursor-pointer"
+                  className="border-2 border-dashed border-gray-200 rounded-2xl p-8 flex flex-col items-center justify-center bg-gray-50/50 cursor-pointer hover:bg-gray-100/50 transition-colors"
                 >
-                  <ImageIcon className="text-gray-300 mb-2" size={24} />
-                  <p className="text-sm font-bold text-gray-700">Add photos</p>
+                  <div className="flex gap-2 text-gray-300 mb-2">
+                    <ImageIcon size={24} />
+                    <Film size={24} />
+                  </div>
+                  <p className="text-sm font-bold text-gray-700">
+                    Add photos or videos
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Supported formats: JPG, PNG, MP4, MOV • Max file size: 10MB
+                    per file
+                  </p>
                   <input
                     type="file"
                     multiple
-                    accept="image/png, image/jpeg, image/jpg"
+                    accept="image/png, image/jpeg, image/jpg, video/mp4, video/quicktime, video/mov"
                     className="hidden"
                     ref={fileInputRef}
-                    onChange={handleFileChange}
+                    onChange={handleAssetAttachment}
                   />
                 </div>
+                {formData.attachments.length > 0 && (
+                  <div className="grid grid-cols-5 gap-2 pt-2">
+                    {formData.attachments.map((item, index) => (
+                      <div
+                        key={index}
+                        className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 border border-gray-200 group"
+                      >
+                        {item.type === "image" ? (
+                          <img
+                            src={item.previewUrl}
+                            alt="preview"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <video
+                            src={item.previewUrl}
+                            className="w-full h-full object-cover"
+                            muted
+                          />
+                        )}
+
+                        {/* Status/Type pill indicator overlay */}
+                        <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-[2px] rounded px-1 py-0.5 text-[8px] font-bold text-white uppercase flex items-center gap-0.5">
+                          {item.type === "image" ? (
+                            <ImageIcon size={8} />
+                          ) : (
+                            <Film size={8} />
+                          )}
+                          {item.type}
+                        </div>
+
+                        {/* Action remove trigger click button icon hook */}
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(index)}
+                          className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Damage Assessment Info */}
@@ -716,6 +1267,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   <CheckCircle2 size={24} className="text-emerald-500" />
                 )}
               </button>
+
               <ConditionSection
                 selected={formData.condition}
                 onChange={(val) => setFormData({ ...formData, condition: val })}
@@ -859,64 +1411,186 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           {step === 3 && (
             <div className="space-y-6 max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
               {/* Estimated Recovery Value Header (Green Card) */}
-              {/* <div className="bg-[#00c853] text-white rounded-3xl p-6 relative shadow-lg">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider opacity-90">
-                      Estimated Recovery Value
-                    </p>
-                    <h3 className="text-4xl font-bold">
-                      ₱{reusableValue.toLocaleString()}
-                    </h3>
+              {hasMarketHistory ? (
+                /* Dynamic Market Card View */
+                <div className="bg-[#00c853] text-white rounded-3xl p-6 relative shadow-lg">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider opacity-90">
+                        Estimated Recovery Value
+                      </p>
+                      <h3 className="text-4xl font-bold">
+                        ₱{reusableValue.toLocaleString()}
+                      </h3>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className="bg-white/20 text-[10px] px-3 py-1 rounded-full border border-white/30">
+                        Market Estimate
+                      </span>
+                      <span className="flex items-center gap-1 text-[10px] opacity-90">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>{" "}
+                        Dynamic
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <span className="bg-white/20 text-[10px] px-3 py-1 rounded-full border border-white/30">
-                      View Breakdown
-                    </span>
-                    <span className="flex items-center gap-1 text-[10px] opacity-90">
-                      <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>{" "}
-                      Stable
-                    </span>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4 mt-6">
-                  <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
-                    <p className="text-[10px] opacity-80 mb-1">
-                      Reusable Part Value
-                    </p>
-                    <p className="text-xl font-bold">
-                      ₱{reusableValue.toLocaleString()}
-                    </p>
+                  <div className="grid grid-cols-2 gap-4 mt-6">
+                    <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
+                      <p className="text-[10px] opacity-80 mb-1">
+                        Reusable Part Value
+                      </p>
+                      <p className="text-xl font-bold">
+                        ₱{reusableValue.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
+                      <p className="text-[10px] opacity-80 mb-1">
+                        Raw Scrap Value
+                      </p>
+                      <p className="text-xl font-bold">
+                        ₱{scrapValue.toLocaleString()}
+                      </p>
+                    </div>
                   </div>
-                  <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
-                    <p className="text-[10px] opacity-80 mb-1">
-                      Raw Scrap Value
-                    </p>
-                    <p className="text-xl font-bold">
-                      ₱{scrapValue.toLocaleString()}
-                    </p>
-                    <p className="text-[8px] opacity-60">
-                      incl. all parts listed
-                    </p>
-                  </div>
-                </div>
-
-                <p className="text-[9px] mt-4 opacity-80">
-                  Price Range: ₱{(reusableValue * 0.9).toLocaleString()} - ₱
-                  {(reusableValue * 1.1).toLocaleString()}
-                </p>
-
-                <div className="mt-3 p-3 bg-black/10 rounded-xl flex gap-2 items-start">
-                  <div className="w-3 h-3 bg-white/20 rounded-full mt-0.5 shrink-0" />
-                  <p className="text-[9px] leading-tight">
-                    This is a non-binding estimate. Actual offers may vary based
-                    on buyer assessment and market conditions.
+                  <p className="text-[9px] mt-4 opacity-80">
+                    Calculated based on actual historical listings of similar
+                    models.
                   </p>
                 </div>
-              </div> */}
+              ) : (
+                /* "No Transaction History Found" Slate Alternative Card */
+                <div className="bg-slate-700 text-white rounded-3xl p-6 relative shadow-lg">
+                  <div className="flex gap-3 items-start mb-3">
+                    <HelpCircle
+                      className="text-slate-300 shrink-0 mt-1"
+                      size={22}
+                    />
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-slate-300">
+                        Market Value Context
+                      </p>
+                      <h3 className="text-xl font-bold leading-snug">
+                        No transaction history found
+                      </h3>
+                    </div>
+                  </div>
 
-              {/* Component Breakdown was removed from here */}
+                  <p className="text-xs text-slate-200/90 leading-relaxed bg-slate-800/40 p-3.5 rounded-xl border border-slate-600/30">
+                    This model hasn't been listed on the marketplace before. You
+                    have complete flexibility to input your desired asking price
+                    below!
+                  </p>
+
+                  <div className="mt-4 pt-3 border-t border-slate-600/40 flex justify-between items-center">
+                    <span className="text-[10px] text-slate-300 font-medium">
+                      Estimated Baseline Scrap Value:
+                    </span>
+                    <span className="text-sm font-extrabold text-teal-300">
+                      ₱{scrapValue.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b border-gray-50 pb-2">
+                  <p className="text-xs font-bold text-gray-800">
+                    Component Breakdown
+                  </p>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      hasMarketHistory
+                        ? "bg-teal-50 text-[#2d7a7f]"
+                        : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {hasMarketHistory
+                      ? "Value Deducted Pricing"
+                      : "Hardware Integrity Map"}
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {issues.noDamage ? (
+                    <div className="text-center py-4 bg-emerald-50/20 rounded-xl border border-dashed border-emerald-100">
+                      <p className="text-xs text-emerald-600 font-bold">
+                        All core {formData.category || "device"} subsystems are
+                        fully intact (100%)
+                      </p>
+                    </div>
+                  ) : (
+                    componentBreakdown.map((comp, idx) => (
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center text-xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${comp.status === "Intact" ? "bg-emerald-500" : "bg-red-400"}`}
+                          />
+                          <span className="text-gray-600 font-medium">
+                            {comp.label}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`text-[9px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+                              comp.status === "Intact"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-red-50 text-red-600 line-through"
+                            }`}
+                          >
+                            {comp.status}
+                          </span>
+
+                          {/* ALTERNATIVE VIEW FOR NEW MODELS vs POPULAR MODELS */}
+                          {hasMarketHistory ? (
+                            <span
+                              className={`font-bold w-16 text-right ${comp.status === "Intact" ? "text-gray-700" : "text-gray-400"}`}
+                            >
+                              ₱
+                              {comp.status === "Intact"
+                                ? comp.value.toLocaleString()
+                                : "0"}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-gray-400 w-16 text-right">
+                              {comp.weightPercentage}% alloc
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Bottom Summary context toggle display */}
+                {hasMarketHistory ? (
+                  <div className="pt-2 border-t border-gray-50 flex justify-between items-center text-[11px] font-medium text-gray-400">
+                    <span>Maximum Reusable Component Valuen</span>
+                    <span className="font-bold text-gray-600">
+                      ₱{reusableValue.toLocaleString()}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="pt-2 border-t border-gray-50 bg-slate-50/50 p-2.5 rounded-xl text-[10px] text-slate-500 leading-normal flex gap-2">
+                    <Info
+                      size={14}
+                      className="text-slate-400 shrink-0 mt-0.5"
+                    />
+                    <p>
+                      Since this{" "}
+                      <span className="font-semibold text-slate-700">
+                        {formData.model || "model"}
+                      </span>{" "}
+                      configuration is new to the marketplace index database,
+                      core harvesting yields are visualized via weight
+                      allocations rather than pricing metrics estimates.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-4">
                 <div className="flex items-center gap-2">
@@ -934,7 +1608,6 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       <circle cx="8" cy="8" r="6" />
                       <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
                       <path d="M7 6h1v4" />
-                      <path d="M17 16h1" />
                     </svg>
                   </div>
                   <p className="text-sm font-bold text-gray-800">
@@ -947,33 +1620,20 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     Your Asking Price <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <circle cx="8" cy="8" r="6" />
-                        <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
-                      </svg>
-                    </div>
                     <input
                       type="number"
                       value={formData.price}
                       onChange={(e) =>
                         setFormData({ ...formData, price: e.target.value })
                       }
-                      placeholder="e.g., 6,000"
-                      className="w-full pl-12 pr-4 py-4 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-teal-500/10 focus:border-[#2d7a7f]"
+                      placeholder={
+                        hasMarketHistory
+                          ? `Recommended: ₱${reusableValue}`
+                          : "Input your desired price"
+                      }
+                      className="w-full pl-6 pr-4 py-4 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-teal-500/10 focus:border-[#2d7a7f]"
                     />
                   </div>
-                  <p className="text-[10px] text-gray-500">
-                    Set the minimum price you're willing to accept. Buyers can
-                    bid at or above this price.
-                  </p>
                 </div>
               </div>
 
@@ -987,25 +1647,40 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: "Market Trend", val: "Stable", icon: "—" },
-                    { label: "Price Range", val: "~₱8K", icon: "⚝" },
-                    { label: "Confidence", val: "Low", icon: "⚙" },
+                    {
+                      label: "Market Trend",
+                      val: hasMarketHistory ? "Active" : "New Model",
+                      icon: <TrendingUp size={14} />,
+                    },
+                    {
+                      label: "Price Range",
+                      val: hasMarketHistory
+                        ? `₱${scrapValue.toLocaleString()} - ₱${Math.round(reusableValue * 1.3).toLocaleString()}`
+                        : "Open Market",
+                      icon: <Percent size={14} />,
+                    },
+                    {
+                      label: "Confidence",
+                      val: hasMarketHistory ? "High" : "Low",
+                      icon: <ShieldCheck size={14} />,
+                    },
                   ].map((stat, i) => (
                     <div
                       key={i}
-                      className="bg-gray-50/50 p-3 rounded-xl text-center border border-gray-50"
+                      className="bg-gray-50/50 p-3 rounded-xl text-center border border-gray-50 flex flex-col items-center justify-center"
                     >
                       <div className="text-teal-500 mb-1">{stat.icon}</div>
                       <p className="text-[8px] text-gray-400 mb-1 uppercase font-bold">
                         {stat.label}
                       </p>
-                      <p className="text-xs font-bold text-gray-800">
+                      <p className="text-[11px] font-bold text-gray-800 leading-tight">
                         {stat.val}
                       </p>
                     </div>
                   ))}
                 </div>
               </div>
+
               {/* 1. Valuation Logic Summary - Based on provided image */}
               <div className="bg-gray-50/50 rounded-2xl p-5 border border-gray-100 space-y-2">
                 <p className="text-sm font-bold text-gray-800">
@@ -1033,43 +1708,49 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   </p>
                 </div>
                 <p className="text-[10px] text-gray-500">
-                  Watch these helpful guides to properly prepare your{" "}
-                  {formData.model} for sale:
+                  Watch these certified video tutorials to securely wipe and
+                  arrange your hardware:
                 </p>
                 <div className="space-y-2">
                   {[
                     {
-                      title: `How to Factory Reset a ${formData.category}`,
-                      sub: "Complete reset guide for all major brands",
+                      title: `How to Factory Reset a ${activeLabel}`,
+                      sub: "Step-by-step decoupling and account decoupling guidelines.",
+                      url: "https://youtu.be/dF_MPKfM-yc?si=IBWnEbnu-t-qgE1N",
                     },
                     {
                       title: "How to Safely Remove Hard Drive Data",
-                      sub: "Secure data deletion and drive wiping techniques",
+                      sub: "Secure block overwriting methods to completely clear system storage files safely.",
+                      url: "https://youtu.be/hcLU2dz8xJM?si=I0ylvUdxXCwE1UYy",
                     },
                     {
-                      title: `Preparing Your ${formData.category} For Sale`,
-                      sub: `Cleaning, testing, and packaging tips for ${formData.category.toLowerCase()}s`,
+                      title: `Preparing Your ${activeLabel} For Sale`,
+                      sub: "Best practices for physical optimization prior to processing recovery scrap.",
+                      url: "https://youtu.be/KBUmzdrzt2c?si=p4m7YPIQWQf6Ay_H",
                     },
                   ].map((vid, i) => (
-                    <div
+                    <a
                       key={i}
-                      className="flex items-center justify-between p-3 bg-white border border-red-50 rounded-xl group cursor-pointer hover:border-red-200 transition-colors"
+                      href={vid.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-3 bg-white border border-red-50 rounded-xl group hover:border-red-200 transition-colors block text-left decoration-none"
                     >
                       <div className="flex items-center gap-3">
                         <div className="bg-red-50 p-2 rounded-lg text-red-500">
                           <Video size={14} />
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold text-gray-800">
+                          <p className="text-[10px] font-bold text-gray-800 group-hover:text-red-600 transition-colors">
                             {vid.title}
                           </p>
                           <p className="text-[9px] text-gray-400">{vid.sub}</p>
                         </div>
                       </div>
-                      <span className="text-[9px] font-bold text-gray-400 group-hover:text-red-500 transition-colors">
+                      <span className="text-[9px] font-bold text-gray-400 group-hover:text-red-500 transition-colors shrink-0 ml-2">
                         Watch →
                       </span>
-                    </div>
+                    </a>
                   ))}
                 </div>
               </div>
@@ -1239,13 +1920,14 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   />
                   <div className="space-y-1">
                     <p className="text-[11px] font-bold text-gray-800">
-                      I acknowledge the valuation is a non-binding estimate
+                      {hasMarketHistory
+                        ? "I acknowledge the valuation terms"
+                        : "I acknowledge the new model manual listing pricing terms"}
                     </p>
                     <p className="text-[10px] text-gray-500 leading-tight">
-                      I understand the Estimated Recovery Value (₱
-                      {reusableValue.toLocaleString()}) is for decision support
-                      only. Actual offers from buyers may vary based on
-                      assessment.
+                      {hasMarketHistory
+                        ? `I understand the Estimated Recovery Value (₱${reusableValue.toLocaleString()}) is for decision support only. Actual offers from buyers may vary based on assessment.`
+                        : "I understand that estimated marketplace recovery values are currently inactive for this model, and I am establishing an open-market target price manual configuration."}
                     </p>
                   </div>
                 </label>

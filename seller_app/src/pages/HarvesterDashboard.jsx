@@ -30,6 +30,11 @@ import {
   Check,
   Calendar,
   CheckCircle,
+  Shield,
+  Camera,
+  Mail,
+  Phone,
+  Star,
 } from "lucide-react";
 
 const HarvesterDashboard = ({ session, onLogout }) => {
@@ -38,11 +43,21 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [activeTab, setActiveTab] = useState("browse");
   const [selectedListing, setSelectedListing] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+
   const [profileData, setProfileData] = useState({
     full_name: "Loading...",
     initials: "??",
+    email: "",
+    phone: "",
+    role: "Harvester",
+    joined_date: "",
+    // Harvester metrics
+    completed_pickups: 0,
+    active_bids: 0,
+    eco_points: 0,
   });
-  const [verificationStatus, setVerificationStatus] = useState("unverified");
+  const [verificationStatus, setVerificationStatus] = useState("verified");
   const isVerified = verificationStatus === "verified";
   const [rejectionReason, setRejectionReason] = useState("");
   const [notifications, setNotifications] = useState([]);
@@ -99,6 +114,94 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       alert("Error updating status: " + err.message);
     }
   };
+
+  useEffect(() => {
+    if (!session?.user) return;
+
+    const fetchHarvesterProfile = async () => {
+      try {
+        // PROFILE DATA
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select(
+            `
+  full_name,
+  contact_number,
+  role,
+  created_at,
+  verification_status,
+  average_rating,
+  total_reviews,
+  barangay
+`,
+          )
+          .eq("id", session.user.id)
+          .single();
+
+        if (profileError) throw profileError;
+
+        // ACTIVE BIDS COUNT
+        const { count: bidsCount } = await supabase
+          .from("bids")
+          .select("*", { count: "exact", head: true })
+          .eq("bidder_id", session.user.id)
+          .eq("status", "pending");
+
+        // COMPLETED TRANSACTIONS COUNT
+        const { count: pickupsCount } = await supabase
+          .from("transactions")
+          .select("*", { count: "exact", head: true })
+          .eq("harvester_id", session.user.id)
+          .eq("status", "completed");
+
+        const name = profile?.full_name || "Harvester User";
+
+        const initials = name
+          .split(" ")
+          .map((n) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2);
+
+        setProfileData({
+          full_name: name,
+          initials,
+          email: session.user.email || "",
+          phone: profile?.contact_number || "",
+          role: profile?.role || "Harvester",
+
+          joined_date: profile?.created_at
+            ? new Date(profile.created_at).toLocaleDateString("en-US", {
+                month: "long",
+                year: "numeric",
+              })
+            : "Recent Partner",
+
+          // STATS
+          active_bids: bidsCount || 0,
+          completed_pickups: pickupsCount || 0,
+
+          // RATINGS
+          average_rating: Number(profile?.average_rating || 0),
+          total_reviews: profile?.total_reviews || 0,
+
+          // LOCATION
+          assigned_area: profile?.barangay || "Not assigned",
+
+          eco_points: (pickupsCount || 0) * 150,
+        });
+
+        if (profile?.verification_status) {
+          setVerificationStatus(profile.verification_status);
+        }
+      } catch (error) {
+        console.error("Error fetching harvester profile:", error.message);
+      }
+    };
+
+    fetchHarvesterProfile();
+  }, [session]);
+
   const fetchTransactions = async () => {
     if (!session?.user?.id) return;
 
@@ -179,7 +282,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         device_model,
         asking_price,
         seller_id,
-        profiles:seller_id (full_name)
+        profiles:seller_id (
+  full_name,
+  barangay
+)
       )
     `,
       )
@@ -307,6 +413,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       supabase.removeChannel(listingsChannel);
     };
   }, [session?.user?.id]);
+
   useEffect(() => {
     const fetchProfile = async () => {
       if (!session?.user?.id) return;
@@ -322,23 +429,27 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         setRejectionReason(data.rejection_reason);
 
         const name = data.full_name || "User";
+
         const initials = name
           .split(" ")
-          .map((n) => n)
+          .map((n) => n[0])
           .join("")
           .toUpperCase()
           .slice(0, 2);
 
-        setProfileData({
+        // KEEP existing profileData values
+        setProfileData((prev) => ({
+          ...prev,
           full_name: name,
-          initials: initials,
-        });
+          initials,
+        }));
       }
     };
 
     fetchProfile();
     fetchActiveListings();
   }, [session?.user?.id]);
+
   useEffect(() => {
     const checkVerification = async () => {
       if (!session?.user?.id) return;
@@ -362,14 +473,46 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const fetchActiveListings = async () => {
     try {
       setLoading(true);
+
       const { data, error } = await supabase
         .from("listings")
-        .select("*")
+        .select(
+          `
+    *,
+    bids(
+  amount,
+  bidder_id,
+  profiles:bidder_id (
+    full_name
+  )
+),
+    profiles:seller_id (
+      full_name,
+      barangay
+    )
+  `,
+        )
         .eq("status", "active")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setListings(data);
+
+      const formattedData = data.map((listing) => {
+        const highestBid =
+          listing.bids && listing.bids.length > 0
+            ? listing.bids.reduce((max, bid) =>
+                bid.amount > max.amount ? bid : max,
+              )
+            : null;
+
+        return {
+          ...listing,
+          highest_bid: highestBid ? highestBid.amount : null,
+          highest_bidder: highestBid?.profiles?.full_name || null,
+        };
+      });
+
+      setListings(formattedData);
     } catch (err) {
       console.error("Error fetching listings:", err.message);
     } finally {
@@ -592,7 +735,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
         <div className="relative">
           <div
-            onClick={() => setIsProfileOpen(!isProfileOpen)}
+            onClick={() => setIsProfileOpen(true)}
             className="flex items-center gap-3 bg-white p-1 pr-4 rounded-full shadow-sm border border-slate-200 cursor-pointer hover:border-slate-300 transition-all"
           >
             <div className="text-right hidden sm:block pl-3">
@@ -661,6 +804,293 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           )}
         </div>
       </div>
+      {isProfileOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
+            {/* HEADER */}
+            <div className="bg-gradient-to-br from-[#769c2d] to-lime-700 p-6 text-white relative">
+              <button
+                onClick={() => {
+                  setIsProfileOpen(false);
+                  setIsEditingProfile(false);
+                }}
+                className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
+              >
+                <XCircle size={20} />
+              </button>
+
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
+                    {profileData?.initials || "H"}
+                  </div>
+
+                  <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
+                    <Camera size={12} />
+                  </button>
+                </div>
+
+                <div>
+                  <h2 className="text-xl font-bold">
+                    {profileData?.full_name || "Harvester"}
+                  </h2>
+
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Shield size={10} />
+                      {verificationStatus === "verified"
+                        ? "Verified Harvester"
+                        : "Pending Verification"}
+                    </span>
+
+                    <span className="text-[10px] opacity-80">
+                      Active since {profileData?.joined_date || "2026"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1 mt-2 text-yellow-300">
+                    {/* <Award size={12} />
+                    <span className="text-xs font-bold text-white">
+                      Eco Partner
+                    </span> */}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CONTENT */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+              {/* EDIT BUTTON */}
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setIsEditingProfile(!isEditingProfile)}
+                  className="flex items-center gap-2 bg-[#769c2d] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-lime-700 transition shadow-sm"
+                >
+                  <Settings size={14} />
+                  {isEditingProfile ? "Cancel" : "Edit Profile"}
+                </button>
+              </div>
+
+              {/* STATS */}
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  {
+                    label: "Active Bids",
+                    val: profileData?.active_bids || 0,
+                    icon: <Gavel size={16} />,
+                    color: "text-blue-500",
+                    bg: "bg-blue-50",
+                  },
+                  {
+                    label: "Recovered",
+                    val: profileData?.completed_pickups || 0,
+                    icon: <Package size={16} />,
+                    color: "text-green-500",
+                    bg: "bg-green-50",
+                  },
+                  {
+                    label: "Rating",
+                    val: Number(profileData?.average_rating || 0).toFixed(1),
+                    icon: <Star size={16} />,
+                    color: "text-yellow-500",
+                    bg: "bg-yellow-50",
+                  },
+                  {
+                    label: "Reviews",
+                    val: profileData?.total_reviews || 0,
+                    icon: <MessageSquareText size={16} />,
+                    color: "text-purple-500",
+                    bg: "bg-purple-50",
+                  },
+                ].map((stat, i) => (
+                  <div
+                    key={i}
+                    className={`${stat.bg} p-3 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center`}
+                  >
+                    <div className={`${stat.color} mb-1`}>{stat.icon}</div>
+
+                    <div className="text-sm font-black text-gray-800">
+                      {stat.val}
+                    </div>
+
+                    <div className="text-[9px] text-gray-500 font-medium leading-tight">
+                      {stat.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
+                <Award
+                  className="absolute right-4 top-4 opacity-10"
+                  size={60}
+                />
+
+                <div className="relative z-10">
+                  <h3 className="font-bold text-lg">Community Reputation</h3>
+
+                  <p className="text-[11px] opacity-70 mb-4">
+                    Seller feedback and completed recovery performance
+                  </p>
+
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* VERIFIED */}
+                    {verificationStatus === "verified" && (
+                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                        <CheckCircle2 size={10} />
+                        VERIFIED
+                      </span>
+                    )}
+
+                    {/* RATING */}
+                    <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                      <Star size={10} />
+                      {profileData?.average_rating
+                        ? Number(profileData.average_rating).toFixed(1)
+                        : "0.0"}{" "}
+                      Rating
+                    </span>
+
+                    {/* REVIEW COUNT */}
+                    <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                      <MessageSquareText size={10} />
+                      {profileData?.total_reviews || 0} Reviews
+                    </span>
+
+                    {/* TRUST LEVEL */}
+                    <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full text-[10px] font-bold">
+                      {profileData?.total_reviews >= 10
+                        ? "TOP HARVESTER"
+                        : profileData?.total_reviews >= 5
+                          ? "TRUSTED PARTNER"
+                          : "NEW MEMBER"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* PERSONAL INFO */}
+              <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
+                  Personal Information
+                </h3>
+
+                <div className="grid gap-4">
+                  {/* FULL NAME */}
+                  <div className="flex items-start gap-3">
+                    <User size={14} className="text-slate-400 mt-1" />
+
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">
+                        Full Name
+                      </p>
+
+                      <p className="text-sm font-semibold text-slate-700">
+                        {profileData?.full_name}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* EMAIL */}
+                  <div className="flex items-start gap-3">
+                    <Mail size={14} className="text-slate-400 mt-1" />
+
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">
+                        Email Address
+                      </p>
+
+                      <p className="text-sm font-semibold text-slate-700">
+                        {profileData?.email}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* PHONE */}
+                  <div className="flex items-start gap-3">
+                    <Phone size={14} className="text-slate-400 mt-1" />
+
+                    <div className="flex-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">
+                        Phone Number
+                      </p>
+
+                      {isEditingProfile ? (
+                        <input
+                          type="text"
+                          value={profileData.phone}
+                          onChange={(e) =>
+                            setProfileData({
+                              ...profileData,
+                              phone: e.target.value,
+                            })
+                          }
+                          className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                        />
+                      ) : (
+                        <p className="text-sm font-semibold text-slate-700">
+                          {profileData?.phone || "No phone number"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* LOCATION */}
+                  <div className="flex items-start gap-3">
+                    <MapPin size={14} className="text-slate-400 mt-1" />
+
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">
+                        Assigned Area
+                      </p>
+
+                      <p className="text-sm font-semibold text-slate-700">
+                        {profileData?.assigned_area ||
+                          profileData?.barangay ||
+                          "Not assigned"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* FOOTER */}
+            {isEditingProfile && (
+              <div className="p-4 border-t border-slate-100 flex gap-3 bg-white">
+                <button
+                  onClick={() => setIsEditingProfile(false)}
+                  className="flex-1 py-3 text-xs font-black text-slate-400"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={async () => {
+                    try {
+                      const { error } = await supabase
+                        .from("profiles")
+                        .update({
+                          phone: profileData.phone,
+                        })
+                        .eq("id", session.user.id);
+
+                      if (error) throw error;
+
+                      setIsEditingProfile(false);
+                    } catch (err) {
+                      alert(err.message);
+                    }
+                  }}
+                  className="flex-1 bg-[#769c2d] text-white py-3 rounded-xl font-black text-xs uppercase"
+                >
+                  Save Changes
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {verificationStatus === "rejected" && (
         <div className="mb-8 p-6 bg-red-50 border-2 border-red-100 rounded-[2rem] flex items-center gap-6 animate-in slide-in-from-top duration-500">
           <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center flex-shrink-0">
@@ -958,7 +1388,8 @@ const MyBidsView = ({ bids }) => {
                   </span>
                 </div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                  Seller: {bid.listings?.profiles?.full_name} • Barangay Marulas
+                  Seller: {bid.listings?.profiles?.full_name} • Barangay{" "}
+                  {bid.listings?.profiles?.barangay || "Unknown"}
                 </p>
               </div>
               <div
@@ -1052,60 +1483,60 @@ const MyBidsView = ({ bids }) => {
 
 const AlertsView = ({ notifications }) => {
   return (
-      <div className="space-y-4">
-        {notifications.map((n) => (
+    <div className="space-y-4">
+      {notifications.map((n) => (
+        <div
+          key={n.id}
+          className={`p-6 rounded-[2rem] border transition-all flex items-center gap-6 ${
+            !n.is_read
+              ? n.type === "alert_match"
+                ? "bg-amber-50/50 border-amber-100" // Distinct color for matches
+                : "bg-lime-50/50 border-lime-100"
+              : "bg-slate-50/30 border-slate-50"
+          }`}
+        >
+          {/* Dynamic Icon based on type */}
           <div
-            key={n.id}
-            className={`p-6 rounded-[2rem] border transition-all flex items-center gap-6 ${
-              !n.is_read
-                ? n.type === "alert_match"
-                  ? "bg-amber-50/50 border-amber-100" // Distinct color for matches
-                  : "bg-lime-50/50 border-lime-100"
-                : "bg-slate-50/30 border-slate-50"
+            className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+              n.type === "alert_match"
+                ? "bg-amber-100 text-amber-600"
+                : "bg-lime-100 text-[#769c2d]"
             }`}
           >
-            {/* Dynamic Icon based on type */}
-            <div
-              className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                n.type === "alert_match"
-                  ? "bg-amber-100 text-amber-600"
-                  : "bg-lime-100 text-[#769c2d]"
-              }`}
-            >
-              {n.type === "alert_match" ? (
-                <Search size={14} />
-              ) : (
-                <Package size={14} />
+            {n.type === "alert_match" ? (
+              <Search size={14} />
+            ) : (
+              <Package size={14} />
+            )}
+          </div>
+
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h4 className="font-bold text-slate-800 text-sm">{n.title}</h4>
+              {n.type === "alert_match" && (
+                <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">
+                  Match
+                </span>
               )}
             </div>
-
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h4 className="font-bold text-slate-800 text-sm">{n.title}</h4>
-                {n.type === "alert_match" && (
-                  <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">
-                    Match
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                {n.description ||
-                  n.content ||
-                  "New e-waste listing matches your criteria."}
-              </p>
-            </div>
-
-            <div className="text-right">
-              <p className="text-[10px] font-bold text-slate-300 uppercase">
-                {new Date(n.created_at).toLocaleDateString([], {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </p>
-            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              {n.description ||
+                n.content ||
+                "New e-waste listing matches your criteria."}
+            </p>
           </div>
-        ))}
-      </div>
+
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-300 uppercase">
+              {new Date(n.created_at).toLocaleDateString([], {
+                month: "short",
+                day: "numeric",
+              })}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 };
 // --- MESSAGES VIEW COMPONENT ---
@@ -1393,7 +1824,6 @@ const MenuLink = ({ icon, label }) => (
 );
 
 const ListingCard = ({ item, onBid, isVerified }) => {
-  // A listing is locked if its status is NOT "active"
   const getConditionStyles = (cond) => {
     switch (cond?.toLowerCase()) {
       case "defective":
@@ -1406,110 +1836,163 @@ const ListingCard = ({ item, onBid, isVerified }) => {
         return "bg-slate-50 text-slate-600";
     }
   };
-  const isLocked = item.status !== "active";
-  const displayImage =
-    item.images && item.images.length > 0 ? item.images : null;
+
+  const listingMedia = Array.isArray(item.images)
+    ? item.images
+    : [];
+
+  const previewMedia = listingMedia || null;
+
+  const isVideoFile = (url) => {
+    if (!url) return false;
+    return (
+      url.includes(".mp4") ||
+      url.includes(".mov") ||
+      url.includes("video")
+    );
+  };
+
   return (
-    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm hover:shadow-md transition-all relative group">
-      {/* Product Icon Box from Mockup */}
-      <div className="absolute top-8 right-8">
-        <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-[#769c2d] transition-colors">
-          <Box size={28} />
+    <div className="bg-white rounded-[2.5rem] overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-all relative group">
+      
+      {/* IMAGE PREVIEW CONTAINER */}
+      <div className="relative h-56 bg-slate-100 overflow-hidden">
+        {previewMedia ? (
+          isVideoFile(previewMedia) ? (
+            <video
+              src={previewMedia}
+              className="w-full h-full object-cover"
+              controls
+              muted
+            />
+          ) : (
+            <img
+              src={previewMedia}
+              alt={item.device_model}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            />
+          )
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
+            <Box size={42} />
+            <p className="text-[10px] font-bold uppercase tracking-widest mt-3">
+              No Media Uploaded
+            </p>
+          </div>
+        )}
+
+        {/* EXTRA IMAGES INDICATOR */}
+        {listingMedia.length > 1 && (
+          <div className="absolute bottom-4 right-4 bg-black/70 backdrop-blur-sm text-white px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 z-10">
+            <Camera size={11} />
+            +{listingMedia.length - 1}
+          </div>
+        )}
+
+        {/* CONDITION BADGE */}
+        <div className="absolute top-4 left-4 z-10">
+          <span
+            className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm ${getConditionStyles(item.condition)}`}
+          >
+            {item.condition || "Condition"}
+          </span>
         </div>
       </div>
 
-      {/* Title & Model Section */}
-      <div className="mb-5">
-        <h3 className="text-xl font-black text-slate-800 leading-tight">
-          {item.device_model || "Device Name"}
-        </h3>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-          {item.device_type || "Generic Model"}
+      {/* CONTENT AREA */}
+      <div className="p-8">
+        {/* Product Icon Box */}
+        <div className="absolute top-[17.5rem] right-8 z-10">
+          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 shadow-md border border-slate-100 group-hover:text-[#769c2d] transition-colors">
+            <Box size={28} />
+          </div>
+        </div>
+
+        {/* Title & Model Section */}
+        <div className="mb-5 pr-16">
+          <h3 className="text-xl font-black text-slate-800 leading-tight">
+            {item.device_model || "Device Name"}
+          </h3>
+
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+            {item.device_type || item.category || "Generic Model"}
+          </p>
+        </div>
+
+        {/* Description */}
+        <p className="text-xs text-slate-500 mb-5 leading-relaxed line-clamp-2 min-h-[40px]">
+          {item.description || "Description not available for this listing."}
+        </p>
+
+        {/* Location Section */}
+        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mb-6">
+          <MapPin size={13} className="text-slate-300" />
+          <span>Barangay {item.profiles?.barangay || "Unknown"}</span>
+        </div>
+
+        {/* Bidding Info Container */}
+        <div className="bg-[#f0f9ff] rounded-[2rem] p-5 mb-6 border border-blue-100/50">
+          <div className="flex justify-between items-start mb-3 gap-4">
+            <div>
+              <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider mb-1">
+                Asking Price
+              </p>
+              <p className="text-xl font-black text-slate-800">
+                ₱{item.asking_price?.toLocaleString()}
+              </p>
+            </div>
+
+            <div className="text-right">
+              <p className="text-[9px] font-black text-[#769c2d] uppercase tracking-wider mb-1">
+                Current Highest Bid
+              </p>
+              <p className="text-xl font-black text-[#769c2d]">
+                {item.highest_bid
+                  ? `₱${item.highest_bid.toLocaleString()}`
+                  : "No bids yet"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center mt-4 pt-4 border-t border-blue-200/30 gap-4">
+            <p className="text-[9px] text-blue-500 font-bold line-clamp-1">
+              Highest Bidder:{" "}
+              <span className="text-slate-600 ml-1">
+                {item.highest_bidder || "No bidder yet"}
+              </span>
+            </p>
+
+            <span className="bg-red-50 text-red-500 text-[8px] font-black px-2.5 py-1 rounded-lg uppercase italic flex items-center gap-1 whitespace-nowrap">
+              <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse"></span>
+              High Competition
+            </span>
+          </div>
+        </div>
+
+        {/* Seller Footer */}
+        <div className="flex justify-between items-center pt-2 gap-4">
+          <div className="flex flex-col min-w-0">
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
+              Seller
+            </span>
+            <span className="text-xs font-black text-slate-700 truncate">
+              {item.profiles?.full_name || "Authorized Seller"}
+            </span>
+          </div>
+
+          <button
+            onClick={onBid}
+            className="bg-[#769c2d] text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#5d7a24] transition-all shadow-lg shadow-lime-900/10 active:scale-95 whitespace-nowrap"
+          >
+            Bid or Message
+          </button>
+        </div>
+
+        {/* Time Posted */}
+        <p className="text-[8px] text-slate-300 font-bold mt-5 uppercase tracking-widest">
+          Posted {item.created_at ? new Date(item.created_at).toLocaleDateString() : "Recent"}
         </p>
       </div>
-
-      {/* Badges Row */}
-      <div className="flex gap-2 mb-5">
-        <span
-          className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${getConditionStyles(item.condition)}`}
-        >
-          {item.condition || "Condition"}
-        </span>
-
-        {/* Placeholder for "Pending Approval" or other status badges if needed */}
-        {item.status === "pending" && (
-          <span className="bg-orange-50 text-orange-500 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">
-            Pending Approval
-          </span>
-        )}
-      </div>
-
-      {/* Description */}
-      <p className="text-xs text-slate-500 mb-5 leading-relaxed line-clamp-2 h-8">
-        {item.description || "Description not available for this listing."}
-      </p>
-
-      {/* Location Section */}
-      <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mb-6">
-        <MapPin size={13} className="text-slate-300" />
-        <span>Barangay {item.location || "Valenzuela"} • 1.2 km away</span>
-      </div>
-
-      {/* Bidding Info Container (Light Blue Box) */}
-      <div className="bg-[#f0f9ff] rounded-[2rem] p-5 mb-6 border border-blue-100/50">
-        <div className="flex justify-between items-start mb-3">
-          <div>
-            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider mb-1">
-              Asking Price
-            </p>
-            <p className="text-xl font-black text-slate-800">
-              ₱{item.asking_price?.toLocaleString()}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] font-black text-[#769c2d] uppercase tracking-wider mb-1">
-              Current Highest Bid
-            </p>
-            <p className="text-xl font-black text-[#769c2d]">
-              ₱{(item.asking_price + item.id.length * 10).toLocaleString()}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex justify-between items-center mt-4 pt-4 border-t border-blue-200/30">
-          <p className="text-[9px] text-blue-500 font-bold">
-            Highest Bidder:{" "}
-            <span className="text-slate-600 ml-1">Harvester***</span>
-          </p>
-          <span className="bg-red-50 text-red-500 text-[8px] font-black px-2.5 py-1 rounded-lg uppercase italic flex items-center gap-1">
-            <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse"></span>
-            High Competition
-          </span>
-        </div>
-      </div>
-
-      {/* Seller Footer */}
-      <div className="flex justify-between items-center pt-2">
-        <div className="flex flex-col">
-          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
-            Seller
-          </span>
-          <span className="text-xs font-black text-slate-700">
-            {item.profiles?.full_name || "Authorized Seller"}
-          </span>
-        </div>
-        <button
-          onClick={onBid}
-          className="bg-[#769c2d] text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#5d7a24] transition-all shadow-lg shadow-lime-900/10 active:scale-95"
-        >
-          Bid or Message
-        </button>
-      </div>
-
-      {/* Time Posted */}
-      <p className="text-[8px] text-slate-300 font-bold mt-5 uppercase tracking-widest">
-        Posted {new Date(item.created_at).toLocaleDateString()}
-      </p>
     </div>
   );
 };

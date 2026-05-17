@@ -12,6 +12,7 @@ import {
   MapPin,
   Clock,
   Navigation,
+  Star,
 } from "lucide-react";
 
 const SellerMessages = ({ userId, onTabChange }) => {
@@ -20,6 +21,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   // NEW: State for Modal and Form Data
+  const [acceptedBidAmount, setAcceptedBidAmount] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [meetupData, setMeetupData] = useState({
     date: "",
@@ -27,6 +29,21 @@ const SellerMessages = ({ userId, onTabChange }) => {
     location: "",
     notes: "",
   });
+
+  const fetchAcceptedBidAmount = async () => {
+    if (!activeChat) return;
+
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("amount")
+      .eq("listing_id", activeChat.listing_id)
+      .eq("harvester_id", activeChat.other_party_id)
+      .single();
+
+    if (!error && data) {
+      setAcceptedBidAmount(data.amount);
+    }
+  };
 
   const handleScheduleMeetup = async () => {
     if (!meetupData.date || !meetupData.location || !meetupData.time) {
@@ -120,12 +137,16 @@ Date: ${meetupData.date} at ${meetupData.time}`,
         // Fetch profiles
         const { data: profiles } = await supabase
           .from("profiles")
-          .select("id, full_name")
+          .select("id, full_name, average_rating, total_reviews")
           .in("id", userIds);
 
         const profileMap = {};
         profiles?.forEach((p) => {
-          profileMap[p.id] = p.full_name;
+          profileMap[p.id] = {
+            name: p.full_name,
+            rating: Number(p.average_rating) || 0,
+            reviewCount: Number(p.total_reviews) || 0,
+          };
         });
 
         const uniqueConversations = data.reduce((acc, current) => {
@@ -136,13 +157,18 @@ Date: ${meetupData.date} at ${meetupData.time}`,
               ? current.receiver_id
               : current.sender_id;
 
-            const otherPartyName =
-              profileMap[otherPartyId] || "Unknown Harvester";
+            const otherPartyInfo = profileMap[otherPartyId] || {
+              name: "Unknown Harvester",
+              rating: 0,
+              reviewCount: 0,
+            };
 
             acc.push({
               ...current,
               other_party_id: otherPartyId,
-              other_party_name: otherPartyName,
+              other_party_name: otherPartyInfo.name,
+              other_party_rating: otherPartyInfo.rating,
+              other_party_review_count: otherPartyInfo.reviewCount,
             });
           }
           return acc;
@@ -215,6 +241,26 @@ Date: ${meetupData.date} at ${meetupData.time}`,
     }
   };
 
+  const renderStars = (average_rating = 0) => {
+    const stars = [1, 2, 3, 4, 5];
+
+    return (
+      <div className="flex items-center gap-0.5">
+        {stars.map((star) => (
+          <Star
+            key={star}
+            size={10}
+            className={
+              star <= Math.round(Number(average_rating))
+                ? "text-yellow-400 fill-yellow-400"
+                : "text-slate-200 fill-slate-200"
+            }
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-[600px] bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden font-sans">
       {/* Sidebar */}
@@ -244,6 +290,7 @@ Date: ${meetupData.date} at ${meetupData.time}`,
                 <span className="font-bold text-xs text-slate-700">
                   {conv.other_party_name || "Unknown Harvester"}
                 </span>
+
                 <span className="text-[10px] text-slate-400">
                   {new Date(conv.created_at).toLocaleTimeString([], {
                     hour: "2-digit",
@@ -251,6 +298,15 @@ Date: ${meetupData.date} at ${meetupData.time}`,
                   })}
                 </span>
               </div>
+
+              <div className="flex items-center gap-1 mb-1.5">
+                {renderStars(conv.other_party_rating)}
+                <span className="text-[9px] text-slate-500 font-medium">
+                  {Number(conv.other_party_rating || 0).toFixed(1)} (
+                  {conv.other_party_review_count || 0})
+                </span>
+              </div>
+
               <p className="text-[10px] text-teal-600 font-bold mb-1">
                 Re: {conv.listings?.device_model}
               </p>
@@ -278,10 +334,20 @@ Date: ${meetupData.date} at ${meetupData.time}`,
                   <p className="text-[10px] text-slate-400">
                     Active Conversation
                   </p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {renderStars(activeChat.other_party_rating)}
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      {Number(activeChat.other_party_rating || 0).toFixed(1)} (
+                      {activeChat.other_party_review_count || 0})
+                    </span>
+                  </div>
                 </div>
               </div>
               <button
-                onClick={() => setIsModalOpen(true)} // Open modal on click
+                onClick={async () => {
+                  await fetchAcceptedBidAmount();
+                  setIsModalOpen(true);
+                }} // Open modal on click
                 className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-[10px] font-bold"
               >
                 <Calendar size={14} /> Schedule Meetup
@@ -375,9 +441,7 @@ Date: ${meetupData.date} at ${meetupData.time}`,
                     Accepted Bid Amount
                   </p>
                   <p className="text-2xl font-bold text-[#2d7a7f] mt-1">
-                    ₱
-                    {activeChat.accepted_bid_amount?.toLocaleString() ||
-                      "0,000"}
+                    ₱{acceptedBidAmount.toLocaleString()}
                   </p>
                 </div>
                 <div className="bg-emerald-500 rounded-full p-1">

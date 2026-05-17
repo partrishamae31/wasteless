@@ -61,6 +61,93 @@ const SellerDashboard = ({ session }) => {
   const [listingToDonate, setListingToDonate] = useState(null);
   const [showRateModal, setShowRateModal] = useState(false);
 
+  const handleSubmitRating = async ({ ratings, recommend, feedback }) => {
+    try {
+      // Get selected transaction
+      const selectedTransaction = transactions.find(
+        (t) => t.id === selectedTxId,
+      );
+
+      if (!selectedTransaction) {
+        throw new Error("Transaction not found.");
+      }
+
+      // BUYER / HARVESTER ID
+      const buyerId = selectedTransaction.harvester_id;
+
+      // Calculate average score
+      const averageScore =
+        (ratings.communication +
+          ratings.punctuality +
+          ratings.payment +
+          ratings.overall) /
+        4;
+
+      // 1. INSERT REVIEW
+      const { error: insertError } = await supabase.from("reviews").insert([
+        {
+          transaction_id: selectedTransaction.id,
+
+          seller_id: buyerId,
+
+          reviewer_id: session.user.id,
+
+          communication_rating: ratings.communication,
+
+          punctuality_rating: ratings.punctuality,
+
+          condition_rating: ratings.payment,
+
+          overall_rating: ratings.overall,
+
+          recommend: recommend === "yes",
+
+          comment: feedback,
+        },
+      ]);
+
+      if (insertError) throw insertError;
+
+      // 2. FETCH ALL REVIEWS OF BUYER
+      const { data: allReviews, error: reviewsError } = await supabase
+        .from("reviews")
+        .select("overall_rating")
+        .eq("seller_id", buyerId);
+
+      if (reviewsError) throw reviewsError;
+
+      // 3. CALCULATE UPDATED STATS
+      const totalReviews = allReviews.length;
+
+      const averageRating =
+        totalReviews > 0
+          ? allReviews.reduce(
+              (sum, review) => sum + Number(review.overall_rating),
+              0,
+            ) / totalReviews
+          : 0;
+
+      // 4. UPDATE PROFILE
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          average_rating: averageRating,
+          total_reviews: totalReviews,
+        })
+        .eq("id", buyerId);
+
+      if (profileError) throw profileError;
+
+      // 5. CLOSE MODAL
+      setShowRateModal(false);
+
+      alert("Buyer rated successfully!");
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    }
+  };
+
   const handleOpenDonation = (listing) => {
     setListingToDonate(listing);
     setIsDonationModalOpen(true);
@@ -224,21 +311,26 @@ const SellerDashboard = ({ session }) => {
       setSelectedTxId(transactions[0].id);
     }
   }, [transactions, selectedTxId]);
+
   const handleAcceptBid = async (bid) => {
     try {
       // 1. Update the bid status to 'accepted'
-      const { error: bidUpdateError } = await supabase
+      const { error: bidError } = await supabase
         .from("bids")
-        .update({ status: "accepted" })
+        .update({
+          status: "accepted",
+        })
         .eq("id", bid.id);
 
-      if (bidUpdateError) throw bidUpdateError;
+      if (bidError) throw bidError;
 
       // 2. LOCK THE LISTING
       const { error: listingUpdateError } = await supabase
         .from("listings")
-        .update({ status: "closed" })
-        .eq("id", selectedListing.id);
+        .update({
+          status: "inactive",
+        })
+        .eq("id", bid.listing_id);
 
       if (listingUpdateError) throw listingUpdateError;
 
@@ -289,6 +381,7 @@ const SellerDashboard = ({ session }) => {
       alert(`Error: ${error.message}`);
     }
   };
+
   useEffect(() => {
     const fetchTransactions = async () => {
       if (!isAuthorized) return;
@@ -425,15 +518,19 @@ const SellerDashboard = ({ session }) => {
       .select(
         `
       *,
-      profiles:bidder_id (full_name) 
+      profiles:bidder_id (
+        full_name
+      )
     `,
       )
       .eq("listing_id", listing.id)
       .order("amount", { ascending: false });
 
     if (!error) setListingBids(data);
+
     setLoading(false);
   };
+
   const handleLogout = async () => {
     setShowProfileMenu(false); // Close the menu first
     const { error } = await supabase.auth.signOut();
@@ -840,7 +937,13 @@ const SellerDashboard = ({ session }) => {
                                 {bid.profiles?.full_name}
                               </p>
                               <p className="text-[10px] text-slate-400">
-                                Apr 26
+                                {new Date(bid.created_at).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                  },
+                                )}
                               </p>
                             </div>
                           </div>
@@ -849,9 +952,9 @@ const SellerDashboard = ({ session }) => {
                           </span>
                         </div>
 
-                        <p className="text-[11px] text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg italic">
+                        {/* <p className="text-[11px] text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg italic">
                           "Interested in the battery and camera module"
-                        </p>
+                        </p> */}
 
                         {bid.status === "accepted" ? (
                           <div className="space-y-2">
@@ -1086,7 +1189,6 @@ const SellerDashboard = ({ session }) => {
                                   </p>
                                 </div>
                                 {/* Mock Avatar Bubble */}
-                                
                               </div>
 
                               {/* Rate Button */}
@@ -1114,7 +1216,7 @@ const SellerDashboard = ({ session }) => {
                         </div>
 
                         {/* Chat Preview Section */}
-                        <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-6">
+                        {/* <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-6">
                           <p className="text-[10px] font-bold text-slate-400 uppercase mb-4 text-center">
                             Messages
                           </p>
@@ -1157,7 +1259,7 @@ const SellerDashboard = ({ session }) => {
                               <Send size={16} />
                             </button>
                           </div>
-                        </div>
+                        </div> */}
                       </div>
                     );
                   })()
@@ -1398,16 +1500,10 @@ const SellerDashboard = ({ session }) => {
       <RateBuyerModal
         isOpen={showRateModal}
         onClose={() => setShowRateModal(false)}
-        /* Find the specific transaction object using the selected ID */
         buyerName={
-          transactions.find((t) => t.id === selectedTxId)?.harvester
-            ?.full_name || "Buyer"
+          transactions.find((t) => t.id === selectedTxId)?.harvester?.full_name
         }
-        onConfirm={(data) => {
-          console.log("Rating Data:", data);
-          // Logic to save rating to your database goes here
-          setShowRateModal(false);
-        }}
+        onConfirm={handleSubmitRating}
       />
       <DonationModal
         isOpen={isDonationModalOpen}

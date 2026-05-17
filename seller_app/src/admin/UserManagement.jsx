@@ -29,8 +29,7 @@ const UserManagement = () => {
   const [selectedUser, setSelectedUser] = useState(null);
 
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [selectedUserForDetails, setSelectedUserForDetails] =
-    useState(null);
+  const [selectedUserForDetails, setSelectedUserForDetails] = useState(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -60,12 +59,8 @@ const UserManagement = () => {
     if (searchQuery) {
       result = result.filter(
         (u) =>
-          u.full_name
-            ?.toLowerCase()
-            .includes(searchQuery.toLowerCase()) ||
-          u.email
-            ?.toLowerCase()
-            .includes(searchQuery.toLowerCase()),
+          u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.email?.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
@@ -77,8 +72,7 @@ const UserManagement = () => {
   }, [searchQuery, roleFilter, users]);
 
   const handleSuspendToggle = async (user) => {
-    const newStatus =
-      user.status === "active" ? "suspended" : "active";
+    const newStatus = user.status === "active" ? "suspended" : "active";
 
     if (
       window.confirm(
@@ -112,22 +106,16 @@ const UserManagement = () => {
 
   // DASHBOARD COUNTS
   const totalUsers = users.length;
-  const activeListings = users.filter(
-    (u) => u.status === "active",
-  ).length;
+  const activeListings = users.filter((u) => u.status === "active").length;
 
-  const verifiedUsers = users.filter(
-    (u) => u.is_verified,
-  ).length;
+  const verifiedUsers = users.filter((u) => u.is_verified).length;
 
   const totalTransactions = users.reduce(
     (acc, user) => acc + (user.transactions_count || 0),
     0,
   );
 
-  const pendingUsers = users.filter(
-    (u) => !u.is_verified,
-  );
+  const pendingUsers = users.filter((u) => !u.is_verified);
 
   return (
     <div className="min-h-screen bg-[#f6f8fb] p-6 lg:p-8">
@@ -207,9 +195,7 @@ const UserManagement = () => {
                       {user.full_name}
                     </h3>
 
-                    <p className="text-xs text-slate-500">
-                      {user.email}
-                    </p>
+                    <p className="text-xs text-slate-500">{user.email}</p>
                   </div>
                 </div>
 
@@ -227,9 +213,7 @@ const UserManagement = () => {
                 </div>
               </div>
 
-              <button className="text-slate-400 hover:text-slate-600">
-                ✕
-              </button>
+              <button className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
           </div>
         ))}
@@ -261,8 +245,9 @@ const UserManagement = () => {
             className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none"
           >
             <option value="All">All Roles</option>
-            <option value="Repair Shop">Repair Shop</option>
-            <option value="Seller">Seller</option>
+            <option value="harvester">Harvester</option>
+            <option value="seller">Seller</option>
+
           </select>
         </div>
 
@@ -289,9 +274,7 @@ const UserManagement = () => {
         {/* SUMMARY */}
         <div className="mt-5 flex gap-6 border-b border-slate-100 pb-4 text-xs">
           <div>
-            <span className="font-semibold text-slate-700">
-              {totalUsers}
-            </span>{" "}
+            <span className="font-semibold text-slate-700">{totalUsers}</span>{" "}
             <span className="text-slate-500">Total Users</span>
           </div>
 
@@ -306,9 +289,7 @@ const UserManagement = () => {
             <span className="font-semibold text-orange-500">
               {pendingUsers.length}
             </span>{" "}
-            <span className="text-slate-500">
-              Pending Verification
-            </span>
+            <span className="text-slate-500">Pending Verification</span>
           </div>
         </div>
 
@@ -319,21 +300,11 @@ const UserManagement = () => {
               <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wider text-slate-400">
                 <th className="px-2 py-4 font-semibold">User</th>
                 <th className="px-2 py-4 font-semibold">Role</th>
-                <th className="px-2 py-4 font-semibold">
-                  Date Joined
-                </th>
-                <th className="px-2 py-4 font-semibold">
-                  Verification
-                </th>
-                <th className="px-2 py-4 font-semibold">
-                  Transactions
-                </th>
-                <th className="px-2 py-4 font-semibold">
-                  Rating
-                </th>
-                <th className="px-2 py-4 text-right font-semibold">
-                  Actions
-                </th>
+                <th className="px-2 py-4 font-semibold">Date Joined</th>
+                <th className="px-2 py-4 font-semibold">Verification</th>
+                <th className="px-2 py-4 font-semibold">Transactions</th>
+                <th className="px-2 py-4 font-semibold">Rating</th>
+                <th className="px-2 py-4 text-right font-semibold">Actions</th>
               </tr>
             </thead>
 
@@ -343,10 +314,11 @@ const UserManagement = () => {
                   const role = user.role?.toLowerCase();
 
                   const isRepairShop =
-                    role === "repair shop" ||
-                    role === "repair_shop";
+                    role === "repair shop" || role === "repair_shop";
 
                   const isHarvester = role === "harvester";
+
+                  const isSeller = role === "seller";
 
                   return (
                     <tr
@@ -368,15 +340,9 @@ const UserManagement = () => {
                       <td className="px-2 py-5">
                         <div className="flex items-center gap-2 text-slate-600">
                           {isRepairShop ? (
-                            <Store
-                              size={14}
-                              className="text-emerald-500"
-                            />
+                            <Store size={14} className="text-emerald-500" />
                           ) : (
-                            <User
-                              size={14}
-                              className="text-sky-500"
-                            />
+                            <User size={14} className="text-sky-500" />
                           )}
 
                           <span>{user.role || "User"}</span>
@@ -386,9 +352,7 @@ const UserManagement = () => {
                       {/* DATE */}
                       <td className="px-2 py-5 text-slate-500">
                         {user.created_at
-                          ? new Date(
-                              user.created_at,
-                            ).toLocaleDateString()
+                          ? new Date(user.created_at).toLocaleDateString()
                           : "—"}
                       </td>
 
@@ -424,21 +388,17 @@ const UserManagement = () => {
                             />
                           </div>
                         ) : (
-                          <span className="text-slate-400">
-                            N/A
-                          </span>
+                          <span className="text-slate-400">N/A</span>
                         )}
                       </td>
 
                       {/* ACTIONS */}
                       <td className="px-2 py-5">
                         <div className="flex justify-end gap-2">
-                          {(isRepairShop || isHarvester) &&
+                          {(isRepairShop || isHarvester || isSeller) &&
                             !user.is_verified && (
                               <button
-                                onClick={() =>
-                                  handleVerifyClick(user)
-                                }
+                                onClick={() => handleVerifyClick(user)}
                                 className="rounded-lg bg-emerald-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
                               >
                                 Verify
@@ -446,18 +406,14 @@ const UserManagement = () => {
                             )}
 
                           <button
-                            onClick={() =>
-                              handleViewDetails(user)
-                            }
+                            onClick={() => handleViewDetails(user)}
                             className="rounded-lg border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
                           >
                             View
                           </button>
 
                           <button
-                            onClick={() =>
-                              handleSuspendToggle(user)
-                            }
+                            onClick={() => handleSuspendToggle(user)}
                             className={`rounded-lg px-4 py-1.5 text-xs font-medium text-white ${
                               user.status === "suspended"
                                 ? "bg-sky-500 hover:bg-sky-600"
@@ -475,10 +431,7 @@ const UserManagement = () => {
                 })
               ) : (
                 <tr>
-                  <td
-                    colSpan="7"
-                    className="py-10 text-center text-slate-400"
-                  >
+                  <td colSpan="7" className="py-10 text-center text-slate-400">
                     No users found.
                   </td>
                 </tr>
@@ -520,11 +473,7 @@ const StatCard = ({ title, value, icon, color }) => {
           </h2>
         </div>
 
-        <div
-          className={`rounded-xl bg-slate-50 p-3 ${color}`}
-        >
-          {icon}
-        </div>
+        <div className={`rounded-xl bg-slate-50 p-3 ${color}`}>{icon}</div>
       </div>
     </div>
   );

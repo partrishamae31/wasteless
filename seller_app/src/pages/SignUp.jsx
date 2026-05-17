@@ -6,7 +6,7 @@ const SignUp = ({ onLoginClick }) => {
   const [step, setStep] = useState(1);
   const [accountType, setAccountType] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false); // New: Loading state
+  const [loading, setLoading] = useState(false);
   const permitRef = React.useRef();
   const techRef = React.useRef();
   const valenzuelaBarangays = [
@@ -145,14 +145,14 @@ const SignUp = ({ onLoginClick }) => {
     setLoading(true);
 
     try {
-      const autoVerify = accountType === "seller";
+      const autoVerify = false;
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
           data: {
             full_name: formData.fullName,
-            role: accountType === "seller" ? "Seller" : "Harvester",
+            role: accountType,
             barangay: formData.barangay,
             contact_number: formData.contactNumber,
             business_name: formData.businessName,
@@ -169,8 +169,8 @@ const SignUp = ({ onLoginClick }) => {
 
       // 2. Prepare the updates for the profiles table
       let updates = {
-        is_verified: autoVerify,
-        status: autoVerify ? "Active" : "Pending",
+        is_verified: false,
+        status: "Pending",
       };
 
       // SELLER upload
@@ -257,7 +257,6 @@ const SignUp = ({ onLoginClick }) => {
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] flex items-center justify-center p-6 font-sans">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-fadeIn">
-        {/* Header Section */}
         <div className="bg-gradient-to-r from-[#448b78] to-[#6da43a] p-6 text-white text-left flex items-center gap-3">
           <div className="bg-white/20 p-2 rounded-lg">
             <svg
@@ -281,7 +280,6 @@ const SignUp = ({ onLoginClick }) => {
         </div>
 
         <div className="p-8">
-          {/* Progress Bar / Step Indicator */}
           <div className="flex items-center justify-center mb-8 relative">
             <div className="absolute top-1/2 left-10 right-10 h-[2px] bg-gray-100 -z-0"></div>
             <div className="flex justify-between w-full px-4 relative z-10">
@@ -300,7 +298,6 @@ const SignUp = ({ onLoginClick }) => {
             </div>
           </div>
 
-          {/* STEP 1: Account Selection */}
           {!isSubmitted && step === 1 && (
             <div className="space-y-4 animate-fadeIn">
               <h3 className="text-sm font-bold text-gray-700 mb-2">
@@ -308,46 +305,32 @@ const SignUp = ({ onLoginClick }) => {
               </h3>
               <button
                 onClick={() => setAccountType("seller")}
-                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${
-                  accountType === "seller"
-                    ? "border-teal-500 bg-teal-50 text-teal-700 font-bold"
-                    : "border-gray-100 text-gray-600 hover:border-gray-300"
-                }`}
+                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${accountType === "seller" ? "border-teal-500 bg-teal-50 text-teal-700 font-bold" : "border-gray-100 text-gray-600 hover:border-gray-300"}`}
               >
                 E-waste Seller
               </button>
               <button
                 onClick={() => setAccountType("harvester")}
-                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${
-                  accountType === "harvester"
-                    ? "border-teal-500 bg-teal-50 text-teal-700 font-bold"
-                    : "border-gray-100 text-gray-600 hover:border-gray-300"
-                }`}
+                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${accountType === "harvester" ? "border-teal-500 bg-teal-50 text-teal-700 font-bold" : "border-gray-100 text-gray-600 hover:border-gray-300"}`}
               >
                 Repair Shop / Tech-Harvester
               </button>
               <button
                 disabled={!accountType}
                 onClick={handleContinue}
-                className={`w-full mt-6 py-3 rounded-lg font-bold text-sm transition-all ${
-                  accountType
-                    ? "bg-[#2d7a7f] text-white hover:opacity-90"
-                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                }`}
+                className={`w-full mt-6 py-3 rounded-lg font-bold text-sm transition-all ${accountType ? "bg-[#2d7a7f] text-white hover:opacity-90" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
               >
                 Continue
               </button>
             </div>
           )}
 
-          {/* STEP 2: Basic Information */}
           {!isSubmitted && step === 2 && (
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-lg font-bold text-gray-800 mb-2">
                 Basic Information
               </h3>
               <div className="space-y-4">
-                {/* Full Name */}
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Full Name <span className="text-red-500">*</span>
@@ -367,7 +350,6 @@ const SignUp = ({ onLoginClick }) => {
                   )}
                 </div>
 
-                {/* Email */}
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Email Address <span className="text-red-500">*</span>
@@ -387,7 +369,6 @@ const SignUp = ({ onLoginClick }) => {
                   )}
                 </div>
 
-                {/* Contact Number */}
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Contact Number <span className="text-red-500">*</span>
@@ -407,7 +388,6 @@ const SignUp = ({ onLoginClick }) => {
                   )}
                 </div>
 
-                {/* Barangay */}
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Barangay of Residence{" "}
@@ -433,45 +413,22 @@ const SignUp = ({ onLoginClick }) => {
                   )}
                 </div>
 
-                {/* Password with Eye Icon and Helper Text */}
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Password <span className="text-red-500">*</span>
                   </label>
-                  <div className="relative">
-                    <input
-                      name="password"
-                      type="password"
-                      placeholder="........"
-                      className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.password ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
-                      onChange={handleChange}
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                        <circle cx="12" cy="12" r="3" />
-                      </svg>
-                    </button>
-                  </div>
+                  <input
+                    name="password"
+                    type="password"
+                    placeholder="........"
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.password ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
+                    onChange={handleChange}
+                  />
                   <p className="text-[9px] text-gray-400 mt-1.5">
                     Minimum 8 characters with uppercase, lowercase, and digit
                   </p>
                 </div>
 
-                {/* Confirm Password */}
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Confirm Password <span className="text-red-500">*</span>
@@ -491,7 +448,6 @@ const SignUp = ({ onLoginClick }) => {
                 </div>
               </div>
 
-              {/* Buttons aligned with mockup */}
               <div className="flex gap-4 pt-6">
                 <button
                   onClick={() => setStep(1)}
@@ -509,24 +465,19 @@ const SignUp = ({ onLoginClick }) => {
             </div>
           )}
 
-          {/* STEP 3: Professional Verification */}
           {!isSubmitted && step === 3 && (
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-xs font-bold text-emerald-900 mb-1">
-                {accountType === "seller"
-                  ? "Professional Verification"
-                  : "Professional Verification"}
+                Professional Verification
               </h3>
-
               <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
                 <p className="text-[11px] text-blue-800 leading-relaxed">
                   {accountType === "seller"
-                    ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts. Your status will remain as 'Pending Verification' until our team has reviewed your ID. This step helps ensure you are recognized as a trusted seller in our community."
+                    ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts. Your status will remain as 'Pending Verification' until our team has reviewed your ID."
                     : "To ensure marketplace integrity, we require all repair shops to verify credentials."}
                 </p>
               </div>
 
-              {/* Business Name - Shared by both */}
               {accountType === "harvester" && (
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
@@ -536,23 +487,14 @@ const SignUp = ({ onLoginClick }) => {
                     name="businessName"
                     type="text"
                     placeholder="Enter your business name"
-                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 ${errors.businessName ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20"}`}
+                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                     onChange={handleChange}
                     value={formData.businessName || ""}
                   />
-                  {errors.businessName && (
-                    <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 border border-red-500 rounded-full text-center leading-[10px]">
-                        !
-                      </span>
-                      {errors.businessName}
-                    </p>
-                  )}
                 </div>
               )}
 
               <div className="space-y-6 mt-6">
-                {/* SELLER ONLY: Valid ID */}
                 {accountType === "seller" && (
                   <div>
                     <label className="text-[11px] font-bold text-gray-700 block mb-2">
@@ -561,35 +503,39 @@ const SignUp = ({ onLoginClick }) => {
                     </label>
                     <div
                       onClick={() => permitRef.current?.click()}
-                      className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 transition-colors cursor-pointer group"
+                      className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit ? "border-emerald-400 bg-emerald-50/10" : "border-gray-200"}`}
                     >
                       <input
                         type="file"
                         ref={permitRef}
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) =>
-                          console.log("ID selected:", e.target.files[0]?.name)
-                        }
+                        onChange={(e) => handleFileChange(e, "businessPermit")}
                       />
                       <Upload
-                        className="text-gray-400 group-hover:text-teal-500 mb-2"
+                        className={
+                          formData.businessPermit
+                            ? "text-emerald-500 mb-2"
+                            : "text-gray-400 mb-2"
+                        }
                         size={24}
                       />
                       <span className="text-teal-600 font-semibold text-sm">
-                        Click to upload
+                        {formData.businessPermit
+                          ? "File uploaded successfully!"
+                          : "Click to upload"}
                       </span>
                       <span className="text-gray-400 text-[10px] mt-1">
-                        PDF or JPEG (max 5MB)
+                        {formData.businessPermit
+                          ? formData.businessPermit.name
+                          : "PDF or JPEG (max 5MB)"}
                       </span>
                     </div>
                   </div>
                 )}
 
-                {/* HARVESTER ONLY: Existing Permit & Tech Cert */}
                 {accountType === "harvester" && (
                   <>
-                    {/* Business Permit */}
                     <div>
                       <label className="text-[11px] font-bold text-gray-700 block mb-2">
                         Business Permit / DTI Registration{" "}
@@ -597,7 +543,7 @@ const SignUp = ({ onLoginClick }) => {
                       </label>
                       <div
                         onClick={() => permitRef.current?.click()}
-                        className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 transition-colors cursor-pointer group"
+                        className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit ? "border-emerald-400 bg-emerald-50/10" : "border-gray-200"}`}
                       >
                         <input
                           type="file"
@@ -605,26 +551,30 @@ const SignUp = ({ onLoginClick }) => {
                           accept="image/*"
                           className="hidden"
                           onChange={(e) =>
-                            console.log(
-                              "Permit selected:",
-                              e.target.files[0]?.name,
-                            )
+                            handleFileChange(e, "businessPermit")
                           }
                         />
                         <Upload
-                          className="text-gray-400 group-hover:text-teal-500 mb-2"
+                          className={
+                            formData.businessPermit
+                              ? "text-emerald-500 mb-2"
+                              : "text-gray-400 mb-2"
+                          }
                           size={24}
                         />
                         <span className="text-teal-600 font-semibold text-sm">
-                          Click to upload
+                          {formData.businessPermit
+                            ? "Permit uploaded!"
+                            : "Click to upload"}
                         </span>
                         <span className="text-gray-400 text-[10px] mt-1">
-                          PDF or JPEG (max 5MB)
+                          {formData.businessPermit
+                            ? formData.businessPermit.name
+                            : "PDF or JPEG (max 5MB)"}
                         </span>
                       </div>
                     </div>
 
-                    {/* Technical Certification */}
                     <div>
                       <label className="text-[11px] font-bold text-gray-700 block mb-2">
                         Technical Certification{" "}
@@ -632,29 +582,32 @@ const SignUp = ({ onLoginClick }) => {
                       </label>
                       <div
                         onClick={() => techRef.current?.click()}
-                        className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 transition-colors cursor-pointer group"
+                        className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.techCert ? "border-emerald-400 bg-emerald-50/10" : "border-gray-200"}`}
                       >
                         <input
                           type="file"
                           ref={techRef}
                           accept="image/*"
                           className="hidden"
-                          onChange={(e) =>
-                            console.log(
-                              "Tech Cert selected:",
-                              e.target.files[0]?.name,
-                            )
-                          }
+                          onChange={(e) => handleFileChange(e, "techCert")}
                         />
                         <Upload
-                          className="text-gray-400 group-hover:text-teal-500 mb-2"
+                          className={
+                            formData.techCert
+                              ? "text-emerald-500 mb-2"
+                              : "text-gray-400 mb-2"
+                          }
                           size={24}
                         />
                         <span className="text-teal-600 font-semibold text-sm">
-                          Click to upload
+                          {formData.techCert
+                            ? "Certification uploaded!"
+                            : "Click to upload"}
                         </span>
                         <span className="text-gray-400 text-[10px] mt-1">
-                          PDF or JPEG (max 5MB)
+                          {formData.techCert
+                            ? formData.techCert.name
+                            : "PDF or JPEG (max 5MB)"}
                         </span>
                       </div>
                     </div>
@@ -662,7 +615,6 @@ const SignUp = ({ onLoginClick }) => {
                 )}
               </div>
 
-              {/* Navigation Buttons (Keep as is) */}
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={() => setStep(2)}
@@ -679,49 +631,41 @@ const SignUp = ({ onLoginClick }) => {
               </div>
             </div>
           )}
-          {/* FINAL STEP: Complete Registration */}
+
           {isSubmitted && (
             <div className="space-y-6 animate-fadeIn text-left">
               <h3 className="text-sm font-bold text-gray-700">
                 Complete Registration
               </h3>
-
-              {/* Notice Box - Styled according to image_90c07d.jpg / image_90a63d.jpg */}
               <div className="bg-[#fffdf0] border border-[#fdf5d3] p-8 rounded-xl flex flex-col items-center justify-center space-y-4">
-                <div className="flex items-center justify-center">
-                  {/* Warning Icon from image_90c07d.jpg */}
-                  <div className="w-10 h-10 border-2 border-orange-400 rounded-full flex items-center justify-center">
-                    <span className="text-orange-400 font-bold text-xl">!</span>
-                  </div>
+                <div className="w-10 h-10 border-2 border-orange-400 rounded-full flex items-center justify-center">
+                  <span className="text-orange-400 font-bold text-xl">!</span>
                 </div>
-                <div className="text-center space-y-1">
-                  <p className="text-[11px] text-gray-600 leading-relaxed max-w-[280px]">
-                    Click "Complete Registration" to submit your account for
-                    verification. Your account will be activated after
-                    administrator approval.
-                  </p>
-                </div>
+                <p className="text-[11px] text-gray-600 text-center leading-relaxed max-w-[280px]">
+                  Click "Complete Registration" to submit your account for
+                  verification. Your account will be activated after
+                  administrator approval.
+                </p>
               </div>
 
-              {/* Footer Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setIsSubmitted(false)}
-                  className="flex-1 py-2.5 border border-gray-100 text-gray-500 rounded-lg font-medium text-xs hover:bg-gray-50 transition-colors"
+                  className="flex-1 py-2.5 border border-gray-100 text-gray-500 rounded-lg font-medium text-xs hover:bg-gray-50"
                 >
                   Back
                 </button>
                 <button
                   onClick={handleFinalSubmit}
-                  className="flex-1 py-2.5 bg-[#6da43a] text-white rounded-lg font-medium text-xs shadow-sm hover:bg-[#5f8f32] transition-colors"
+                  disabled={loading}
+                  className="flex-1 py-2.5 bg-[#6da43a] text-white rounded-lg font-medium text-xs shadow-sm hover:bg-[#5f8f32] disabled:opacity-50"
                 >
-                  Complete Registration
+                  {loading ? "Submitting..." : "Complete Registration"}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Login Footer */}
           <p className="text-center text-[11px] text-gray-400 mt-6">
             Already have an account?{" "}
             <span

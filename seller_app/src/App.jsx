@@ -6,11 +6,13 @@ import SellerDashboard from "./pages/SellerDashboard";
 import HarvesterDashboard from "./pages/HarvesterDashboard";
 import AdminDashboard from "./admin/AdminDashboard";
 import AdminPanel from "./admin/AdminPanel";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 // --- ADDED IMPORTS ---
 import EnvOfficerLogin from "./pages/EnvOfficerLogin";
 import EnvOfficerPanel from "./wmo/EnvOfficerPanel";
 import AdminLogin from "./pages/AdminLogin";
+import AdminSignup from "./admin/AdminSignup";
 
 function App() {
   const [session, setSession] = useState(null);
@@ -19,15 +21,18 @@ function App() {
   const [currentPage, setCurrentPage] = useState("login");
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // --- ADDED STATE FOR ENV OFFICER DEMO ---
   const [isEnvDemo, setIsEnvDemo] = useState(false);
+  const [isAdminDemo, setIsAdminDemo] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
     setRole(null);
-    setIsEnvDemo(false); // Reset demo state on logout
+    setIsEnvDemo(false);
+    setIsAdminDemo(false); // Reset demo state on logout
   };
 
   // 🔥 SINGLE SOURCE OF TRUTH
@@ -65,7 +70,6 @@ function App() {
     setIsChecked(true);
   };
   useEffect(() => {
-    // 🌍 DETECT LITERALLY TYPED URL PATHS (e.g., /admin or /wmo)
     const path = window.location.pathname.toLowerCase();
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get("view")?.toLowerCase();
@@ -89,22 +93,8 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      loadUser(data.session);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      loadUser(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   // 🔥 LOADING STATE
-  if (loading || !isChecked) {
+  if (loading && !session) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
         <div className="w-12 h-12 border-4 border-[#769c2d] border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -117,6 +107,9 @@ function App() {
 
   // --- ADDED ENV OFFICER DASHBOARD VIEW ---
   // This shows if the role is officially 'env_officer' OR if the demo bypass is clicked
+  if (isAdminDemo || role === "admin") {
+    return <AdminPanel session={session} onLogout={handleLogout} />;
+  }
   if (isEnvDemo || role === "env_officer") {
     return <EnvOfficerPanel onLogout={handleLogout} user={session?.user} />;
   }
@@ -144,8 +137,8 @@ function App() {
   }
 
   // 🔥 LOGGED IN
-  if (session) {
-    if (role === "NO_ROLE" || !role) {
+  if (session && role) {
+    if (role === "NO_ROLE") {
       return (
         <SignUp
           onLoginClick={() => setCurrentPage("login")}
@@ -153,47 +146,60 @@ function App() {
         />
       );
     }
+
     if (role === "admin") {
       return <AdminPanel session={session} onLogout={handleLogout} />;
     }
+
     if (role === "seller") {
       return <SellerDashboard session={session} />;
     }
+
     if (role === "harvester") {
       return <HarvesterDashboard session={session} onLogout={handleLogout} />;
     }
 
-    return (
-      <div className="h-screen flex items-center justify-center">
-        No role found. Please contact support.
-      </div>
-    );
+    if (role === "env_officer") {
+      return <EnvOfficerPanel onLogout={handleLogout} user={session?.user} />;
+    }
   }
 
   // 🔥 LOGGED OUT / NAVIGATION
   return (
-    <div className="App">
-      {currentPage === "login" && (
-        <Login
-          onSignUpClick={() => setCurrentPage("signup")}
-          onEnvClick={() => setCurrentPage("env_login")}
-        />
-      )}
-      {currentPage === "signup" && (
-        <SignUp onLoginClick={() => setCurrentPage("login")} />
-      )}
-      {currentPage === "admin_login" && (
-        <AdminLogin onBackToUserLogin={() => setCurrentPage("login")} />
-      )}
+    <BrowserRouter>
+      <div className="App">
+        {currentPage === "login" && (
+          <Login
+            onSignUpClick={() => setCurrentPage("signup")}
+            onEnvClick={() => setCurrentPage("env_login")}
+          />
+        )}
+        {currentPage === "signup" && (
+          <SignUp onLoginClick={() => setCurrentPage("login")} />
+        )}
 
-      {/* --- ADDED ENV LOGIN PAGE --- */}
-      {currentPage === "env_login" && (
-        <EnvOfficerLogin
-          onBackToUserLogin={() => setCurrentPage("login")}
-          onLoginSuccess={() => setIsEnvDemo(true)}
-        />
-      )}
-    </div>
+        {/* --- CONNECTED ADMIN LOGIN --- */}
+        {currentPage === "admin_login" && (
+          <AdminLogin
+            onBackToUserLogin={() => setCurrentPage("login")}
+            onLoginSuccess={() => setIsAdminDemo(true)}
+            onSignUpClick={() => setCurrentPage("admin_signup")}
+          />
+        )}
+
+        {currentPage === "admin_signup" && (
+          <AdminSignup onLoginClick={() => setCurrentPage("admin_login")} />
+        )}
+
+        {/* --- ENV LOGIN PAGE --- */}
+        {currentPage === "env_login" && (
+          <EnvOfficerLogin
+            onBackToUserLogin={() => setCurrentPage("login")}
+            onLoginSuccess={() => setIsEnvDemo(true)}
+          />
+        )}
+      </div>
+    </BrowserRouter>
   );
 }
 

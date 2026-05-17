@@ -404,8 +404,7 @@ const TransactionsView = ({
               </div>
             )}
 
-            {/* Messages Feed Mockup */}
-            <div className="pt-6">
+            {/* <div className="pt-6">
               <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-6">
                 Messages
               </h4>
@@ -421,7 +420,6 @@ const TransactionsView = ({
                   </p>
                 </div>
 
-                {/* Received Message */}
                 <div className="flex flex-col items-start">
                   <div className="bg-white border border-slate-100 p-4 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
                     <p className="text-xs font-medium text-slate-700">
@@ -433,7 +431,6 @@ const TransactionsView = ({
                   </span>
                 </div>
 
-                {/* Sent Message */}
                 <div className="flex flex-col items-end">
                   <div className="bg-[#769c2d] text-white p-4 rounded-2xl rounded-tr-none shadow-sm max-w-[80%]">
                     <p className="text-xs font-bold">
@@ -457,11 +454,11 @@ const TransactionsView = ({
                   </button>
                 </div>
               </div>
-            </div>
+            </div> */}
           </div>
 
           {/* Message Input */}
-          <div className="p-6 bg-white border-t border-slate-100 flex gap-3">
+          {/* <div className="p-6 bg-white border-t border-slate-100 flex gap-3">
             <input
               type="text"
               placeholder="Type a message..."
@@ -470,7 +467,7 @@ const TransactionsView = ({
             <button className="bg-slate-200 p-3 rounded-xl text-slate-400 hover:bg-slate-300 transition-colors">
               <Send size={20} />
             </button>
-          </div>
+          </div> */}
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/30 rounded-[2.5rem] border-2 border-dashed border-slate-100">

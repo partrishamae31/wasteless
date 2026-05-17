@@ -19,6 +19,12 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
     nameMatches: false,
     contactVerified: false,
   });
+  const userRole = shopData?.role?.toLowerCase();
+  const isSeller = userRole === "seller";
+  const isHarvester =
+    userRole === "harvester" ||
+    userRole === "repair shop" ||
+    userRole === "repair_shop";
 
   if (!isOpen) return null;
 
@@ -89,7 +95,11 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
     onClose();
   };
 
-  const isAllChecked = Object.values(checklist).every((val) => val === true);
+  const isAllChecked = isSeller
+  ? checklist.permitValid &&
+    checklist.nameMatches &&
+    checklist.contactVerified
+  : Object.values(checklist).every((val) => val === true);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6">
@@ -99,7 +109,9 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
             {/* Header */}
             <div className="flex justify-between items-center p-6 border-b border-slate-100 flex-shrink-0">
               <h2 className="text-xl font-bold text-slate-800">
-                Verify Repair Shop Credentials
+                {isSeller
+                  ? "Verify Seller Identity"
+                  : "Verify Repair Shop Credentials"}
               </h2>
               <button
                 onClick={onClose}
@@ -114,10 +126,12 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
               <div className="grid grid-cols-2 gap-6 p-5 bg-slate-50 rounded-xl mb-6">
                 <div>
                   <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">
-                    Shop Name
+                    {isSeller ? "Seller Name" : "Shop Name"}
                   </p>
                   <p className="text-sm font-medium text-slate-700">
-                    {shopData?.business_name || "E-Parts Hub"}
+                    {isSeller
+                      ? shopData?.full_name || "Unknown Seller"
+                      : shopData?.business_name || "Repair Shop"}
                   </p>
                 </div>
                 <div>
@@ -132,14 +146,24 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
 
               {/* Document Previews Section */}
               <div className="space-y-4 mb-8">
-                <DocumentPreview
-                  title="Business Permit / DTI Registration"
-                  url={shopData?.business_permit_url}
-                />
-                <DocumentPreview
-                  title="Technical Certification"
-                  url={shopData?.tech_cert_url}
-                />
+                {isSeller ? (
+                  <DocumentPreview
+                    title="Government Valid ID"
+                    url={shopData?.business_permit_url}
+                  />
+                ) : (
+                  <>
+                    <DocumentPreview
+                      title="Business Permit / DTI Registration"
+                      url={shopData?.business_permit_url}
+                    />
+
+                    <DocumentPreview
+                      title="Technical Certification"
+                      url={shopData?.tech_cert_url}
+                    />
+                  </>
+                )}
               </div>
 
               {/* Checklist */}
@@ -148,26 +172,53 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
                   Verification Checklist:
                 </h3>
                 <div className="space-y-3">
-                  <CheckItem
-                    label="Business permit is valid and not expired"
-                    checked={checklist.permitValid}
-                    onChange={() => handleCheck("permitValid")}
-                  />
-                  <CheckItem
-                    label="Technical certification is legitimate"
-                    checked={checklist.certLegit}
-                    onChange={() => handleCheck("certLegit")}
-                  />
-                  <CheckItem
-                    label="Shop name matches official documents"
-                    checked={checklist.nameMatches}
-                    onChange={() => handleCheck("nameMatches")}
-                  />
-                  <CheckItem
-                    label="Contact information is verified"
-                    checked={checklist.contactVerified}
-                    onChange={() => handleCheck("contactVerified")}
-                  />
+                  {isSeller ? (
+                    <>
+                      <CheckItem
+                        label="Government ID is clear and valid"
+                        checked={checklist.permitValid}
+                        onChange={() => handleCheck("permitValid")}
+                      />
+
+                      <CheckItem
+                        label="Seller identity matches registration details"
+                        checked={checklist.nameMatches}
+                        onChange={() => handleCheck("nameMatches")}
+                      />
+
+                      <CheckItem
+                        label="Contact information is verified"
+                        checked={checklist.contactVerified}
+                        onChange={() => handleCheck("contactVerified")}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <CheckItem
+                        label="Business permit is valid and not expired"
+                        checked={checklist.permitValid}
+                        onChange={() => handleCheck("permitValid")}
+                      />
+
+                      <CheckItem
+                        label="Technical certification is legitimate"
+                        checked={checklist.certLegit}
+                        onChange={() => handleCheck("certLegit")}
+                      />
+
+                      <CheckItem
+                        label="Shop name matches official documents"
+                        checked={checklist.nameMatches}
+                        onChange={() => handleCheck("nameMatches")}
+                      />
+
+                      <CheckItem
+                        label="Contact information is verified"
+                        checked={checklist.contactVerified}
+                        onChange={() => handleCheck("contactVerified")}
+                      />
+                    </>
+                  )}
                 </div>
               </div>
             </div>

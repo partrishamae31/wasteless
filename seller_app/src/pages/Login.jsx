@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import AdminLogin from "./AdminLogin";
 import EnvOfficerLogin from "./EnvOfficerLogin";
 import AdminSignup from "./AdminSignup";
+
 import {
   Recycle,
   Shield,
@@ -16,11 +17,11 @@ import {
   Zap,
 } from "lucide-react";
 
-const Login = ({ onSignUpClick, onEnvClick }) => {
+const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
   const [role, setRole] = useState("seller");
   const [isAdminView, setIsAdminView] = useState(false);
   const [isOfficerView, setIsOfficerView] = useState(false);
-  // 1. ADD THESE STATES
+  const [errorMsg, setErrorMsg] = useState("");
   const [isSignupView, setIsSignupView] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +29,7 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
 
   if (isSignupView) {
     return <AdminSignup onBackToLogin={() => setIsSignupView(false)} />;
-  } 
+  }
   if (isOfficerView) {
     return (
       <EnvOfficerLogin onBackToUserLogin={() => setIsOfficerView(false)} />
@@ -36,19 +37,19 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
   }
   if (isAdminView) {
     return (
-    <AdminLogin 
-      onBackToUserLogin={() => setIsAdminView(false)} 
-      onSignUpClick={() => setIsSignupView(true)} // This function is what was missing
-    />
-  );
+      <AdminLogin
+        onBackToUserLogin={() => setIsAdminView(false)}
+        onSignUpClick={() => setIsSignupView(true)} // This function is what was missing
+      />
+    );
   }
 
   // 2. ADD THIS LOGIN FUNCTION
   const handleEmailLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg("");
     try {
-      // 1. Authenticate the user
       const {
         data: { user },
         error: authError,
@@ -68,19 +69,33 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
 
       if (profileError) throw profileError;
 
-      // 3. ROLE VALIDATION: Compare DB role with the UI selection
-      if (profile.role !== role) {
-        // Force sign out because the user chose the wrong role card
-        await supabase.auth.signOut();
-        alert(
-          `Access Denied: This account is registered as a ${profile.role}. Please select the correct role above.`,
+      console.log("Selected role:", role);
+      console.log("Database role:", profile?.role);
+      if (!profile || profile.role !== role) {
+        setErrorMsg(
+          `Access Denied: This account is registered as a ${profile?.role}. Please select the correct role above.`,
         );
+
+        await supabase.auth.signOut();
+
+        
+        setLoading(false);
+
         return;
       }
 
       console.log("Auth and Role match success!");
+      window.location.reload();
     } catch (error) {
-      alert("Login failed: " + error.message);
+      // 💡 TRANSLATION LAYER: Check if Supabase sent the credential error
+      if (error.message === "Invalid login credentials") {
+        setErrorMsg(
+          "Authentication failed. Please check your email or password.",
+        );
+      } else {
+        // Fallback for other errors (like network issues)
+        setErrorMsg(error.message || "An unexpected error occurred.");
+      }
     } finally {
       setLoading(false);
     }
@@ -136,6 +151,22 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
           <p className="text-gray-400 text-sm mb-6">
             Sign in to access your dashboard
           </p>
+          {/* 🔥 DYNAMIC AUTHENTICATION ERROR BANNER */}
+          {errorMsg && (
+            <div className="mb-4 flex items-center justify-between bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 text-xs animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-center gap-2">
+                <span className="font-bold">✕</span>
+                <span>{errorMsg}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMsg("")}
+                className="text-red-400 hover:text-red-600 font-bold ml-2 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           <label className="text-xs font-semibold text-gray-600 mb-2 block">
             Select Your Role
@@ -170,7 +201,10 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setRole(item.id)}
+                onClick={() => {
+                  setRole(item.id);
+                  setErrorMsg("");
+                }}
                 className={`p-3 border rounded-xl text-left transition-all ${
                   role === item.id
                     ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
@@ -192,7 +226,7 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
             ))}
           </div>
 
-          <div className="space-y-4">
+          <form onSubmit={handleEmailLogin} className="space-y-4">
             <div className="relative">
               <Mail
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -227,16 +261,15 @@ const Login = ({ onSignUpClick, onEnvClick }) => {
                 />
               </div>
             </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={handleEmailLogin}
-            disabled={loading}
-            className="w-full mt-6 py-3 bg-gradient-to-r from-[#3e8ca3] to-[#689d38] text-white font-semibold rounded-lg text-sm flex items-center justify-center gap-2 hover:opacity-90 transition disabled:opacity-50"
-          >
-            {loading ? "Signing In..." : "Sign In"} <span>→</span>
-          </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-6 py-3 bg-gradient-to-r from-[#3e8ca3] to-[#689d38] text-white font-semibold rounded-lg text-sm flex items-center justify-center gap-2 hover:opacity-90 transition disabled:opacity-50"
+            >
+              {loading ? "Signing In..." : "Sign In"} <span>→</span>
+            </button>
+          </form>
 
           <div className="relative flex py-5 items-center">
             <div className="flex-grow border-t border-gray-200"></div>
