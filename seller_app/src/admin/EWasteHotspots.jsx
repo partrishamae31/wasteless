@@ -97,7 +97,7 @@ const EWasteHotspots = () => {
         </div>
 
         {/* TOP STATS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        {/* <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           {stats.map((item, i) => {
             const Icon = item.icon;
 
@@ -132,7 +132,7 @@ const EWasteHotspots = () => {
               </div>
             );
           })}
-        </div>
+        </div> */}
 
         {/* MAP SECTION */}
         <div className="bg-white border border-[#E8EDF5] rounded-3xl p-5 shadow-sm">

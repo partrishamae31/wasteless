@@ -87,12 +87,12 @@ const ConditionSection = ({ selected, onChange }) => {
       sub: "Some components not working",
       activeStyles: "border-blue-500 bg-blue-50/30 text-blue-700",
     },
-    {
-      id: "Parts Only",
-      label: "Parts Only",
-      sub: "For harvesting components",
-      activeStyles: "border-slate-500 bg-slate-50/30 text-slate-700",
-    },
+    // {
+    //   id: "Parts Only",
+    //   label: "Parts Only",
+    //   sub: "For harvesting components",
+    //   activeStyles: "border-slate-500 bg-slate-50/30 text-slate-700",
+    // },
   ];
 
   return (

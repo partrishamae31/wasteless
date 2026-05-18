@@ -34,7 +34,7 @@ const BarangayLeaderboard = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-[#1e40af] to-[#3b82f6] p-8 rounded-[2rem] text-white shadow-xl">
+      {/* <div className="bg-gradient-to-r from-[#1e40af] to-[#3b82f6] p-8 rounded-[2rem] text-white shadow-xl">
         <div className="flex items-center gap-4 mb-2">
           <Trophy size={32} className="text-yellow-400" />
           <h2 className="text-2xl font-black uppercase tracking-tight">Barangay E-waste Leaderboard</h2>
@@ -42,10 +42,10 @@ const BarangayLeaderboard = () => {
         <p className="text-blue-100 text-xs font-bold opacity-80 uppercase tracking-widest">
           Rankings based on community participation and e-waste reduction activity
         </p>
-      </div>
+      </div> */}
 
       {/* Top 3 Podium Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {topThree.map((item, index) => (
           <div 
             key={item.id}
@@ -79,7 +79,7 @@ const BarangayLeaderboard = () => {
             </div>
           </div>
         ))}
-      </div>
+      </div> */}
 
       {/* Complete Rankings Table */}
       <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
@@ -91,24 +91,24 @@ const BarangayLeaderboard = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <th className="px-8 py-4">Rank</th>
+                {/* <th className="px-8 py-4">Rank</th> */}
                 <th className="px-8 py-4">Barangay Name</th>
                 <th className="px-8 py-4">Total Items</th>
                 <th className="px-8 py-4">Stock Level</th>
                 <th className="px-8 py-4">Households</th>
-                <th className="px-8 py-4">Badge</th>
+                {/* <th className="px-8 py-4">Badge</th> */}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {leaderboardData.map((item, index) => (
                 <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-8 py-5">
+                  {/* <td className="px-8 py-5">
                     <span className={`w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-black ${
                       index < 3 ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-500'
                     }`}>
                       {index + 1}
                     </span>
-                  </td>
+                  </td> */}
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-2">
                       <MapPin size={12} className="text-slate-300" />
@@ -125,13 +125,13 @@ const BarangayLeaderboard = () => {
                     </span>
                   </td>
                   <td className="px-8 py-5 text-xs font-bold text-slate-500">{item.households.toLocaleString()}</td>
-                  <td className="px-8 py-5">
+                  {/* <td className="px-8 py-5">
                     {item.badge && (
                       <span className="px-3 py-1 bg-yellow-50 text-yellow-600 border border-yellow-100 rounded-lg text-[8px] font-black uppercase tracking-tighter">
                         ⭐ {item.badge}
                       </span>
                     )}
-                  </td>
+                  </td> */}
                 </tr>
               ))}
             </tbody>

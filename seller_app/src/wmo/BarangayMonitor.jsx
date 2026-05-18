@@ -61,7 +61,7 @@ const BarangayMonitor = () => {
       </div>
 
       {/* TOP STATS BAR */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+      {/* <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
         {[
           { label: "Total Users", value: "5,480" },
           { label: "Active Users", value: "3,456" },
@@ -76,10 +76,10 @@ const BarangayMonitor = () => {
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
           </div>
         ))}
-      </div>
+      </div> */}
 
       {/* REPORT BAR */}
-      <div className="bg-[#FEFCE8] p-4 rounded-xl border border-yellow-100 flex items-center justify-between">
+      {/* <div className="bg-[#FEFCE8] p-4 rounded-xl border border-yellow-100 flex items-center justify-between">
         <div>
           <h4 className="text-sm font-bold text-slate-800">System Monitoring Report</h4>
           <p className="text-[11px] text-slate-500">Generate comprehensive platform performance and compliance report</p>
@@ -87,7 +87,7 @@ const BarangayMonitor = () => {
         <button className="bg-[#1E293B] text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase flex items-center gap-2">
           <Download size={14} /> Generate Report
         </button>
-      </div>
+      </div> */}
 
       {/* LEADERBOARD HEADER */}
       <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-4 rounded-xl text-white flex items-center gap-3 shadow-md">

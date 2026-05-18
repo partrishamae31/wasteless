@@ -6,6 +6,8 @@ import SystemHealth from "./SystemHealth";
 import BarangayMonitor from "./BarangayMonitor";
 import ComplianceReport from "./ComplianceReport";
 import EnvironmentalImpact from "./EnvironmentalImpact";
+import AdminManagement from "./AdminManagement";
+import CreateWMOAccount from "./CreateWMOAccount";
 
 import {
   LayoutDashboard,
@@ -39,6 +41,16 @@ const EnvOfficerPanel = ({ onLogout, user }) => {
       icon: <BarChart3 size={16} />,
     },
     {
+      id: "create_account",
+      label: "Create Account",
+      icon: <ShieldCheck size={16} />,
+    },
+    {
+      id: "admin_management",
+      label: "Admin Management",
+      icon: <ShieldCheck size={16} />,
+    },
+    {
       id: "health",
       label: "System Health",
       icon: <Activity size={16} />,
@@ -48,11 +60,11 @@ const EnvOfficerPanel = ({ onLogout, user }) => {
       label: "Barangay Monitor",
       icon: <ShieldCheck size={16} />,
     },
-    {
-      id: "compliance",
-      label: "Compliance Reports",
-      icon: <FileText size={16} />,
-    },
+    // {
+    //   id: "compliance",
+    //   label: "Compliance Reports",
+    //   icon: <FileText size={16} />,
+    // },
   ];
 
   return (
@@ -139,23 +151,38 @@ const EnvOfficerPanel = ({ onLogout, user }) => {
           {activeTab === "impact" && <EnvironmentalImpact />}
           {activeTab === "hotspots" && <EwasteHotspots />}
           {activeTab === "activity" && <UserActivity />}
+          {activeTab === "create_account" && <CreateWMOAccount />}
+          {activeTab === "admin_management" && <AdminManagement />}
           {activeTab === "health" && <SystemHealth />}
           {activeTab === "barangay" && <BarangayMonitor />}
-          {activeTab === "compliance" && <ComplianceReport />}
+          {/* {activeTab === "compliance" && <ComplianceReport />} */}
 
           {/* {activeTab === "dashboard" && <OfficerDashboard />} */}
           {/* {activeTab === "compliance" && <ComplianceReport />} */}
           {/* {activeTab === "hotspots" && <EwasteHotspots />} */}
 
-          <div className="flex items-center justify-center h-full text-slate-300">
-            <div className="text-center">
-              <LayoutDashboard size={48} className="mx-auto mb-4 opacity-20" />
+          {![
+            "dashboard",
+            "impact",
+            "hotspots",
+            "activity",
+            "health",
+            "barangay",
+            "admin_management",
+          ].includes(activeTab) && (
+            <div className="flex items-center justify-center h-full text-slate-300">
+              <div className="text-center">
+                <LayoutDashboard
+                  size={48}
+                  className="mx-auto mb-4 opacity-20"
+                />
 
-              <p className="text-sm font-medium">
-                Select a module from the sidebar
-              </p>
+                <p className="text-sm font-medium">
+                  Select a module from the sidebar
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </main>
     </div>

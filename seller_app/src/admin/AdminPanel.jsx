@@ -12,6 +12,7 @@ import DeviceDatabase from "./DeviceDatabase";
 import ValuationModel from "./ValuationModel";
 import TrustTierManagement from "./TrustTierManagement";
 import ComplianceReport from "./ComplianceReport";
+import AdminAccounts from "./AdminAccounts";
 
 import {
   LayoutDashboard,
@@ -26,6 +27,7 @@ import {
   LogOut,
   ChevronRight,
   FileText,
+  Shield
 } from "lucide-react";
 
 const AdminPanel = ({ onLogout }) => {
@@ -68,11 +70,11 @@ const AdminPanel = ({ onLogout }) => {
       label: "Donation Management",
       icon: <HeartHandshake size={18} />,
     },
-    {
-      id: "donated",
-      label: "Donated Items Database",
-      icon: <Database size={18} />,
-    },
+    // {
+    //   id: "donated",
+    //   label: "Donated Items Database",
+    //   icon: <Database size={18} />,
+    // },
     {
       id: "dropoff",
       label: "Drop-off Points",
@@ -85,6 +87,11 @@ const AdminPanel = ({ onLogout }) => {
       label: "User Management",
       icon: <Users size={18} />,
       badge: pendingVerificationCount,
+    },
+    {
+      id: "admin-accounts",
+      label: "Admin Accounts",
+      icon: <Shield size={18} />,
     },
 
     {
@@ -108,11 +115,11 @@ const AdminPanel = ({ onLogout }) => {
       label: "Trust Tiers",
       icon: <ShieldCheck size={18} />,
     },
-    {
-      id: "compliance",
-      label: "Compliance Report",
-      icon: <FileText size={18} />,
-    },
+    // {
+    //   id: "compliance",
+    //   label: "Compliance Report",
+    //   icon: <FileText size={18} />,
+    // },
   ];
 
   return (
@@ -205,11 +212,12 @@ const AdminPanel = ({ onLogout }) => {
         {activeTab === "donated" && <DonatedDatabase />}
         {activeTab === "dropoff" && <DropOffPoints />}
         {activeTab === "user-management" && <UserManagement />}
+        {activeTab === "admin-accounts" && <AdminAccounts />}s
         {activeTab === "transaction" && <TransactionReview />}
         {activeTab === "database" && <DeviceDatabase />}
         {activeTab === "valuation" && <ValuationModel />}
         {activeTab === "trust" && <TrustTierManagement />}
-        {activeTab === "compliance" && <ComplianceReport />}
+        {/* {activeTab === "compliance" && <ComplianceReport />} */}
       </main>
     </div>
   );

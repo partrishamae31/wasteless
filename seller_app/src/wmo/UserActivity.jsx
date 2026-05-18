@@ -64,15 +64,15 @@ const UserActivity = () => {
       </div>
 
       {/* TOP MINI STATS */}
-      <div className="flex gap-4">
+      {/* <div className="flex gap-4">
         <MiniStat icon={Users} label="Total Platform Users" value="1,248" trend="+12%" color="text-emerald-500" />
         <MiniStat icon={Activity} label="Active Transactions" value="87" trend="+3%" color="text-emerald-500" />
         <MiniStat icon={RefreshCcw} label="System Uptime" value="99.8%" trend="+0.2%" color="text-emerald-500" />
         <MiniStat icon={MapPin} label="Active Barangays" value="18/33" trend="55%" color="text-blue-500" />
-      </div>
+      </div> */}
 
       {/* GENERATE REPORT BAR */}
-      <div className="bg-[#F0F7FF] p-4 rounded-xl border border-blue-100 flex items-center justify-between">
+      {/* <div className="bg-[#F0F7FF] p-4 rounded-xl border border-blue-100 flex items-center justify-between">
         <div>
           <h4 className="text-sm font-bold text-slate-800">System Monitoring Report</h4>
           <p className="text-xs text-slate-500">Generate comprehensive platform performance and compliance report</p>
@@ -80,7 +80,7 @@ const UserActivity = () => {
         <button className="bg-[#1E293B] text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2">
           <Download size={14} /> Generate Report
         </button>
-      </div>
+      </div> */}
 
       {/* USER STATISTICS BY ROLE */}
       <div className="space-y-4">

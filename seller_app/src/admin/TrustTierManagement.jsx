@@ -202,11 +202,11 @@ const TrustTierManagement = () => {
       </div>
 
       {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+      {/* <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
         {stats.map((item) => (
           <StatCard key={item.title} item={item} />
         ))}
-      </div>
+      </div> */}
 
       {/* MAIN CONTENT */}
       <div className="bg-white border border-[#ECEEF3] rounded-2xl overflow-hidden">

@@ -211,7 +211,7 @@ const OfficerDashboard = () => {
         </div>
 
         {/* REPORT BAR */}
-        <div className="bg-[#eef7ff] border border-[#dbeafe] rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        {/* <div className="bg-[#eef7ff] border border-[#dbeafe] rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
             <h3 className="font-semibold text-slate-800 text-sm">
               System Monitoring Report
@@ -227,7 +227,7 @@ const OfficerDashboard = () => {
             <Download size={16} />
             Generate Report
           </button>
-        </div>
+        </div> */}
 
         {/* SUMMARY CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">

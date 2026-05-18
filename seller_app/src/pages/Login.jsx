@@ -78,7 +78,6 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
 
         await supabase.auth.signOut();
 
-        
         setLoading(false);
 
         return;
@@ -103,39 +102,21 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
 
   const handleSocialLogin = async (provider) => {
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: provider,
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
         options: {
-          skipBrowserRedirect: true,
+          redirectTo: window.location.origin,
           queryParams: {
             access_type: "offline",
             prompt: "select_account",
           },
         },
       });
-      if (error) {
-        alert("Authentication failed. Please try again.");
-        return;
-      }
 
       if (error) throw error;
-
-      // If Supabase returns a URL, we open it in a custom popup window
-      if (data?.url) {
-        const width = 500;
-        const height = 600;
-        const left = window.screenX + (window.innerWidth - width) / 2;
-        const top = window.screenY + (window.innerHeight - height) / 2;
-
-        window.open(
-          data.url,
-          "google-login",
-          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,status=yes`,
-        );
-      }
     } catch (error) {
-      // 2.2.2.1 Response: Display exact error message
       alert("Authentication failed. Please try again.");
+      console.error(error);
     }
   };
 

@@ -127,7 +127,7 @@ const UserManagement = () => {
       </div>
 
       {/* STATS CARDS */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {/* <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Total Users"
           value={totalUsers}
@@ -155,7 +155,7 @@ const UserManagement = () => {
           icon={<Database size={18} />}
           color="text-orange-500"
         />
-      </div>
+      </div> */}
 
       {/* PENDING REQUESTS */}
       <div className="mt-6 rounded-2xl border border-orange-100 bg-[#fff7ed] p-5">

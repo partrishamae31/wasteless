@@ -49,7 +49,7 @@ const TransactionReview = () => {
       </div>
 
       {/* TOP STATS */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {/* <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Total Users"
           value="1,248"
@@ -77,7 +77,7 @@ const TransactionReview = () => {
           icon={<Database size={18} />}
           color="text-orange-500"
         />
-      </div>
+      </div> */}
 
       {/* STATUS CARDS */}
       <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">

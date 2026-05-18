@@ -42,8 +42,16 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("browse");
   const [selectedListing, setSelectedListing] = useState(null);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const [dashboardStats, setDashboardStats] = useState({
+    activeAlerts: 0,
+    pendingBids: 0,
+    acquiredParts: 0,
+    totalSpent: 0,
+  });
 
   const [profileData, setProfileData] = useState({
     full_name: "Loading...",
@@ -295,6 +303,66 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     if (data) setMyBids(data);
   };
 
+  const fetchDashboardStats = async () => {
+    try {
+      if (!session?.user?.id) return;
+
+      // ACTIVE ALERTS
+      const { count: alertsCount, error: alertsError } = await supabase
+        .from("alerts")
+        .select("*", { count: "exact", head: true })
+        .eq("harvester_id", session.user.id)
+        .eq("is_active", true);
+
+      if (alertsError) console.error(alertsError);
+
+      // PENDING BIDS
+      const { count: bidsCount, error: bidsError } = await supabase
+        .from("bids")
+        .select("*", { count: "exact", head: true })
+        .eq("bidder_id", session.user.id)
+        .in("status", ["pending", "accepted"]);
+
+      if (bidsError) console.error(bidsError);
+
+      // ACQUIRED PARTS
+      const { count: acquiredCount, error: acquiredError } = await supabase
+        .from("transactions")
+        .select("*", { count: "exact", head: true })
+        .eq("harvester_id", session.user.id)
+        .eq("status", "completed");
+
+      if (acquiredError) console.error(acquiredError);
+
+      // TOTAL SPENT
+      const { data: spentData, error: spentError } = await supabase
+        .from("transactions")
+        .select("amount")
+        .eq("harvester_id", session.user.id)
+        .eq("status", "completed");
+
+      if (spentError) console.error(spentError);
+
+      const totalSpent =
+        spentData?.reduce((sum, tx) => sum + Number(tx.amount || 0), 0) || 0;
+
+      setDashboardStats({
+        activeAlerts: alertsCount || 0,
+        pendingBids: bidsCount || 0,
+        acquiredParts: acquiredCount || 0,
+        totalSpent,
+      });
+    } catch (err) {
+      console.error("Dashboard stats error:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchDashboardStats();
+    }
+  }, [session?.user?.id]);
+
   // Call fetchMyBids when the activeTab changes to 'bids'
   useEffect(() => {
     if (activeTab === "bids") fetchMyBids();
@@ -390,18 +458,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "listings" },
         (payload) => {
-          console.log("Change received!", payload); // <-- Check your browser console!
-
-          // const newNotif = {
-          //   id: payload.new.id,
-          //   title: "New Listing Available",
-          //   content: `${payload.new.device_model} was just posted!`,
-          //   created_at: new Date().toISOString(),
-          //   is_read: false,
-          // };
-
-          // setNotifications((prev) => [newNotif, ...prev]);
-
+          console.log("Change received!", payload);
           setListings((prev) => [payload.new, ...prev]);
         },
       )
@@ -735,7 +792,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
         <div className="relative">
           <div
-            onClick={() => setIsProfileOpen(true)}
+            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
             className="flex items-center gap-3 bg-white p-1 pr-4 rounded-full shadow-sm border border-slate-200 cursor-pointer hover:border-slate-300 transition-all"
           >
             <div className="text-right hidden sm:block pl-3">
@@ -761,7 +818,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             </div>
           </div>
 
-          {isProfileOpen && (
+          {showProfileDropdown && (
             <>
               <div
                 className="fixed inset-0 z-10"
@@ -784,7 +841,18 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   </div>
                 </div>
                 <div className="p-3">
-                  <MenuLink icon={<User size={15} />} label="View Profile" />
+                  <button
+                    onClick={() => {
+                      setShowProfileDropdown(false);
+                      setShowProfileModal(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-2xl transition-colors text-xs font-bold"
+                  >
+                    <span className="text-slate-400">
+                      <User size={15} />
+                    </span>
+                    View Profile
+                  </button>
                   <MenuLink icon={<Settings size={15} />} label="Settings" />
                   {/* Added Achievements to match mockup */}
                   <MenuLink icon={<Award size={15} />} label="Achievements" />
@@ -804,14 +872,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           )}
         </div>
       </div>
-      {isProfileOpen && (
+      {showProfileModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
             {/* HEADER */}
             <div className="bg-gradient-to-br from-[#769c2d] to-lime-700 p-6 text-white relative">
               <button
                 onClick={() => {
-                  setIsProfileOpen(false);
+                  setShowProfileModal(false);
                   setIsEditingProfile(false);
                 }}
                 className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
@@ -1121,13 +1189,24 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       <div className="grid grid-cols-4 gap-6 mb-10">
         <StatCard
           label="Active Alerts"
-          value={notifications
-            .filter((n) => n.type === "alert_match")
-            .length.toString()}
+          value={dashboardStats.activeAlerts.toString()}
         />
-        <StatCard label="Pending Bids" value="0" />
-        <StatCard label="Acquired Parts" value="0" />
-        <StatCard label="Total Spent" value="0" isPrice />
+
+        <StatCard
+          label="Pending Bids"
+          value={dashboardStats.pendingBids.toString()}
+        />
+
+        <StatCard
+          label="Acquired Parts"
+          value={dashboardStats.acquiredParts.toString()}
+        />
+
+        <StatCard
+          label="Total Spent"
+          value={dashboardStats.totalSpent}
+          isPrice
+        />
       </div>
 
       {/* --- NAVIGATION --- */}
@@ -1169,7 +1248,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           active={activeTab === "leaderboard"}
           onClick={() => setActiveTab("leaderboard")}
           icon={<Trophy size={16} />}
-          label="Barangay Leaderboard"
+          label="E-waste Tracker"
         />
         <NavBtn
           active={activeTab === "alerts"}
@@ -1539,6 +1618,7 @@ const AlertsView = ({ notifications }) => {
     </div>
   );
 };
+
 // --- MESSAGES VIEW COMPONENT ---
 
 const MessagesView = ({ session }) => {
@@ -1546,6 +1626,35 @@ const MessagesView = ({ session }) => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
+  const renderStars = (rating = 0) => {
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+
+    return (
+      <div className="flex items-center gap-[1px]">
+        {/* Full Stars */}
+        {[...Array(fullStars)].map((_, i) => (
+          <span key={`full-${i}`} className="text-yellow-400 text-xs">
+            ★
+          </span>
+        ))}
+
+        {/* Half Star */}
+        {hasHalfStar && (
+          <span className="text-yellow-400 text-xs opacity-60">★</span>
+        )}
+
+        {/* Empty Stars */}
+        {[...Array(emptyStars)].map((_, i) => (
+          <span key={`empty-${i}`} className="text-slate-300 text-xs">
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   useEffect(() => {
     const fetchConversations = async () => {
       const { data, error } = await supabase
@@ -1557,7 +1666,11 @@ const MessagesView = ({ session }) => {
           device_model, 
           asking_price,
           seller_id,
-          profiles:seller_id (full_name) 
+          profiles:seller_id (
+  full_name,
+  average_rating,
+  total_reviews
+)
         ),
         sender_id,
         receiver_id
@@ -1705,25 +1818,57 @@ const MessagesView = ({ session }) => {
       {/* Sidebar: Message List */}
       <div className="col-span-4 border-r border-slate-50 p-6">
         <h2 className="text-xl font-black text-slate-800 mb-4">Messages</h2>
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs outline-none"
+          />
+        </div>
         <div className="space-y-1">
           {conversations.map((chat) => (
             <div
               key={chat.listing_id}
               onClick={() => setSelectedChat(chat)}
-              className={`p-4 rounded-[1.5rem] cursor-pointer transition-all flex items-start gap-4 ${
+              className={`p-4 border-b border-slate-100 cursor-pointer transition ${
                 selectedChat?.listing_id === chat.listing_id
-                  ? "bg-[#f0f9ff]"
+                  ? "bg-slate-100"
                   : "hover:bg-slate-50"
               }`}
             >
-              <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-slate-700 text-xs truncate">
-                  {/* Displays the Seller Name instead of "Conversation" */}
-                  {chat.listings?.profiles?.full_name || "Unknown Seller"}
-                </h4>
-                <p className="text-[10px] font-bold text-[#3285a1]">
-                  {chat.listings?.device_model}
-                </p>
+              <div className="flex justify-between items-start">
+                <div className="min-w-0">
+                  {/* Seller Name */}
+                  <h3 className="font-semibold text-slate-800 text-sm truncate">
+                    {chat.listings?.profiles?.full_name || "Unknown Seller"}
+                  </h3>
+
+                  {/* Rating */}
+                  <div className="flex items-center gap-2 mt-1">
+                    {renderStars(chat.listings?.profiles?.average_rating)}
+
+                    <span className="text-xs text-slate-500">
+                      {Number(
+                        chat.listings?.profiles?.average_rating || 0,
+                      ).toFixed(1)}{" "}
+                      ({chat.listings?.profiles?.total_reviews || 0})
+                    </span>
+                  </div>
+
+                  {/* Product */}
+                  <p className="text-xs text-slate-600 mt-1">
+                    Re: {chat.listings?.device_model}
+                  </p>
+
+                  {/* Last Message Preview */}
+                  <p className="text-xs text-slate-400 mt-1 truncate">
+                    Tap to view conversation
+                  </p>
+                </div>
+
+                <div className="flex flex-col items-end gap-2">
+                  <span className="text-[10px] text-slate-400">Recent</span>
+                </div>
               </div>
             </div>
           ))}
@@ -1734,13 +1879,49 @@ const MessagesView = ({ session }) => {
       <div className="col-span-8 flex flex-col bg-slate-50/30">
         {selectedChat ? (
           <>
-            <div className="p-6 bg-white border-b border-slate-50">
-              <h3 className="font-black text-slate-800 text-sm">
-                {selectedChat.listings?.profiles?.full_name}
-                <span className="font-medium text-slate-400 ml-2">
-                  ({selectedChat.listings?.device_model})
+            <div className="p-6 bg-white border-b border-slate-100">
+              {/* Seller Header */}
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800">
+                    {selectedChat.listings?.profiles?.full_name}
+                  </h2>
+
+                  {/* Rating */}
+                  <div className="flex items-center gap-2 mt-1">
+                    {renderStars(
+                      selectedChat.listings?.profiles?.average_rating,
+                    )}
+
+                    <span className="text-sm text-slate-500">
+                      {Number(
+                        selectedChat.listings?.profiles?.average_rating || 0,
+                      ).toFixed(1)}{" "}
+                      ({selectedChat.listings?.profiles?.total_reviews || 0})
+                    </span>
+                  </div>
+
+                  {/* Product */}
+                  <p className="text-sm text-slate-500 mt-2">
+                    {selectedChat.listings?.device_model}
+                  </p>
+                </div>
+              </div>
+
+              {/* Bid Card */}
+              <div className="mt-4 bg-slate-50 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">Your Bid</p>
+
+                  <p className="text-2xl font-bold text-slate-800">
+                    ₱{selectedChat.listings?.asking_price?.toLocaleString()}
+                  </p>
+                </div>
+
+                <span className="px-4 py-2 rounded-full text-sm font-semibold bg-orange-100 text-orange-600">
+                  Bid Pending
                 </span>
-              </h3>
+              </div>
             </div>
 
             <div className="flex-1 p-8 overflow-y-auto space-y-4">
@@ -1750,10 +1931,10 @@ const MessagesView = ({ session }) => {
                   className={`flex ${msg.sender_id === session.user.id ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`p-4 rounded-2xl max-w-[70%] text-xs font-medium shadow-sm ${
+                    className={`px-5 py-3 rounded-2xl max-w-[70%] text-sm shadow-sm ${
                       msg.sender_id === session.user.id
-                        ? "bg-[#769c2d] text-white rounded-tr-none"
-                        : "bg-white text-slate-600 rounded-tl-none border border-slate-100"
+                        ? "bg-[#769c2d] text-white rounded-br-md"
+                        : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
                     }`}
                   >
                     {msg.content}
@@ -1824,6 +2005,8 @@ const MenuLink = ({ icon, label }) => (
 );
 
 const ListingCard = ({ item, onBid, isVerified }) => {
+  const [activeIndex, setActiveIndex] = React.useState(0);
+
   const getConditionStyles = (cond) => {
     switch (cond?.toLowerCase()) {
       case "defective":
@@ -1837,78 +2020,136 @@ const ListingCard = ({ item, onBid, isVerified }) => {
     }
   };
 
+  // FIXED MEDIA HANDLING
   const listingMedia = Array.isArray(item.images)
     ? item.images
-    : [];
+    : item.images
+      ? [item.images]
+      : [];
 
-  const previewMedia = listingMedia || null;
+  const currentMedia = listingMedia[activeIndex] || null;
 
   const isVideoFile = (url) => {
-    if (!url) return false;
+    if (!url || typeof url !== "string") return false;
+
     return (
       url.includes(".mp4") ||
       url.includes(".mov") ||
+      url.includes(".webm") ||
+      url.includes(".m4v") ||
       url.includes("video")
     );
   };
 
+  const nextMedia = (e) => {
+    e.stopPropagation();
+
+    setActiveIndex((prev) => (prev === listingMedia.length - 1 ? 0 : prev + 1));
+  };
+
+  const prevMedia = (e) => {
+    e.stopPropagation();
+
+    setActiveIndex((prev) => (prev === 0 ? listingMedia.length - 1 : prev - 1));
+  };
+
   return (
-    <div className="bg-white rounded-[2.5rem] overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-all relative group">
-      
-      {/* IMAGE PREVIEW CONTAINER */}
-      <div className="relative h-56 bg-slate-100 overflow-hidden">
-        {previewMedia ? (
-          isVideoFile(previewMedia) ? (
+    <div
+      onClick={onBid}
+      className="bg-white rounded-[2.5rem] overflow-hidden border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative group cursor-pointer"
+    >
+      {/* MEDIA SECTION */}
+      <div className="relative h-64 bg-slate-100 overflow-hidden">
+        {currentMedia ? (
+          isVideoFile(currentMedia) ? (
             <video
-              src={previewMedia}
+              src={currentMedia}
               className="w-full h-full object-cover"
               controls
               muted
             />
           ) : (
             <img
-              src={previewMedia}
+              src={currentMedia}
               alt={item.device_model}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              onError={(e) => {
+                e.target.src = "https://placehold.co/600x400?text=No+Image";
+              }}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
           )
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
             <Box size={42} />
+
             <p className="text-[10px] font-bold uppercase tracking-widest mt-3">
               No Media Uploaded
             </p>
           </div>
         )}
 
-        {/* EXTRA IMAGES INDICATOR */}
-        {listingMedia.length > 1 && (
-          <div className="absolute bottom-4 right-4 bg-black/70 backdrop-blur-sm text-white px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 z-10">
-            <Camera size={11} />
-            +{listingMedia.length - 1}
-          </div>
-        )}
-
-        {/* CONDITION BADGE */}
-        <div className="absolute top-4 left-4 z-10">
+        {/* CONDITION */}
+        <div className="absolute top-4 left-4 z-20">
           <span
-            className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm ${getConditionStyles(item.condition)}`}
+            className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm backdrop-blur-sm ${getConditionStyles(item.condition)}`}
           >
             {item.condition || "Condition"}
           </span>
         </div>
+
+        {/* MEDIA COUNT */}
+        {listingMedia.length > 1 && (
+          <div className="absolute top-4 right-4 bg-black/70 backdrop-blur-sm text-white px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 z-20">
+            <Camera size={11} />
+            {activeIndex + 1}/{listingMedia.length}
+          </div>
+        )}
+
+        {/* LEFT BUTTON */}
+        {listingMedia.length > 1 && (
+          <button
+            onClick={prevMedia}
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm transition"
+          >
+            ←
+          </button>
+        )}
+
+        {/* RIGHT BUTTON */}
+        {listingMedia.length > 1 && (
+          <button
+            onClick={nextMedia}
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm transition"
+          >
+            →
+          </button>
+        )}
+
+        {/* DOT INDICATORS */}
+        {listingMedia.length > 1 && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+            {listingMedia.map((_, index) => (
+              <div
+                key={index}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  activeIndex === index ? "bg-white scale-125" : "bg-white/40"
+                }`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* CONTENT AREA */}
+      {/* CONTENT */}
       <div className="p-8">
-        {/* Product Icon Box */}
-        <div className="absolute top-[17.5rem] right-8 z-10">
+        {/* ICON */}
+        <div className="absolute top-[18.5rem] right-8 z-10">
           <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 shadow-md border border-slate-100 group-hover:text-[#769c2d] transition-colors">
             <Box size={28} />
           </div>
         </div>
 
-        {/* Title & Model Section */}
+        {/* TITLE */}
         <div className="mb-5 pr-16">
           <h3 className="text-xl font-black text-slate-800 leading-tight">
             {item.device_model || "Device Name"}
@@ -1919,79 +2160,47 @@ const ListingCard = ({ item, onBid, isVerified }) => {
           </p>
         </div>
 
-        {/* Description */}
+        {/* DESCRIPTION */}
         <p className="text-xs text-slate-500 mb-5 leading-relaxed line-clamp-2 min-h-[40px]">
           {item.description || "Description not available for this listing."}
         </p>
 
-        {/* Location Section */}
+        {/* LOCATION */}
         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mb-6">
           <MapPin size={13} className="text-slate-300" />
+
           <span>Barangay {item.profiles?.barangay || "Unknown"}</span>
         </div>
 
-        {/* Bidding Info Container */}
-        <div className="bg-[#f0f9ff] rounded-[2rem] p-5 mb-6 border border-blue-100/50">
-          <div className="flex justify-between items-start mb-3 gap-4">
+        {/* PRICE */}
+        <div className="bg-[#f0f9ff] rounded-[2rem] p-5 border border-blue-100/50">
+          <div className="flex justify-between items-center">
             <div>
-              <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider mb-1">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
                 Asking Price
               </p>
-              <p className="text-xl font-black text-slate-800">
-                ₱{item.asking_price?.toLocaleString()}
+
+              <p className="text-2xl font-black text-[#769c2d]">
+                ₱{Number(item.asking_price || 0).toLocaleString()}
               </p>
             </div>
 
-            <div className="text-right">
-              <p className="text-[9px] font-black text-[#769c2d] uppercase tracking-wider mb-1">
-                Current Highest Bid
-              </p>
-              <p className="text-xl font-black text-[#769c2d]">
-                {item.highest_bid
-                  ? `₱${item.highest_bid.toLocaleString()}`
-                  : "No bids yet"}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center mt-4 pt-4 border-t border-blue-200/30 gap-4">
-            <p className="text-[9px] text-blue-500 font-bold line-clamp-1">
-              Highest Bidder:{" "}
-              <span className="text-slate-600 ml-1">
-                {item.highest_bidder || "No bidder yet"}
-              </span>
-            </p>
-
-            <span className="bg-red-50 text-red-500 text-[8px] font-black px-2.5 py-1 rounded-lg uppercase italic flex items-center gap-1 whitespace-nowrap">
-              <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse"></span>
-              High Competition
-            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onBid();
+              }}
+              disabled={!isVerified}
+              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                isVerified
+                  ? "bg-[#769c2d] hover:bg-lime-700 text-white shadow-lg"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+              }`}
+            >
+              {isVerified ? "Place Bid" : "Locked"}
+            </button>
           </div>
         </div>
-
-        {/* Seller Footer */}
-        <div className="flex justify-between items-center pt-2 gap-4">
-          <div className="flex flex-col min-w-0">
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
-              Seller
-            </span>
-            <span className="text-xs font-black text-slate-700 truncate">
-              {item.profiles?.full_name || "Authorized Seller"}
-            </span>
-          </div>
-
-          <button
-            onClick={onBid}
-            className="bg-[#769c2d] text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#5d7a24] transition-all shadow-lg shadow-lime-900/10 active:scale-95 whitespace-nowrap"
-          >
-            Bid or Message
-          </button>
-        </div>
-
-        {/* Time Posted */}
-        <p className="text-[8px] text-slate-300 font-bold mt-5 uppercase tracking-widest">
-          Posted {item.created_at ? new Date(item.created_at).toLocaleDateString() : "Recent"}
-        </p>
       </div>
     </div>
   );

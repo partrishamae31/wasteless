@@ -133,7 +133,7 @@ const SystemHealth = () => {
         </div>
 
         {/* TOP STATS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {/* <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {stats.map((item, index) => (
             <Card key={index} className="p-5">
               <div className="flex items-start justify-between">
@@ -163,10 +163,10 @@ const SystemHealth = () => {
               </div>
             </Card>
           ))}
-        </div>
+        </div> */}
 
         {/* REPORT */}
-        <Card className="p-4 bg-[#EEF6FF] border-[#D8E9FF]">
+        {/* <Card className="p-4 bg-[#EEF6FF] border-[#D8E9FF]">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-slate-800">
@@ -183,7 +183,7 @@ const SystemHealth = () => {
               Generate Report
             </button>
           </div>
-        </Card>
+        </Card> */}
 
         {/* STATUS OVERVIEW */}
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">

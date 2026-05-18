@@ -24,14 +24,13 @@ function App() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // --- ADDED STATE FOR ENV OFFICER DEMO ---
-  const [isEnvDemo, setIsEnvDemo] = useState(false);
   const [isAdminDemo, setIsAdminDemo] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+
     setSession(null);
     setRole(null);
-    setIsEnvDemo(false);
     setIsAdminDemo(false); // Reset demo state on logout
   };
 
@@ -110,7 +109,7 @@ function App() {
   if (isAdminDemo || role === "admin") {
     return <AdminPanel session={session} onLogout={handleLogout} />;
   }
-  if (isEnvDemo || role === "env_officer") {
+  if (role === "env_officer") {
     return <EnvOfficerPanel onLogout={handleLogout} user={session?.user} />;
   }
 
@@ -182,9 +181,15 @@ function App() {
         {currentPage === "admin_login" && (
           <AdminLogin
             onBackToUserLogin={() => setCurrentPage("login")}
-            onLoginSuccess={() => setIsAdminDemo(true)}
+            onLoginSuccess={() => {
+              localStorage.setItem("adminAuthenticated", "true");
+              setIsAdminDemo(true);
+            }}
             onSignUpClick={() => setCurrentPage("admin_signup")}
           />
+        )}
+        {currentPage === "wmo_signup" && (
+          <WMOSignup onLoginClick={() => setCurrentPage("env_login")} />
         )}
 
         {currentPage === "admin_signup" && (
@@ -195,7 +200,9 @@ function App() {
         {currentPage === "env_login" && (
           <EnvOfficerLogin
             onBackToUserLogin={() => setCurrentPage("login")}
-            onLoginSuccess={() => setIsEnvDemo(true)}
+            onLoginSuccess={() => {
+              // session listener will handle redirect
+            }}
           />
         )}
       </div>

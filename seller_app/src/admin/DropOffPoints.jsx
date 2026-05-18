@@ -93,7 +93,7 @@ const DropOffPoints = () => {
         </div>
 
         {/* STATS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
+        {/* <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
           {stats.map((item, index) => {
             const Icon = item.icon;
 
@@ -128,7 +128,7 @@ const DropOffPoints = () => {
               </div>
             );
           })}
-        </div>
+        </div> */}
 
         {/* MAIN CARD */}
         <div className="bg-white border border-[#E8EDF5] rounded-3xl shadow-sm overflow-hidden">

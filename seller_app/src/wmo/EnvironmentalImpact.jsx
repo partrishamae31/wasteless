@@ -23,36 +23,36 @@ import {
 } from "lucide-react";
 
 const EnvironmentalImpact = () => {
-  const topStats = [
-    {
-      icon: Users,
-      label: "Total Platform Users",
-      value: "1,248",
-      trend: "+12%",
-      color: "text-emerald-500",
-    },
-    {
-      icon: Activity,
-      label: "Active Transactions",
-      value: "87",
-      trend: "+5%",
-      color: "text-emerald-500",
-    },
-    {
-      icon: RefreshCcw,
-      label: "System Uptime",
-      value: "99.8%",
-      trend: "+0.2%",
-      color: "text-emerald-500",
-    },
-    {
-      icon: MapPin,
-      label: "Active Barangays",
-      value: "18/33",
-      trend: "55%",
-      color: "text-blue-500",
-    },
-  ];
+  // const topStats = [
+  //   {
+  //     icon: Users,
+  //     label: "Total Platform Users",
+  //     value: "1,248",
+  //     trend: "+12%",
+  //     color: "text-emerald-500",
+  //   },
+  //   {
+  //     icon: Activity,
+  //     label: "Active Transactions",
+  //     value: "87",
+  //     trend: "+5%",
+  //     color: "text-emerald-500",
+  //   },
+  //   {
+  //     icon: RefreshCcw,
+  //     label: "System Uptime",
+  //     value: "99.8%",
+  //     trend: "+0.2%",
+  //     color: "text-emerald-500",
+  //   },
+  //   {
+  //     icon: MapPin,
+  //     label: "Active Barangays",
+  //     value: "18/33",
+  //     trend: "55%",
+  //     color: "text-blue-500",
+  //   },
+  // ];
 
   const impactCards = [
     {
@@ -148,7 +148,7 @@ const EnvironmentalImpact = () => {
 
         {/* TOP STATS */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
-          {topStats.map((stat, idx) => {
+          {/* {topStats.map((stat, idx) => {
             const Icon = stat.icon;
 
             return (
@@ -177,11 +177,11 @@ const EnvironmentalImpact = () => {
                 </h2>
               </div>
             );
-          })}
+          })} */}
         </div>
 
         {/* REPORT BAR */}
-        <div className="bg-[#eef7ff] border border-[#dbeafe] rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        {/* <div className="bg-[#eef7ff] border border-[#dbeafe] rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
             <h3 className="font-semibold text-slate-800 text-sm">
               System Monitoring Report
@@ -197,7 +197,7 @@ const EnvironmentalImpact = () => {
             <Download size={16} />
             Generate Report
           </button>
-        </div>
+        </div> */}
 
         {/* MAIN CARD */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">

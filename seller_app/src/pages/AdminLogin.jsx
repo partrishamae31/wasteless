@@ -1,35 +1,86 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { supabase } from "../supabaseClient";
 import {
-  ShieldAlert,
-  ShieldCheck,
   Mail,
   Lock,
   Eye,
   EyeOff,
-  ArrowLeft,
-  Shield,
-  UserPlus,
 } from "lucide-react";
 
-const AdminLogin = ({ onBackToUserLogin, onSignUpClick, onLoginSuccess }) => {
+const AdminLogin = ({
+  onBackToUserLogin,
+  onSignUpClick,
+  onLoginSuccess,
+}) => {
   const [showPassword, setShowPassword] = useState(false);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
 
-    // Demo admin credentials
-    if (email === "admin@wasteless.com" && password === "admin123") {
-      console.log("Admin login successful");
+    try {
+      setLoading(true);
 
-      // OPEN ADMIN DASHBOARD
+      // LOGIN USING SUPABASE AUTH
+      const { data, error } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      const user = data.user;
+
+      // FETCH PROFILE
+      const { data: profile, error: profileError } =
+        await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+      if (profileError || !profile) {
+        alert("Profile not found.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // CHECK IF ADMIN
+      if (profile.role !== "admin") {
+        alert("Access denied. Not an admin account.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // CHECK APPROVAL
+      if (!profile.is_verified) {
+        alert(
+          "Your admin account is still pending approval by WMO."
+        );
+
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // SAVE ADMIN SESSION
+      localStorage.setItem("adminAuthenticated", "true");
+
+      // SUCCESS
       onLoginSuccess();
-    } else {
-      alert("Invalid admin credentials");
+
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -47,7 +98,7 @@ const AdminLogin = ({ onBackToUserLogin, onSignUpClick, onLoginSuccess }) => {
 
         {/* Form */}
         <form onSubmit={handleLogin} className="space-y-8">
-          {/* Email */}
+          {/* EMAIL */}
           <div>
             <label className="block text-[15px] font-semibold text-[#1f4d2f] mb-3">
               Email Address
@@ -70,7 +121,7 @@ const AdminLogin = ({ onBackToUserLogin, onSignUpClick, onLoginSuccess }) => {
             </div>
           </div>
 
-          {/* Password */}
+          {/* PASSWORD */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <label className="text-[15px] font-semibold text-[#1f4d2f]">
@@ -102,17 +153,24 @@ const AdminLogin = ({ onBackToUserLogin, onSignUpClick, onLoginSuccess }) => {
 
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() =>
+                  setShowPassword(!showPassword)
+                }
                 className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                {showPassword ? (
+                  <EyeOff size={20} />
+                ) : (
+                  <Eye size={20} />
+                )}
               </button>
             </div>
           </div>
 
-          {/* Login Button */}
+          {/* LOGIN BUTTON */}
           <button
             type="submit"
+            disabled={loading}
             className="
               w-full
               h-[62px]
@@ -127,22 +185,12 @@ const AdminLogin = ({ onBackToUserLogin, onSignUpClick, onLoginSuccess }) => {
               hover:scale-[1.01]
               active:scale-[0.99]
               transition-all
+              disabled:opacity-50
             "
           >
-            Login
+            {loading ? "Signing In..." : "Login"}
           </button>
         </form>
-
-        {/* Bottom Text */}
-        <div className="text-center mt-10 text-[15px] text-gray-600">
-          Don’t have an account?{" "}
-          <button
-            onClick={onSignUpClick}
-            className="font-semibold text-[#1f4d2f] hover:underline"
-          >
-            Create Account
-          </button>
-        </div>
       </div>
     </div>
   );

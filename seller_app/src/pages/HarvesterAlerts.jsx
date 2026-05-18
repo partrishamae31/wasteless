@@ -542,7 +542,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                 </div>
 
                 {/* ALERT PRIORITY */}
-                <div>
+                {/* <div>
                   <label className="text-sm font-bold text-slate-700 mb-3 block">
                     Alert Priority
                   </label>
@@ -585,7 +585,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                       </p>
                     </button>
                   </div>
-                </div>
+                </div> */}
 
                 {/* FOOTER BUTTONS */}
                 <div className="flex gap-4 pt-4 border-t border-slate-100">

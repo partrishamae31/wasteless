@@ -1,14 +1,11 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
-import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
+import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 
-} from "lucide-react";
-
-const EnvOfficerLogin = ({ onBackToUserLogin, onLoginSuccess }) => {
+const EnvOfficerLogin = ({
+  onBackToUserLogin,
+  onLoginSuccess,
+}) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,23 +16,11 @@ const EnvOfficerLogin = ({ onBackToUserLogin, onLoginSuccess }) => {
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    setLoading(true);
-    setError(null);
-
-    // DEMO LOGIN
-    if (email === "officer@valenzuela.gov.ph" && password === "officer123") {
-      console.log("Environmental Officer demo login success");
-
-      setTimeout(() => {
-        setLoading(false);
-        onLoginSuccess();
-      }, 1000);
-
-      return;
-    }
-
-    // REAL SUPABASE LOGIN
     try {
+      setLoading(true);
+      setError(null);
+
+      // LOGIN
       const { data, error: authError } = await supabase.auth.signInWithPassword(
         {
           email,
@@ -43,24 +28,44 @@ const EnvOfficerLogin = ({ onBackToUserLogin, onLoginSuccess }) => {
         },
       );
 
-      if (authError) throw authError;
+      if (authError) {
+        throw authError;
+      }
 
-      const { data: profile } = await supabase
+      // FETCH PROFILE
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role")
+        .select("*")
         .eq("id", data.user.id)
         .single();
 
-      if (profile?.role !== "env_officer") {
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+
+        throw new Error("Profile not found.");
+      }
+
+      // CHECK ROLE
+      if (profile.role !== "env_officer") {
         await supabase.auth.signOut();
 
         throw new Error(
-          "Access denied. Environmental Officer credentials required.",
+          "Access denied. Waste Management Officer account required.",
         );
       }
 
+      // CHECK VERIFIED
+      if (!profile.is_verified) {
+        await supabase.auth.signOut();
+
+        throw new Error("Your account is still pending approval.");
+      }
+
+      // SUCCESS
       onLoginSuccess();
     } catch (err) {
+      console.error(err);
+
       setError(err.message);
     } finally {
       setLoading(false);
@@ -223,12 +228,15 @@ const EnvOfficerLogin = ({ onBackToUserLogin, onLoginSuccess }) => {
         </form>
 
         {/* CREATE ACCOUNT */}
-        <div className="text-center mt-10 text-[15px] text-gray-600">
+        {/* <div className="text-center mt-10 text-[15px] text-gray-600">
           Don’t have an account?{" "}
-          <button className="font-semibold text-[#1f4d2f] hover:underline">
+          <button
+            onClick={onSignupClick}
+            className="font-semibold text-[#1f4d2f] hover:underline"
+          >
             Create Account
           </button>
-        </div>
+        </div> */}
       </div>
     </div>
   );
