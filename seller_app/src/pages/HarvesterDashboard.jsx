@@ -5,6 +5,7 @@ import UrbanMineMap from "./UrbanMineMap";
 import InventoryView from "./InventoryView";
 import TransactionsView from "./TransactionsView";
 import BarangayLeaderboard from "./BarangayLeaderboard"; // Ensure path is correct
+import DonationTab from "./DonationTab";
 
 import {
   Search,
@@ -35,6 +36,7 @@ import {
   Mail,
   Phone,
   Star,
+  Gift,
 } from "lucide-react";
 
 const HarvesterDashboard = ({ session, onLogout }) => {
@@ -1262,12 +1264,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           icon={<MessageSquare size={16} />}
           label="Messages"
         />
-        {/* <NavBtn
-          active={activeTab === "inventory"}
-          onClick={() => setActiveTab("inventory")}
-          icon={<Package size={16} />}
-          label="Inventory"
-        /> */}
+        <NavBtn
+          active={activeTab === "donation"}
+          onClick={() => setActiveTab("donation")}
+          icon={<Gift size={16} />}
+          label="Donation"
+        />
       </div>
       <div className="flex gap-3 mb-8">
         <div className="relative flex-1">
@@ -1336,6 +1338,11 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             )}
           />
         </div>
+      ) : activeTab === "donation" ? (
+        <DonationTab
+          profileData={profileData}
+          onOpenDonationModal={() => setDonationModalOpen(true)}
+        />
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-slate-300 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
           <LayoutGrid size={48} className="mb-4 opacity-20" />
@@ -1622,6 +1629,7 @@ const AlertsView = ({ notifications }) => {
 // --- MESSAGES VIEW COMPONENT ---
 
 const MessagesView = ({ session }) => {
+  const [selectedBid, setSelectedBid] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -1694,6 +1702,7 @@ const MessagesView = ({ session }) => {
 
     fetchConversations();
   }, [session.user.id]);
+
   useEffect(() => {
     if (!selectedChat) return;
 
@@ -1729,6 +1738,36 @@ const MessagesView = ({ session }) => {
       supabase.removeChannel(channel);
     };
   }, [selectedChat]);
+
+  useEffect(() => {
+    if (!selectedChat) return;
+
+    const fetchBid = async () => {
+      const { data, error } = await supabase
+        .from("bids")
+        .select("id, bid_amount, status, created_at")
+        .eq("listing_id", selectedChat.listing_id)
+        .eq("harvester_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error("FETCH BID ERROR:", error);
+        return;
+      }
+
+      console.log("FETCHED BID:", data);
+
+      if (data && data.length > 0) {
+        setSelectedBid(data[0]);
+      } else {
+        setSelectedBid(null);
+      }
+    };
+
+    fetchBid();
+  }, [selectedChat, session.user.id]);
+
   const RatingModal = ({ transaction, onClose }) => {
     const [ratings, setRatings] = useState({
       communication: 0,
@@ -1909,19 +1948,22 @@ const MessagesView = ({ session }) => {
               </div>
 
               {/* Bid Card */}
-              <div className="mt-4 bg-slate-50 rounded-2xl p-4 flex items-center justify-between">
+              {/* <div className="mt-4 bg-slate-50 rounded-2xl p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">Your Bid</p>
 
                   <p className="text-2xl font-bold text-slate-800">
-                    ₱{selectedChat.listings?.asking_price?.toLocaleString()}
+                    ₱
+                    {selectedBid
+                      ? Number(selectedBid.bid_amount).toLocaleString()
+                      : "0"}
                   </p>
                 </div>
 
-                <span className="px-4 py-2 rounded-full text-sm font-semibold bg-orange-100 text-orange-600">
-                  Bid Pending
+                <span className="px-4 py-2 rounded-full text-sm font-semibold bg-orange-100 text-orange-600 capitalize">
+                  {selectedBid?.status ? `Bid ${selectedBid.status}` : "No Bid"}
                 </span>
-              </div>
+              </div> */}
             </div>
 
             <div className="flex-1 p-8 overflow-y-auto space-y-4">

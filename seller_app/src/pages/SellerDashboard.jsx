@@ -35,6 +35,7 @@ import {
   AlertCircle,
   Send,
   Check,
+  Upload,
 } from "lucide-react";
 
 const SellerDashboard = ({ session }) => {
@@ -60,6 +61,70 @@ const SellerDashboard = ({ session }) => {
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [listingToDonate, setListingToDonate] = useState(null);
   const [showRateModal, setShowRateModal] = useState(false);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (isVerificationModalOpen && profileData) {
+      setVerificationForm({
+        full_name: profileData.full_name || "",
+        contact_number: profileData.contact_number || "",
+        barangay: profileData.barangay || "",
+        business_name: profileData.business_name || "",
+      });
+    }
+  }, [isVerificationModalOpen, profileData]);
+
+  const valenzuelaBarangays = [
+    "Arkong Bato",
+    "Bagbaguin",
+    "Balangkas",
+    "Bignay",
+    "Bisig",
+    "Canumay East",
+    "Canumay West",
+    "Coloong",
+    "Dalandanan",
+    "Gen. T. de Leon",
+    "Isla",
+    "Karuhatan",
+    "Lawang Bato",
+    "Lingunan",
+    "Mabolo",
+    "Malanday",
+    "Malinta",
+    "Mapulang Lupa",
+    "Marulas",
+    "Maysan",
+    "Palasan",
+    "Pariancillo Villa",
+    "Paso de Blas",
+    "Pasolo",
+    "Poblacion",
+    "Pulo",
+    "Punturin",
+    "Rincon",
+    "Tagalag",
+    "Ugong",
+    "Viente Reales",
+    "Wawang Pulo",
+  ];
+
+  const [verificationFiles, setVerificationFiles] = useState({
+    businessPermit: null,
+    techCert: null,
+  });
+
+  const permitRef = React.useRef();
+  const techRef = React.useRef();
+
+  const [verificationLoading, setVerificationLoading] = useState(false);
+
+  const [verificationForm, setVerificationForm] = useState({
+    full_name: "",
+    contact_number: "",
+    barangay: "",
+    business_name: "",
+  });
 
   const handleSubmitRating = async ({ ratings, recommend, feedback }) => {
     try {
@@ -382,6 +447,29 @@ const SellerDashboard = ({ session }) => {
     }
   };
 
+  const handleDeclineBid = async (bid) => {
+    try {
+      const { error } = await supabase
+        .from("bids")
+        .update({
+          status: "declined",
+        })
+        .eq("id", bid.id);
+
+      if (error) throw error;
+
+      // Refresh local state
+      setListingBids((prev) =>
+        prev.map((b) => (b.id === bid.id ? { ...b, status: "declined" } : b)),
+      );
+
+      alert("Bid declined successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to decline bid.");
+    }
+  };
+
   useEffect(() => {
     const fetchTransactions = async () => {
       if (!isAuthorized) return;
@@ -537,6 +625,136 @@ const SellerDashboard = ({ session }) => {
     if (error) console.error("Error logging out:", error.message);
   };
 
+  const handleVerificationFileChange = (e, field) => {
+    const file = e.target.files[0];
+
+    if (file) {
+      setVerificationFiles((prev) => ({
+        ...prev,
+        [field]: file,
+      }));
+    }
+  };
+  const handleVerificationUpdate = async () => {
+    try {
+      setVerificationLoading(true);
+
+      const updates = {
+        full_name: verificationForm.full_name,
+        contact_number: verificationForm.contact_number,
+        barangay: verificationForm.barangay,
+        business_name: verificationForm.business_name,
+
+        verification_status: "pending",
+        rejection_reason: null,
+        status: "Pending",
+      };
+
+      // SELLER VALID ID
+      if (profileData?.role === "seller") {
+        if (!verificationFiles.businessPermit) {
+          alert("Please upload your valid ID.");
+          return;
+        }
+
+        const file = verificationFiles.businessPermit;
+
+        const fileExt = file.name.split(".").pop();
+
+        const fileName = `${session.user.id}/permit_${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("verifications")
+          .upload(`permits/${fileName}`, file, {
+            upsert: true,
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage
+          .from("verifications")
+          .getPublicUrl(`permits/${fileName}`);
+
+        updates.business_permit_url = data.publicUrl;
+      }
+
+      // HARVESTER FILES
+      if (profileData?.role === "harvester") {
+        if (!verificationFiles.businessPermit || !verificationFiles.techCert) {
+          alert("Please upload all required files.");
+          return;
+        }
+
+        // Permit Upload
+        const permit = verificationFiles.businessPermit;
+
+        const permitExt = permit.name.split(".").pop();
+
+        const permitName = `${session.user.id}/permit_${Date.now()}.${permitExt}`;
+
+        const { error: permitError } = await supabase.storage
+          .from("verifications")
+          .upload(`permits/${permitName}`, permit, {
+            upsert: true,
+          });
+
+        if (permitError) throw permitError;
+
+        const { data: permitData } = supabase.storage
+          .from("verifications")
+          .getPublicUrl(`permits/${permitName}`);
+
+        updates.business_permit_url = permitData.publicUrl;
+
+        // Tech Cert Upload
+        const cert = verificationFiles.techCert;
+
+        const certExt = cert.name.split(".").pop();
+
+        const certName = `${session.user.id}/cert_${Date.now()}.${certExt}`;
+
+        const { error: certError } = await supabase.storage
+          .from("verifications")
+          .upload(`certs/${certName}`, cert, {
+            upsert: true,
+          });
+
+        if (certError) throw certError;
+
+        const { data: certData } = supabase.storage
+          .from("verifications")
+          .getPublicUrl(`certs/${certName}`);
+
+        updates.tech_cert_url = certData.publicUrl;
+      }
+
+      // UPDATE PROFILE
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update(updates)
+        .eq("id", session.user.id);
+
+      if (profileError) throw profileError;
+
+      // REFRESH LOCAL STATE
+      setProfileData((prev) => ({
+        ...prev,
+        ...updates,
+      }));
+
+      setIsVerificationModalOpen(false);
+
+      alert(
+        "Documents updated successfully. Your account is now pending verification again.",
+      );
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans p-6 text-slate-800 relative">
       {/* Header Area */}
@@ -642,8 +860,26 @@ const SellerDashboard = ({ session }) => {
             <div className="text-sm font-bold truncate max-w-[120px]">
               {session.user.user_metadata?.full_name || "User Name"}
             </div>
-            <div className="text-[10px] text-emerald-500 flex items-center gap-1 justify-end">
-              <CheckCircle size={10} /> Verified
+            <div
+              className={`text-[10px] flex items-center gap-1 justify-end font-semibold ${
+                profileData?.verification_status === "verified"
+                  ? "text-emerald-500"
+                  : profileData?.verification_status === "pending"
+                    ? "text-amber-500"
+                    : profileData?.verification_status === "rejected"
+                      ? "text-red-500"
+                      : "text-slate-400"
+              }`}
+            >
+              <CheckCircle size={10} />
+
+              {profileData?.verification_status === "verified"
+                ? "Verified"
+                : profileData?.verification_status === "pending"
+                  ? "Pending Verification"
+                  : profileData?.verification_status === "rejected"
+                    ? "Verification Rejected"
+                    : "Not Submitted"}
             </div>
           </div>
           <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center text-white font-bold shadow-sm">
@@ -722,6 +958,40 @@ const SellerDashboard = ({ session }) => {
       </div>
 
       {/* Stats Cards & Main Dashboard Content (Keep existing code below here) */}
+      {profileData?.verification_status === "rejected" && (
+        <div className="mb-8 flex items-center gap-6 rounded-[2rem] border-2 border-red-100 bg-red-50 p-6 animate-in slide-in-from-top duration-500">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600">
+            <XCircle size={24} />
+          </div>
+
+          <div className="flex-1">
+            <h3 className="text-sm font-black uppercase tracking-tight text-red-800">
+              Account Verification Rejected
+            </h3>
+
+            <p className="mt-1 text-xs font-medium text-red-600">
+              Reason:{" "}
+              <span className="font-bold">
+                "
+                {profileData?.rejection_reason ||
+                  "No specific reason provided."}
+                "
+              </span>
+            </p>
+
+            <p className="mt-2 text-[10px] text-red-400">
+              Please update your documents and re-submit for approval.
+            </p>
+          </div>
+
+          <button
+            onClick={() => setIsVerificationModalOpen(true)}
+            className="rounded-xl bg-red-600 px-6 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-red-700"
+          >
+            Update Profile
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-4 gap-4 mb-8">
         {[
           { label: "Active Listings", val: listings.length },
@@ -827,10 +1097,28 @@ const SellerDashboard = ({ session }) => {
               <div className="flex justify-between items-center mb-4">
                 <h2 className="font-bold text-lg">My Listings</h2>
                 <button
-                  onClick={() => setIsModalOpen(true)}
-                  className="bg-[#3285a1] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-90 transition"
+                  onClick={() => {
+                    if (profileData?.verification_status !== "verified") {
+                      alert(
+                        "Your account is still pending admin verification. You cannot create listings yet.",
+                      );
+                      return;
+                    }
+
+                    setIsModalOpen(true);
+                  }}
+                  disabled={profileData?.verification_status !== "verified"}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${
+                    profileData?.verification_status === "verified"
+                      ? "bg-[#3285a1] text-white hover:opacity-90"
+                      : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                  }`}
                 >
-                  <Plus size={18} /> Create Listing
+                  <Plus size={18} />
+
+                  {profileData?.verification_status === "verified"
+                    ? "Create Listing"
+                    : "Verification Required"}
                 </button>
               </div>
 
@@ -885,7 +1173,10 @@ const SellerDashboard = ({ session }) => {
                           <div className="flex items-center gap-2 text-slate-400">
                             <MessageSquare size={14} />
                             <span className="text-xs font-bold">
-                              {item.bids?.length || 0} bids
+                              {item.bids?.filter(
+                                (bid) => bid.status !== "declined",
+                              ).length || 0}{" "}
+                              bids
                             </span>
                           </div>
                         </div>
@@ -922,64 +1213,69 @@ const SellerDashboard = ({ session }) => {
                     </button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                    {listingBids.map((bid) => (
-                      <div
-                        key={bid.id}
-                        className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm"
-                      >
-                        <div className="flex justify-between items-center mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-[#3285a1] rounded-lg flex items-center justify-center text-white">
-                              <User size={16} />
+                    {listingBids
+                      .filter((bid) => bid.status !== "declined")
+                      .map((bid) => (
+                        <div
+                          key={bid.id}
+                          className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm"
+                        >
+                          <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-[#3285a1] rounded-lg flex items-center justify-center text-white">
+                                <User size={16} />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">
+                                  {bid.profiles?.full_name}
+                                </p>
+                                <p className="text-[10px] text-slate-400">
+                                  {new Date(bid.created_at).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                    },
+                                  )}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-xs font-bold text-slate-800">
-                                {bid.profiles?.full_name}
-                              </p>
-                              <p className="text-[10px] text-slate-400">
-                                {new Date(bid.created_at).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    month: "short",
-                                    day: "numeric",
-                                  },
-                                )}
-                              </p>
-                            </div>
+                            <span className="text-sm font-black text-[#3285a1]">
+                              ₱{bid.amount.toLocaleString()}
+                            </span>
                           </div>
-                          <span className="text-sm font-black text-[#3285a1]">
-                            ₱{bid.amount.toLocaleString()}
-                          </span>
-                        </div>
 
-                        {/* <p className="text-[11px] text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg italic">
+                          {/* <p className="text-[11px] text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg italic">
                           "Interested in the battery and camera module"
                         </p> */}
 
-                        {bid.status === "accepted" ? (
-                          <div className="space-y-2">
-                            <div className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 justify-center mb-1">
-                              Bid Accepted <CheckCircle size={10} />
+                          {bid.status === "accepted" ? (
+                            <div className="space-y-2">
+                              <div className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 justify-center mb-1">
+                                Bid Accepted <CheckCircle size={10} />
+                              </div>
+                              <button className="w-full bg-[#3285a1] text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                                <Calendar size={14} /> Schedule Meetup
+                              </button>
                             </div>
-                            <button className="w-full bg-[#3285a1] text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
-                              <Calendar size={14} /> Schedule Meetup
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleAcceptBid(bid)}
-                              className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold hover:bg-[#2a6f87] transition-colors"
-                            >
-                              Accept
-                            </button>
-                            <button className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-[10px] font-bold">
-                              Decline
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                          ) : (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleAcceptBid(bid)}
+                                className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold hover:bg-[#2a6f87] transition-colors"
+                              >
+                                Accept
+                              </button>
+                              <button
+                                onClick={() => handleDeclineBid(bid)}
+                                className="flex-1 border border-red-200 text-red-500 py-2 rounded-lg text-[10px] font-bold hover:bg-red-50 transition-colors"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                   </div>
                 </>
               ) : (
@@ -1214,52 +1510,6 @@ const SellerDashboard = ({ session }) => {
                             </div>
                           )}
                         </div>
-
-                        {/* Chat Preview Section */}
-                        {/* <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-6">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-4 text-center">
-                            Messages
-                          </p>
-                          <div className="bg-white border border-slate-100 rounded-xl p-4 mb-4">
-                            <p className="text-xs text-slate-600 italic text-center mb-4">
-                              Listing matched with buyer for ₱
-                              {tx.amount?.toLocaleString()}
-                            </p>
-
-                            <div className="space-y-4">
-                              <div className="bg-slate-50 rounded-2xl rounded-tl-none p-3 inline-block max-w-[80%] border border-slate-100">
-                                <p className="text-xs text-slate-700">
-                                  Great! I can meet this Friday at 2pm
-                                </p>
-                                <p className="text-[8px] text-slate-400 mt-1 uppercase">
-                                  11:00 AM
-                                </p>
-                              </div>
-
-                              <div className="text-[10px] text-slate-400 text-center space-y-1">
-                                <p>
-                                  Meetup scheduled at {tx.barangay} on April 25,
-                                  2026 at 14:00
-                                </p>
-                                {isCompleted && (
-                                  <p>
-                                    Transaction completed. Handover confirmed.
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="Type a message..."
-                              className="flex-1 text-sm border border-slate-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#2d7a7f]/20"
-                            />
-                            <button className="bg-slate-200 text-slate-500 px-4 py-2 rounded-lg hover:bg-slate-300 transition-colors">
-                              <Send size={16} />
-                            </button>
-                          </div>
-                        </div> */}
                       </div>
                     );
                   })()
@@ -1302,8 +1552,26 @@ const SellerDashboard = ({ session }) => {
                     {session.user.user_metadata?.full_name || "User Name"}
                   </h2>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <CheckCircle size={10} /> Verified Seller
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        profileData?.verification_status === "approved"
+                          ? "bg-emerald-500/20 text-white"
+                          : profileData?.verification_status === "pending"
+                            ? "bg-amber-500/20 text-white"
+                            : profileData?.verification_status === "rejected"
+                              ? "bg-red-500/20 text-white"
+                              : "bg-slate-500/20 text-white"
+                      }`}
+                    >
+                      <CheckCircle size={10} />
+
+                      {profileData?.verification_status === "approved"
+                        ? "Verified Seller"
+                        : profileData?.verification_status === "pending"
+                          ? "Verification Pending"
+                          : profileData?.verification_status === "rejected"
+                            ? "Verification Rejected"
+                            : "Not Submitted"}
                     </span>
                     <span className="text-[10px] opacity-80">
                       Active since{" "}
@@ -1448,7 +1716,7 @@ const SellerDashboard = ({ session }) => {
                 </div>
               </div>
 
-              {/* Personal Information */}
+              Personal Information
               <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
                 <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
                   Personal Information
@@ -1515,6 +1783,243 @@ const SellerDashboard = ({ session }) => {
         listing={selectedListing}
         barangay={session?.user?.user_metadata?.barangay || "Karuhatan"}
       />
+      <div className="space-y-4">
+        {/* FULL NAME */}
+        {/* <div>
+          <label className="text-[11px] font-bold text-slate-700 block mb-2">
+            Full Name
+          </label>
+
+          <input
+            type="text"
+            value={verificationForm.full_name}
+            onChange={(e) =>
+              setVerificationForm((prev) => ({
+                ...prev,
+                full_name: e.target.value,
+              }))
+            }
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:border-red-400"
+          />
+        </div> */}
+
+        {/* CONTACT */}
+        {/* <div>
+          <label className="text-[11px] font-bold text-slate-700 block mb-2">
+            Contact Number
+          </label>
+
+          <input
+            type="text"
+            value={verificationForm.contact_number}
+            onChange={(e) =>
+              setVerificationForm((prev) => ({
+                ...prev,
+                contact_number: e.target.value,
+              }))
+            }
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:border-red-400"
+          />
+        </div> */}
+
+        {/* BARANGAY */}
+        {/* <div>
+          <label className="text-[11px] font-bold text-slate-700 block mb-2">
+            Barangay
+          </label>
+
+          <select
+            value={verificationForm.barangay}
+            onChange={(e) =>
+              setVerificationForm((prev) => ({
+                ...prev,
+                barangay: e.target.value,
+              }))
+            }
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:border-red-400"
+          >
+            <option value="">Select Barangay</option>
+
+            {valenzuelaBarangays.map((brgy) => (
+              <option key={brgy} value={brgy}>
+                {brgy}
+              </option>
+            ))}
+          </select>
+        </div> */}
+
+        {/* BUSINESS NAME */}
+        {profileData?.role === "harvester" && (
+          <div>
+            <label className="text-[11px] font-bold text-slate-700 block mb-2">
+              Business Name
+            </label>
+
+            <input
+              type="text"
+              value={verificationForm.business_name}
+              onChange={(e) =>
+                setVerificationForm((prev) => ({
+                  ...prev,
+                  business_name: e.target.value,
+                }))
+              }
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:border-red-400"
+            />
+          </div>
+        )}
+      </div>
+      {isVerificationModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden">
+            {/* HEADER */}
+            <div className="bg-gradient-to-r from-red-500 to-orange-500 p-6 text-white">
+              <h2 className="text-lg font-black">
+                Update Verification Documents
+              </h2>
+
+              <p className="text-xs opacity-90 mt-1">
+                Re-submit your documents for admin review
+              </p>
+            </div>
+
+            {/* BODY */}
+            <div className="p-6 space-y-6">
+              {/* SELLER */}
+              {profileData?.role === "seller" && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-2">
+                    Upload Valid Government ID
+                  </label>
+
+                  <div
+                    onClick={() => permitRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition ${
+                      verificationFiles.businessPermit
+                        ? "border-emerald-400 bg-emerald-50"
+                        : "border-slate-200 hover:border-red-300"
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      ref={permitRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleVerificationFileChange(e, "businessPermit")
+                      }
+                    />
+
+                    <Upload
+                      size={28}
+                      className={
+                        verificationFiles.businessPermit
+                          ? "text-emerald-500"
+                          : "text-slate-400"
+                      }
+                    />
+
+                    <p className="text-xs font-bold mt-3">
+                      {verificationFiles.businessPermit
+                        ? "File uploaded successfully!"
+                        : "Click to upload"}
+                    </p>
+
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      {verificationFiles.businessPermit
+                        ? verificationFiles.businessPermit.name
+                        : "PNG, JPG, or PDF"}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* HARVESTER */}
+              {profileData?.role === "harvester" && (
+                <>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-2">
+                      Business Permit / DTI
+                    </label>
+
+                    <div
+                      onClick={() => permitRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center cursor-pointer"
+                    >
+                      <input
+                        type="file"
+                        ref={permitRef}
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleVerificationFileChange(e, "businessPermit")
+                        }
+                      />
+
+                      <Upload className="mx-auto mb-2 text-slate-400" />
+
+                      <p className="text-xs font-bold">
+                        {verificationFiles.businessPermit
+                          ? verificationFiles.businessPermit.name
+                          : "Upload Permit"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-2">
+                      Technical Certification
+                    </label>
+
+                    <div
+                      onClick={() => techRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center cursor-pointer"
+                    >
+                      <input
+                        type="file"
+                        ref={techRef}
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleVerificationFileChange(e, "techCert")
+                        }
+                      />
+
+                      <Upload className="mx-auto mb-2 text-slate-400" />
+
+                      <p className="text-xs font-bold">
+                        {verificationFiles.techCert
+                          ? verificationFiles.techCert.name
+                          : "Upload Certification"}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* FOOTER */}
+            <div className="p-6 bg-slate-50 flex gap-3">
+              <button
+                onClick={() => setIsVerificationModalOpen(false)}
+                className="flex-1 py-3 border border-slate-200 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleVerificationUpdate}
+                disabled={verificationLoading}
+                className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition"
+              >
+                {verificationLoading
+                  ? "Submitting..."
+                  : "Re-submit Verification"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

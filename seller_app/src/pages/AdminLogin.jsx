@@ -167,7 +167,6 @@ const AdminLogin = ({
             </div>
           </div>
 
-          {/* LOGIN BUTTON */}
           <button
             type="submit"
             disabled={loading}

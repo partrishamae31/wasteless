@@ -36,36 +36,99 @@ const HarvesterAlerts = ({ session, isVerified }) => {
   }, [session.user.id]);
 
   const fetchAlerts = async () => {
+  try {
     setLoading(true);
 
-    const { data: alertsData } = await supabase
+    const { data: alertsData, error: alertsError } = await supabase
       .from("alerts")
       .select("*")
       .eq("harvester_id", session.user.id);
 
-    if (alertsData) {
-      const alertsWithMatches = await Promise.all(
-        alertsData.map(async (alert) => {
-          const { count } = await supabase
-            .from("listings")
-            .select("*", { count: "exact", head: true })
-            .eq("status", "active")
-            .ilike("device_model", `%${alert.device_model}%`)
-            .lte("asking_price", alert.max_price)
-            .eq("condition", alert.condition);
-
-          return {
-            ...alert,
-            matchCount: count || 0,
-          };
-        }),
-      );
-
-      setAlerts(alertsWithMatches);
+    if (alertsError) {
+      console.error("Alerts fetch error:", alertsError);
+      return;
     }
 
+    if (!alertsData || alertsData.length === 0) {
+      setAlerts([]);
+      return;
+    }
+
+    const alertsWithMatches = await Promise.all(
+      alertsData.map(async (alert) => {
+        let query = supabase
+          .from("listings")
+          .select("id, device_model, asking_price, condition, barangay, status")
+          .eq("status", "active");
+
+        // DEVICE MODEL
+        if (alert.device_model?.trim()) {
+          query = query.ilike(
+            "device_model",
+            `%${alert.device_model.trim()}%`
+          );
+        }
+
+        // CONDITION
+        if (
+          alert.condition &&
+          alert.condition !== "Any Condition"
+        ) {
+          query = query.eq("condition", alert.condition);
+        }
+
+        // MAX PRICE
+        if (
+          alert.max_price !== null &&
+          alert.max_price !== undefined &&
+          alert.max_price !== ""
+        ) {
+          query = query.lte(
+            "asking_price",
+            Number(alert.max_price)
+          );
+        }
+
+        // BARANGAY
+        if (
+          alert.preferred_barangay &&
+          alert.preferred_barangay.trim() !== ""
+        ) {
+          query = query.ilike(
+            "barangay",
+            `%${alert.preferred_barangay.trim()}%`
+          );
+        }
+
+        const { data: matchedListings, error: matchError } =
+          await query;
+
+        if (matchError) {
+          console.error(
+            "Matching listings error:",
+            matchError
+          );
+        }
+
+        console.log("ALERT:", alert.device_model);
+        console.log("MATCHED:", matchedListings);
+
+        return {
+          ...alert,
+          matchCount: matchedListings?.length || 0,
+        };
+      })
+    );
+
+    console.log("FINAL ALERTS:", alertsWithMatches);
+
+    setAlerts(alertsWithMatches);
+  } catch (err) {
+    console.error("Fetch alerts error:", err);
+  } finally {
     setLoading(false);
-  };
+  }
+};
 
   const handleCreateAlert = async (e) => {
     e.preventDefault();
@@ -112,7 +175,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
     <div className="min-h-screen bg-[#f6f7f9] p-6">
       {selectedAlertForMatches ? (
         <MatchingListingsView
-          alert={selectedAlertForMatches}
+          alerts={selectedAlertForMatches}
           onBack={() => setSelectedAlertForMatches(null)}
         />
       ) : (
@@ -540,52 +603,6 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                     </div>
                   </div>
                 </div>
-
-                {/* ALERT PRIORITY */}
-                {/* <div>
-                  <label className="text-sm font-bold text-slate-700 mb-3 block">
-                    Alert Priority
-                  </label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFormData({ ...formData, priority: "Normal" })
-                      }
-                      className={`text-left p-4 rounded-xl border-2 transition-all ${
-                        formData.priority !== "High"
-                          ? "border-blue-500 bg-blue-50/50"
-                          : "border-slate-100"
-                      }`}
-                    >
-                      <p className="text-sm font-bold text-slate-800">Normal</p>
-                      <p className="text-[10px] text-slate-500">
-                        Standard notifications
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFormData({ ...formData, priority: "High" })
-                      }
-                      className={`text-left p-4 rounded-xl border-2 transition-all ${
-                        formData.priority === "High"
-                          ? "border-orange-500 bg-orange-50/50"
-                          : "border-slate-100"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <Star size={12} className="text-orange-500" />
-                        <p className="text-sm font-bold text-slate-800">
-                          High Priority
-                        </p>
-                      </div>
-                      <p className="text-[10px] text-slate-500">
-                        Instant dashboard alerts
-                      </p>
-                    </button>
-                  </div>
-                </div> */}
 
                 {/* FOOTER BUTTONS */}
                 <div className="flex gap-4 pt-4 border-t border-slate-100">

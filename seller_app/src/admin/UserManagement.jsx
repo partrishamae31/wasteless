@@ -115,7 +115,29 @@ const UserManagement = () => {
     0,
   );
 
-  const pendingUsers = users.filter((u) => !u.is_verified);
+  const pendingUsers = users.filter((u) => u.verification_status === "pending");
+
+  const handleDismiss = async (user) => {
+    if (
+      !window.confirm(`Dismiss verification request for ${user.full_name}?`)
+    ) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        verification_status: "rejected",
+        is_verified: false,
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      alert(error.message);
+    } else {
+      fetchUsers();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#f6f8fb] p-6 lg:p-8">
@@ -125,37 +147,6 @@ const UserManagement = () => {
           User Management
         </h1>
       </div>
-
-      {/* STATS CARDS */}
-      {/* <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Total Users"
-          value={totalUsers}
-          icon={<Users size={18} />}
-          color="text-blue-500"
-        />
-
-        <StatCard
-          title="Active Listings"
-          value={activeListings}
-          icon={<Activity size={18} />}
-          color="text-emerald-500"
-        />
-
-        <StatCard
-          title="Verified Shops"
-          value={verifiedUsers}
-          icon={<BadgeCheck size={18} />}
-          color="text-violet-500"
-        />
-
-        <StatCard
-          title="Devices Cataloged"
-          value={totalTransactions}
-          icon={<Database size={18} />}
-          color="text-orange-500"
-        />
-      </div> */}
 
       {/* PENDING REQUESTS */}
       <div className="mt-6 rounded-2xl border border-orange-100 bg-[#fff7ed] p-5">
@@ -207,7 +198,10 @@ const UserManagement = () => {
                     Review Application
                   </button>
 
-                  <button className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50">
+                  <button
+                    onClick={() => handleDismiss(user)}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                  >
                     Dismiss
                   </button>
                 </div>
@@ -247,7 +241,6 @@ const UserManagement = () => {
             <option value="All">All Roles</option>
             <option value="harvester">Harvester</option>
             <option value="seller">Seller</option>
-
           </select>
         </div>
 

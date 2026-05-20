@@ -87,12 +87,6 @@ const ConditionSection = ({ selected, onChange }) => {
       sub: "Some components not working",
       activeStyles: "border-blue-500 bg-blue-50/30 text-blue-700",
     },
-    // {
-    //   id: "Parts Only",
-    //   label: "Parts Only",
-    //   sub: "For harvesting components",
-    //   activeStyles: "border-slate-500 bg-slate-50/30 text-slate-700",
-    // },
   ];
 
   return (
@@ -153,7 +147,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     hazardAcknowledged: false,
     valuationAcknowledged: false,
   });
-
+  
   // Add this helper object inside your file to handle dynamic breakdown mapping
   const CATEGORY_COMPONENTS_MAP = {
     Smartphone: {
@@ -872,6 +866,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     }
   };
 
+  const hasAttachments = formData.attachments.length > 0;
+
+  const canProceedToStep3 = isAssessmentComplete && hasAttachments;
+
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
 
@@ -1112,9 +1110,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   type="text"
                   disabled={!formData.category}
                   placeholder={
-                    formData.category
-                      ? "e.g., iPhone 13 Pro, MacBook Pro 2021, etc..."
-                      : "Please choose a category first..."
+                    !formData.category
+                      ? "Please choose a category first..."
+                      : formData.category === "Parts"
+                        ? "e.g., iPhone 13 Pro - LCD Screen, MacBook Air M1 - Battery"
+                        : "e.g., iPhone 13 Pro, MacBook Pro 2021, etc..."
                   }
                   className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 focus:ring-teal-500/10 disabled:bg-slate-50 disabled:cursor-not-allowed"
                   value={formData.model}
@@ -1226,6 +1226,23 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   </div>
                 )}
               </div>
+
+              {formData.attachments.length === 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
+                  <AlertTriangle size={18} className="text-red-500 shrink-0" />
+
+                  <div>
+                    <p className="text-[11px] font-bold text-red-900">
+                      Photos Required
+                    </p>
+
+                    <p className="text-[10px] text-red-700/80">
+                      Please upload at least one photo or video of the device to
+                      continue.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Damage Assessment Info */}
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-4">
@@ -1399,7 +1416,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   Back
                 </button>
                 <button
-                  disabled={!isAssessmentComplete}
+                  disabled={!canProceedToStep3}
                   onClick={() => setStep(3)}
                   className="flex-1 py-4 bg-[#2d7a7f] text-white rounded-2xl font-bold disabled:bg-gray-100 disabled:text-gray-400"
                 >
