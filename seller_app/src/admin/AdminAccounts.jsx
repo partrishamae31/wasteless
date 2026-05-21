@@ -1,6 +1,8 @@
 // src/AdminAccounts.jsx
-import { supabase } from "../supabaseClient";
+
 import React, { useState } from "react";
+import { supabase } from "../supabaseClient";
+
 import {
   Shield,
   Plus,
@@ -10,16 +12,22 @@ import {
   MapPin,
   Lock,
   Eye,
+  EyeOff,
   X,
   Upload,
+  CheckCircle2,
 } from "lucide-react";
 
 const AdminAccounts = () => {
   const [showForm, setShowForm] = useState(true);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [idFile, setIdFile] = useState(null);
+
   const valenzuelaBarangays = [
     "Arkong Bato",
     "Bagbaguin",
@@ -65,17 +73,32 @@ const AdminAccounts = () => {
   });
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
+    setFormData((prev) => ({
+      ...prev,
       [e.target.name]: e.target.value,
+    }));
+  };
+
+  const resetForm = () => {
+    setFormData({
+      full_name: "",
+      email: "",
+      contact_number: "",
+      barangay: "",
+      password: "",
+      confirmPassword: "",
     });
+
+    setIdFile(null);
   };
 
   const handleCreateAdmin = async () => {
     try {
       setLoading(true);
 
+      // =========================
       // VALIDATION
+      // =========================
       if (
         !formData.full_name ||
         !formData.email ||
@@ -88,8 +111,13 @@ const AdminAccounts = () => {
         return;
       }
 
+      if (formData.password.length < 8) {
+        alert("Password must be at least 8 characters.");
+        return;
+      }
+
       if (formData.password !== formData.confirmPassword) {
-        alert("Passwords do not match");
+        alert("Passwords do not match.");
         return;
       }
 
@@ -98,10 +126,27 @@ const AdminAccounts = () => {
         return;
       }
 
-      // CREATE AUTH ACCOUNT
+      // =========================
+      // SAVE CURRENT SESSION
+      // IMPORTANT:
+      // Prevent admin logout after signup
+      // =========================
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
+      // =========================
+      // CREATE AUTH USER
+      // =========================
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
+
+        options: {
+          data: {
+            role: "admin",
+          },
+        },
       });
 
       if (authError) {
@@ -111,20 +156,30 @@ const AdminAccounts = () => {
       }
 
       if (!authData?.user) {
-        alert("Failed to create user.");
+        alert("Failed to create admin account.");
         return;
       }
 
       const userId = authData.user.id;
 
       // =========================
-      // UPLOAD ID FILE
+      // RESTORE CURRENT ADMIN SESSION
+      // =========================
+      if (currentSession) {
+        await supabase.auth.setSession({
+          access_token: currentSession.access_token,
+          refresh_token: currentSession.refresh_token,
+        });
+      }
+
+      // =========================
+      // UPLOAD FILE
       // =========================
       let uploadedFileUrl = "";
 
       const fileExt = idFile.name.split(".").pop();
 
-      const filePath = `admin_ids/${userId}/id.${fileExt}`;
+      const filePath = `admin_ids/${userId}/id_${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from("verifications")
@@ -145,7 +200,7 @@ const AdminAccounts = () => {
       uploadedFileUrl = publicUrlData.publicUrl;
 
       // =========================
-      // INSERT PROFILE
+      // UPDATE PROFILE
       // =========================
       const { error: profileError } = await supabase
         .from("profiles")
@@ -157,9 +212,11 @@ const AdminAccounts = () => {
 
           role: "admin",
 
-          status: "Pending",
-          verification_status: "pending",
-          is_verified: false,
+          // CHANGE THESE IF YOU WANT
+          // AUTO VERIFIED ADMINS
+          status: "Active",
+          verification_status: "verified",
+          is_verified: true,
 
           business_permit_url: uploadedFileUrl,
 
@@ -174,21 +231,13 @@ const AdminAccounts = () => {
         return;
       }
 
+      // =========================
       // SUCCESS
+      // =========================
       setSuccess(true);
       setShowForm(false);
 
-      // OPTIONAL RESET
-      setFormData({
-        full_name: "",
-        email: "",
-        contact_number: "",
-        barangay: "",
-        password: "",
-        confirmPassword: "",
-      });
-
-      setIdFile(null);
+      resetForm();
     } catch (err) {
       console.error(err);
       alert("Something went wrong.");
@@ -196,8 +245,6 @@ const AdminAccounts = () => {
       setLoading(false);
     }
   };
-
-  const [idFile, setIdFile] = useState(null);
 
   const stats = [
     {
@@ -217,46 +264,46 @@ const AdminAccounts = () => {
       value: "456",
     },
   ];
+
+  // =========================
+  // SUCCESS SCREEN
+  // =========================
   if (success) {
     return (
       <div className="p-8 flex justify-center items-center min-h-screen bg-[#F8FAFC]">
-        <div className="bg-white rounded-[32px] shadow-xl p-10 max-w-2xl w-full">
+        <div className="bg-white rounded-[32px] shadow-xl p-10 max-w-2xl w-full border border-slate-200">
           <div className="flex justify-center mb-6">
-            <div className="w-20 h-20 rounded-full bg-yellow-100 flex items-center justify-center">
-              <Shield className="text-yellow-600" size={36} />
+            <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center">
+              <CheckCircle2 className="text-emerald-600" size={40} />
             </div>
           </div>
 
           <h1 className="text-3xl font-bold text-center text-slate-900 mb-4">
-            Registration Pending WMO Approval
+            Administrator Created Successfully
           </h1>
 
           <p className="text-center text-slate-500 mb-8">
-            Your administrator registration has been submitted successfully and
-            is now awaiting approval.
+            The new administrator account has been created and activated.
           </p>
 
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-red-600 mb-6">
-            <p className="font-semibold mb-2">Account Not Yet Active</p>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-emerald-700 mb-6">
+            <p className="font-semibold mb-2">Account Activated</p>
 
             <p className="text-sm">
-              You will not be able to log in until your account has been
-              reviewed and approved by the Waste Management Officer (WMO).
+              The administrator can now log in using the registered email and
+              password.
             </p>
           </div>
 
-          <div className="bg-slate-50 rounded-2xl p-6">
-            <h3 className="font-bold text-slate-800 mb-4">
-              What happens next?
-            </h3>
-
-            <ul className="space-y-3 text-slate-600 text-sm">
-              <li>1. WMO reviews your credentials and documents</li>
-              <li>2. Department head authorization is verified</li>
-              <li>3. You will receive an email once approved</li>
-              <li>4. After approval, you can log in normally</li>
-            </ul>
-          </div>
+          <button
+            onClick={() => {
+              setSuccess(false);
+              setShowForm(true);
+            }}
+            className="w-full h-14 rounded-2xl bg-[#2387A5] hover:bg-[#1f7690] text-white font-semibold transition-all"
+          >
+            Create Another Admin
+          </button>
         </div>
       </div>
     );
@@ -264,7 +311,7 @@ const AdminAccounts = () => {
 
   return (
     <div className="p-6 md:p-8 bg-[#F8FAFC] min-h-screen">
-      {/* HEADER STATS */}
+      {/* STATS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
         {stats.map((item, index) => (
           <div
@@ -282,7 +329,7 @@ const AdminAccounts = () => {
         ))}
       </div>
 
-      {/* SECTION HEADER */}
+      {/* HEADER */}
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
@@ -290,22 +337,24 @@ const AdminAccounts = () => {
           </h1>
 
           <p className="text-slate-500 mt-1">
-            Create new administrator accounts for the platform
+            Create and manage platform administrator accounts
           </p>
         </div>
 
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-[#2387A5] hover:bg-[#1f7690] transition-all text-white px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg"
-        >
-          <Plus size={18} />
-          Create New Admin
-        </button>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-[#2387A5] hover:bg-[#1f7690] transition-all text-white px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg"
+          >
+            <Plus size={18} />
+            Create New Admin
+          </button>
+        )}
       </div>
 
       {/* FORM */}
       {showForm && (
-        <div className="bg-white border border-violet-200 rounded-3xl p-8 shadow-sm relative">
+        <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm relative">
           {/* CLOSE */}
           <button
             onClick={() => setShowForm(false)}
@@ -320,75 +369,36 @@ const AdminAccounts = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* FULL NAME */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Full Name
-              </label>
-
-              <div className="relative">
-                <User
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  type="text"
-                  name="full_name"
-                  value={formData.full_name}
-                  onChange={handleChange}
-                  placeholder="Juan Dela Cruz"
-                  className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-4 outline-none focus:ring-2 focus:ring-cyan-500"
-                />
-              </div>
-            </div>
+            <InputField
+              icon={<User size={18} />}
+              label="Full Name"
+              name="full_name"
+              value={formData.full_name}
+              onChange={handleChange}
+              placeholder="Juan Dela Cruz"
+            />
 
             {/* EMAIL */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Email Address
-              </label>
-
-              <div className="relative">
-                <Mail
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="admin@valenzuela.gov.ph"
-                  className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-4 outline-none focus:ring-2 focus:ring-cyan-500"
-                />
-              </div>
-            </div>
+            <InputField
+              icon={<Mail size={18} />}
+              label="Email Address"
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="admin@valenzuela.gov.ph"
+            />
 
             {/* CONTACT */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Contact Number
-              </label>
+            <InputField
+              icon={<Phone size={18} />}
+              label="Contact Number"
+              name="contact_number"
+              value={formData.contact_number}
+              onChange={handleChange}
+              placeholder="+63 917 123 4567"
+            />
 
-              <div className="relative">
-                <Phone
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  type="text"
-                  name="contact_number"
-                  value={formData.contact_number}
-                  onChange={handleChange}
-                  placeholder="+63 917 123 4567"
-                  className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-4 outline-none focus:ring-2 focus:ring-cyan-500"
-                />
-              </div>
-            </div>
-
-            {/* BARANGAY */}
             {/* BARANGAY */}
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-2">
@@ -405,21 +415,7 @@ const AdminAccounts = () => {
                   name="barangay"
                   value={formData.barangay}
                   onChange={handleChange}
-                  className="
-        w-full
-        h-14
-        rounded-2xl
-        border
-        border-slate-300
-        bg-white
-        pl-12
-        pr-4
-        outline-none
-        focus:ring-2
-        focus:ring-cyan-500
-        appearance-none
-        text-slate-700
-      "
+                  className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-4 outline-none focus:ring-2 focus:ring-cyan-500 appearance-none text-slate-700"
                 >
                   <option value="">Select barangay</option>
 
@@ -433,74 +429,34 @@ const AdminAccounts = () => {
             </div>
 
             {/* PASSWORD */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Password
-              </label>
-
-              <div className="relative">
-                <Lock
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="Enter secure password"
-                  className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-12 outline-none focus:ring-2 focus:ring-cyan-500"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-                >
-                  <Eye size={18} />
-                </button>
-              </div>
-            </div>
+            <PasswordField
+              label="Password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              show={showPassword}
+              toggle={() => setShowPassword(!showPassword)}
+            />
 
             {/* CONFIRM PASSWORD */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Confirm Password
-              </label>
-
-              <div className="relative">
-                <Lock
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  placeholder="Re-enter password"
-                  className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-12 outline-none focus:ring-2 focus:ring-cyan-500"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-                >
-                  <Eye size={18} />
-                </button>
-              </div>
-            </div>
+            <PasswordField
+              label="Confirm Password"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              show={showConfirmPassword}
+              toggle={() => setShowConfirmPassword(!showConfirmPassword)}
+            />
           </div>
 
-          {/* FILE UPLOAD */}
+          {/* FILE */}
           <div className="mt-8">
             <label className="border-2 border-dashed border-slate-300 rounded-3xl h-44 flex flex-col items-center justify-center text-center cursor-pointer hover:border-cyan-400 transition-all">
               <Upload size={38} className="text-slate-400 mb-3" />
 
-              <p className="font-semibold text-slate-700">Click to upload ID</p>
+              <p className="font-semibold text-slate-700">
+                {idFile ? idFile.name : "Click to upload ID"}
+              </p>
 
               <span className="text-sm text-slate-400 mt-1">
                 PNG, JPG, or PDF (Max 5MB)
@@ -515,7 +471,7 @@ const AdminAccounts = () => {
             </label>
           </div>
 
-          {/* ACTION BUTTONS */}
+          {/* BUTTONS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-8">
             <button
               onClick={() => setShowForm(false)}
@@ -534,6 +490,65 @@ const AdminAccounts = () => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// =========================
+// REUSABLE INPUT
+// =========================
+const InputField = ({ icon, label, type = "text", ...props }) => {
+  return (
+    <div>
+      <label className="text-sm font-medium text-slate-700 block mb-2">
+        {label}
+      </label>
+
+      <div className="relative">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+          {icon}
+        </div>
+
+        <input
+          type={type}
+          className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-4 outline-none focus:ring-2 focus:ring-cyan-500"
+          {...props}
+        />
+      </div>
+    </div>
+  );
+};
+
+// =========================
+// PASSWORD FIELD
+// =========================
+const PasswordField = ({ label, show, toggle, ...props }) => {
+  return (
+    <div>
+      <label className="text-sm font-medium text-slate-700 block mb-2">
+        {label}
+      </label>
+
+      <div className="relative">
+        <Lock
+          size={18}
+          className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+
+        <input
+          type={show ? "text" : "password"}
+          className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-12 outline-none focus:ring-2 focus:ring-cyan-500"
+          {...props}
+        />
+
+        <button
+          type="button"
+          onClick={toggle}
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+        >
+          {show ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
     </div>
   );
 };

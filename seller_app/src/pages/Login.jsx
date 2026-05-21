@@ -71,7 +71,10 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
 
       console.log("Selected role:", role);
       console.log("Database role:", profile?.role);
-      if (!profile || profile.role !== role) {
+      const allowedRoles =
+        role === "harvester" ? ["harvester", "repair_shop"] : [role];
+
+      if (!profile || !allowedRoles.includes(profile.role)) {
         setErrorMsg(
           `Access Denied: This account is registered as a ${profile?.role}. Please select the correct role above.`,
         );

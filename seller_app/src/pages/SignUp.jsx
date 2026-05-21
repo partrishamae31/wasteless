@@ -176,17 +176,37 @@ const SignUp = ({ onLoginClick }) => {
 
     try {
       const autoVerify = false;
+
+      // =========================
+      // DETERMINE FINAL ROLE
+      // =========================
+      let finalRole = accountType;
+
+      if (accountType === "harvester") {
+        finalRole =
+          formData.buyerType === "repair_shop" ? "repair_shop" : "harvester";
+      }
+
+      // =========================
+      // CREATE AUTH ACCOUNT
+      // =========================
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
+
         options: {
           data: {
             full_name: formData.fullName,
-            role:
-              accountType === "harvester" ? formData.buyerType : accountType,
+
+            // SAVE CORRECT ROLE
+            role: finalRole,
+
+            buyer_type: accountType === "harvester" ? formData.buyerType : null,
+
             barangay: formData.barangay,
             contact_number: formData.contactNumber,
             business_name: formData.businessName,
+
             is_verified: autoVerify,
             status: autoVerify ? "Active" : "Pending",
           },
@@ -194,20 +214,46 @@ const SignUp = ({ onLoginClick }) => {
       });
 
       if (authError) throw authError;
-      if (!authData?.user) throw new Error("User creation failed.");
+
+      if (!authData?.user) {
+        throw new Error("User creation failed.");
+      }
 
       const userId = authData.user.id;
 
-      // 2. Prepare the updates for the profiles table
+      // =========================
+      // PROFILE UPDATES
+      // =========================
       let updates = {
+        full_name: formData.fullName,
+        email: formData.email,
+        contact_number: formData.contactNumber,
+        barangay: formData.barangay,
+
+        // IMPORTANT
+        role: finalRole,
+
+        business_name: formData.businessName || null,
+
+        verification_status: "pending",
         is_verified: false,
         status: "Pending",
+
+        average_rating: 0,
+        total_reviews: 0,
       };
 
-      // SELLER upload
-      if (accountType === "seller" && formData.businessPermit) {
+      // =========================
+      // SELLER ID UPLOAD
+      // =========================
+      if (
+        (accountType === "seller" || finalRole === "harvester") &&
+        formData.businessPermit
+      ) {
         const file = formData.businessPermit;
+
         const fileExt = file.name.split(".").pop();
+
         const fileName = `${userId}/permit_${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -223,12 +269,16 @@ const SignUp = ({ onLoginClick }) => {
         updates.business_permit_url = data.publicUrl;
       }
 
-      // HARVESTER upload
-      if (accountType === "harvester") {
-        // Permit
+      // =========================
+      // REPAIR SHOP FILES
+      // =========================
+      if (finalRole === "repair_shop") {
+        // BUSINESS PERMIT
         if (formData.businessPermit) {
           const file = formData.businessPermit;
+
           const fileExt = file.name.split(".").pop();
+
           const fileName = `${userId}/permit_${Date.now()}.${fileExt}`;
 
           const { error } = await supabase.storage
@@ -244,10 +294,12 @@ const SignUp = ({ onLoginClick }) => {
           updates.business_permit_url = data.publicUrl;
         }
 
-        // Tech Cert
+        // TECH CERT
         if (formData.techCert) {
           const file = formData.techCert;
+
           const fileExt = file.name.split(".").pop();
+
           const fileName = `${userId}/cert_${Date.now()}.${fileExt}`;
 
           const { error } = await supabase.storage
@@ -264,7 +316,9 @@ const SignUp = ({ onLoginClick }) => {
         }
       }
 
-      // FINAL UPDATE
+      // =========================
+      // UPDATE PROFILE TABLE
+      // =========================
       const { error: profileError } = await supabase
         .from("profiles")
         .update(updates)
@@ -278,6 +332,8 @@ const SignUp = ({ onLoginClick }) => {
           : "Registration submitted! Please wait for admin approval.",
       );
     } catch (err) {
+      console.error(err);
+
       alert("Registration Error: " + err.message);
     } finally {
       setLoading(false);

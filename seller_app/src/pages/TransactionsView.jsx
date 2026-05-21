@@ -112,6 +112,7 @@ const TransactionsView = ({
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
+        <div className="p-6">
         <div className="bg-white w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
           <div className="bg-[#3285a1] p-8 text-white relative text-center">
             <button
@@ -201,11 +202,13 @@ const TransactionsView = ({
             </button>
           </div>
         </div>
+        </div>
       </div>
     );
   };
   return (
     <div className="flex gap-8 h-[800px] animate-in fade-in duration-500 bg-transparent">
+      
       {/* Left Sidebar */}
       <div className="w-1/3 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
         <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">

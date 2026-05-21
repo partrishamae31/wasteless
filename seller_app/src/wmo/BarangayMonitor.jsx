@@ -90,47 +90,47 @@ const BarangayMonitor = () => {
       </div> */}
 
       {/* LEADERBOARD HEADER */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-4 rounded-xl text-white flex items-center gap-3 shadow-md">
+      {/* <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-4 rounded-xl text-white flex items-center gap-3 shadow-md">
         <Trophy size={20} />
         <div>
           <h3 className="text-sm font-black uppercase tracking-widest">Barangay E-waste Leaderboard</h3>
           <p className="text-[10px] opacity-80 italic">Ranking based on community participation and e-waste reduction activity</p>
         </div>
-      </div>
+      </div> */}
 
       {/* PODIUM */}
-      <div className="flex gap-6">
+      {/* <div className="flex gap-6">
         <PodiumCard rank={1} name="Barangay Karuhatan" items="342" growth="20" households="1,248" color="bg-orange-500" icon={Trophy} />
         <PodiumCard rank={2} name="Barangay Marulas" items="298" growth="24" households="960" color="bg-slate-400" icon={Medal} />
         <PodiumCard rank={3} name="Barangay Veinte Reales" items="267" growth="18" households="890" color="bg-orange-700" icon={Medal} />
-      </div>
+      </div> */}
 
       {/* DETAILED RANKINGS TABLE */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-slate-50">
+        {/* <div className="p-5 border-b border-slate-50">
           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Complete Rankings</h3>
           <p className="text-[10px] text-slate-400">Clear stock indicators help identify high-activity locations</p>
-        </div>
+        </div> */}
         
         <table className="w-full">
           <thead>
             <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-              <th className="px-6 py-4 text-left">Rank</th>
+              {/* <th className="px-6 py-4 text-left">Rank</th> */}
               <th className="px-6 py-4 text-left">Barangay Name</th>
               <th className="px-6 py-4 text-left">Total Items Donated</th>
               <th className="px-6 py-4 text-left">Stock Level</th>
               <th className="px-6 py-4 text-left">Active Households</th>
-              <th className="px-6 py-4 text-left">Badge</th>
+              {/* <th className="px-6 py-4 text-left">Badge</th> */}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {rankings.map((item) => (
               <tr key={item.rank} className="hover:bg-slate-50/50 transition-colors">
-                <td className="px-6 py-4">
+                {/* <td className="px-6 py-4">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black ${item.rank <= 3 ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-400'}`}>
                     {item.rank}
                   </div>
-                </td>
+                </td> */}
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
                     <MapPin size={12} className="text-slate-300" />
@@ -147,13 +147,13 @@ const BarangayMonitor = () => {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-xs font-bold text-slate-700">{item.households}</td>
-                <td className="px-6 py-4">
+                {/* <td className="px-6 py-4">
                   {item.badge && (
                     <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-md border ${item.badgeColor}`}>
                       {item.badge}
                     </span>
                   )}
-                </td>
+                </td> */}
               </tr>
             ))}
           </tbody>

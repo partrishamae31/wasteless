@@ -5,6 +5,7 @@ import UrbanMineMap from "./UrbanMineMap";
 import InventoryView from "./InventoryView";
 import TransactionsView from "./TransactionsView";
 import BarangayLeaderboard from "./BarangayLeaderboard"; // Ensure path is correct
+import bannerBg from "./assets/banner.jpeg";
 import DonationTab from "./DonationTab";
 
 import {
@@ -37,6 +38,7 @@ import {
   Phone,
   Star,
   Gift,
+  Leaf,
 } from "lucide-react";
 
 const HarvesterDashboard = ({ session, onLogout }) => {
@@ -694,611 +696,669 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     }
   };
   return (
-    <div className="min-h-screen bg-[#f1f5f9] p-6 font-sans text-slate-900">
-      {/* --- TOP HEADER SECTION --- */}
-      <div className="flex justify-end items-center mb-6 gap-4">
-        {/* Notification Bell Container */}
-        <div className="relative">
-          <div
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="bg-white p-2.5 rounded-full shadow-sm border border-slate-200 cursor-pointer hover:bg-slate-50 transition-all text-slate-600"
-          >
-            <Bell size={20} />
-          </div>
+    <div className="min-h-screen bg-[#f1f5f9] font-sans text-slate-900">
+      
+      {/* ===== TOP BANNER ===== */}
+      <div
+        className="relative overflow-hidden min-h-[380px] px-6 pt-6 pb-10 bg-cover bg-center"
+        style={{
+          backgroundImage: `linear-gradient(
+          rgba(255, 255, 255, 0.09),
+          rgba(255, 255, 255, 0.29)
+        ), url(${bannerBg})`,
+        }}
+      >
+        {/* Soft overlay blur */}
+        <div className="absolute inset-0 backdrop-[1px]"></div>
 
-          {notifications.filter((n) => !n.is_read).length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold border-2 border-[#f1f5f9]">
-              {notifications.filter((n) => !n.is_read).length}
-            </span>
-          )}
-
-          {/* Notification Dropdown */}
-          {showNotifications && (
-            <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
-              <div className="p-5 border-b border-slate-50 flex justify-between items-center">
-                <h3 className="font-black text-slate-800 text-xs uppercase tracking-tight">
-                  Notifications
-                </h3>
-                <button
-                  onClick={handleMarkAllRead}
-                  className="text-[10px] font-bold text-[#769c2d] hover:text-[#5d7a24]"
-                >
-                  Mark all read
-                </button>
-              </div>
-
-              <div className="max-h-96 overflow-y-auto">
-                {notifications.length > 0 ? (
-                  notifications.map((n) => {
-                    // Dynamic icon and color logic based on notification type
-                    let icon = <Package size={14} />;
-                    let iconBg = "bg-lime-100 text-[#769c2d]";
-
-                    if (n.type === "bid_accepted" || n.type === "payment") {
-                      icon = <CheckCircle size={14} />;
-                      iconBg = "bg-emerald-100 text-emerald-600";
-                    } else if (n.type === "message") {
-                      icon = <MessageSquare size={14} />;
-                      iconBg = "bg-blue-100 text-blue-600";
-                    } else if (n.type === "meetup") {
-                      icon = <Calendar size={14} />;
-                      iconBg = "bg-purple-100 text-purple-600";
-                    }
-
-                    return (
-                      <div
-                        key={n.id}
-                        className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${
-                          !n.is_read ? "bg-lime-50/30" : ""
-                        }`}
-                      >
-                        <div className="flex gap-3">
-                          <div
-                            className={`w-8 h-8 ${iconBg} rounded-xl flex items-center justify-center flex-shrink-0`}
-                          >
-                            {icon}
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-[11px] font-black text-slate-800">
-                              {n.title}
-                            </p>
-                            <p className="text-[10px] text-slate-500 leading-tight mt-1">
-                              {n.content}
-                            </p>
-                            <p className="text-[8px] text-slate-300 font-bold mt-2 uppercase tracking-widest">
-                              {new Date(n.created_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
-                          </div>
-                          {!n.is_read && (
-                            <div className="w-1.5 h-1.5 bg-[#769c2d] rounded-full mt-1"></div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="p-10 text-center text-slate-300 text-[10px] font-bold uppercase tracking-widest">
-                    No new alerts
-                  </div>
-                )}
-              </div>
-              <button className="w-full py-4 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors bg-slate-50/50 border-t border-slate-50">
-                View All Notifications
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="relative">
-          <div
-            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-            className="flex items-center gap-3 bg-white p-1 pr-4 rounded-full shadow-sm border border-slate-200 cursor-pointer hover:border-slate-300 transition-all"
-          >
-            <div className="text-right hidden sm:block pl-3">
-              <p className="font-bold text-slate-800 text-[11px] leading-none mb-1">
-                {profileData.full_name}
-              </p>
-              {verificationStatus === "verified" ? (
-                <p className="text-[#769c2d] text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
-                  <CheckCircle2 size={10} /> Verified
-                </p>
-              ) : verificationStatus === "rejected" ? (
-                <p className="text-red-500 text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
-                  <XCircle size={10} /> Rejected
-                </p>
-              ) : (
-                <p className="text-orange-400 text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
-                  <Clock size={10} /> Pending
-                </p>
-              )}
-            </div>
-            <div className="w-8 h-8 bg-[#4a7c59] rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm border border-white/20">
-              {profileData.initials}
-            </div>
-          </div>
-
-          {showProfileDropdown && (
-            <>
+        {/* CONTENT */}
+        <div className="relative z-10">
+          {/* --- TOP HEADER SECTION --- */}
+          <div className="flex justify-end items-center mb-10 gap-4">
+            {/* Notification Bell Container */}
+            <div className="relative">
               <div
-                className="fixed inset-0 z-10"
-                onClick={() => setIsProfileOpen(false)}
-              ></div>
-              <div className="absolute right-0 mt-3 w-64 bg-white rounded-[2rem] shadow-2xl border border-slate-50 z-20 overflow-hidden">
-                <div className="bg-gradient-to-br from-[#4a7c59] to-[#769c2d] p-5 text-white">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center font-bold text-sm">
-                      {profileData.initials}
-                    </div>
-                    <div>
-                      <p className="font-bold text-xs">
-                        {profileData.full_name}
-                      </p>
-                      <p className="text-[9px] text-white/80">
-                        {session?.user?.email}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-3">
-                  <button
-                    onClick={() => {
-                      setShowProfileDropdown(false);
-                      setShowProfileModal(true);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-2xl transition-colors text-xs font-bold"
-                  >
-                    <span className="text-slate-400">
-                      <User size={15} />
-                    </span>
-                    View Profile
-                  </button>
-                  <MenuLink icon={<Settings size={15} />} label="Settings" />
-                  {/* Added Achievements to match mockup */}
-                  <MenuLink icon={<Award size={15} />} label="Achievements" />
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="bg-white/90 backdrop-blur-md p-2.5 rounded-full shadow-sm border border-white/50 cursor-pointer hover:bg-white transition-all text-slate-600"
+              >
+                <Bell size={20} />
+              </div>
 
-                  {/* Logout section with border-t and specific styling from image_085a5b.jpg */}
-                  <div className="mt-2 pt-2 border-t border-slate-50">
+              {notifications.filter((n) => !n.is_read).length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold border-2 border-white">
+                  {notifications.filter((n) => !n.is_read).length}
+                </span>
+              )}
+
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div className="p-5 border-b border-slate-50 flex justify-between items-center">
+                    <h3 className="font-black text-slate-800 text-xs uppercase tracking-tight">
+                      Notifications
+                    </h3>
+
                     <button
-                      onClick={onLogout}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-2xl transition-colors text-xs font-black uppercase tracking-widest"
+                      onClick={handleMarkAllRead}
+                      className="text-[10px] font-bold text-[#769c2d] hover:text-[#5d7a24]"
                     >
-                      <LogOut size={15} /> Logout
+                      Mark all read
                     </button>
                   </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-      {showProfileModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
-            {/* HEADER */}
-            <div className="bg-gradient-to-br from-[#769c2d] to-lime-700 p-6 text-white relative">
-              <button
-                onClick={() => {
-                  setShowProfileModal(false);
-                  setIsEditingProfile(false);
-                }}
-                className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
-              >
-                <XCircle size={20} />
-              </button>
 
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
-                    {profileData?.initials || "H"}
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length > 0 ? (
+                      notifications.map((n) => {
+                        let icon = <Package size={14} />;
+                        let iconBg = "bg-lime-100 text-[#769c2d]";
+
+                        if (n.type === "bid_accepted" || n.type === "payment") {
+                          icon = <CheckCircle size={14} />;
+                          iconBg = "bg-emerald-100 text-emerald-600";
+                        } else if (n.type === "message") {
+                          icon = <MessageSquare size={14} />;
+                          iconBg = "bg-blue-100 text-blue-600";
+                        } else if (n.type === "meetup") {
+                          icon = <Calendar size={14} />;
+                          iconBg = "bg-purple-100 text-purple-600";
+                        }
+
+                        return (
+                          <div
+                            key={n.id}
+                            className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${
+                              !n.is_read ? "bg-lime-50/30" : ""
+                            }`}
+                          >
+                            <div className="flex gap-3">
+                              <div
+                                className={`w-8 h-8 ${iconBg} rounded-2xl flex items-center justify-center flex-shrink-0`}
+                              >
+                                {icon}
+                              </div>
+
+                              <div className="flex-1">
+                                <p className="text-[11px] font-black text-slate-800">
+                                  {n.title}
+                                </p>
+
+                                <p className="text-[10px] text-slate-500 leading-tight mt-1">
+                                  {n.content}
+                                </p>
+
+                                <p className="text-[8px] text-slate-300 font-bold mt-2 uppercase tracking-widest">
+                                  {new Date(n.created_at).toLocaleTimeString(
+                                    [],
+                                    {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    },
+                                  )}
+                                </p>
+                              </div>
+
+                              {!n.is_read && (
+                                <div className="w-1.5 h-1.5 bg-[#769c2d] rounded-full mt-1"></div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="p-10 text-center text-slate-300 text-[10px] font-bold uppercase tracking-widest">
+                        No new alerts
+                      </div>
+                    )}
                   </div>
 
-                  <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
-                    <Camera size={12} />
+                  <button className="w-full py-4 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors bg-slate-50/50 border-t border-slate-50">
+                    View All Notifications
                   </button>
                 </div>
+              )}
+            </div>
 
-                <div>
-                  <h2 className="text-xl font-bold">
-                    {profileData?.full_name || "Harvester"}
-                  </h2>
+            <div className="relative">
+              <div
+                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                className="flex items-center gap-3 bg-white/90 backdrop-blur-md p-1 pr-4 rounded-full shadow-sm border border-white/50 cursor-pointer hover:border-slate-300 transition-all"
+              >
+                <div className="text-right hidden sm:block pl-3">
+                  <p className="font-bold text-slate-800 text-[11px] leading-none mb-1">
+                    {profileData.full_name}
+                  </p>
 
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Shield size={10} />
-                      {verificationStatus === "verified"
-                        ? "Verified Harvester"
-                        : "Pending Verification"}
-                    </span>
+                  {verificationStatus === "verified" ? (
+                    <p className="text-[#769c2d] text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
+                      <CheckCircle2 size={10} /> Verified
+                    </p>
+                  ) : verificationStatus === "rejected" ? (
+                    <p className="text-red-500 text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
+                      <XCircle size={10} /> Rejected
+                    </p>
+                  ) : (
+                    <p className="text-orange-400 text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
+                      <Clock size={10} /> Pending
+                    </p>
+                  )}
+                </div>
 
-                    <span className="text-[10px] opacity-80">
-                      Active since {profileData?.joined_date || "2026"}
-                    </span>
+                <div className="w-9 h-9 bg-[#4a7c59] rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm border border-white/20">
+                  {profileData.initials}
+                </div>
+              </div>
+
+              {showProfileDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setIsProfileOpen(false)}
+                  ></div>
+                  <div className="absolute right-0 mt-3 w-64 bg-white rounded-[2rem] shadow-2xl border border-slate-50 z-20 overflow-hidden">
+                    <div className="bg-gradient-to-br from-[#4a7c59] to-[#769c2d] p-5 text-white">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center font-bold text-sm">
+                          {profileData.initials}
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs">
+                            {profileData.full_name}
+                          </p>
+                          <p className="text-[9px] text-white/80">
+                            {session?.user?.email}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <button
+                        onClick={() => {
+                          setShowProfileDropdown(false);
+                          setShowProfileModal(true);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-2xl transition-colors text-xs font-bold"
+                      >
+                        <span className="text-slate-400">
+                          <User size={15} />
+                        </span>
+                        View Profile
+                      </button>
+                      <MenuLink
+                        icon={<Settings size={15} />}
+                        label="Settings"
+                      />
+                      {/* Added Achievements to match mockup */}
+                      <MenuLink
+                        icon={<Award size={15} />}
+                        label="Achievements"
+                      />
+
+                      {/* Logout section with border-t and specific styling from image_085a5b.jpg */}
+                      <div className="mt-2 pt-2 border-t border-slate-50">
+                        <button
+                          onClick={onLogout}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-2xl transition-colors text-xs font-black uppercase tracking-widest"
+                        >
+                          <LogOut size={15} /> Logout
+                        </button>
+                      </div>
+                    </div>
                   </div>
+                </>
+              )}
+            </div>
+          </div>
+          {showProfileModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
+                {/* HEADER */}
+                <div className="bg-gradient-to-br from-[#769c2d] to-lime-700 p-6 text-white relative">
+                  <button
+                    onClick={() => {
+                      setShowProfileModal(false);
+                      setIsEditingProfile(false);
+                    }}
+                    className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
+                  >
+                    <XCircle size={20} />
+                  </button>
 
-                  <div className="flex items-center gap-1 mt-2 text-yellow-300">
-                    {/* <Award size={12} />
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
+                        {profileData?.initials || "H"}
+                      </div>
+
+                      <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
+                        <Camera size={12} />
+                      </button>
+                    </div>
+
+                    <div>
+                      <h2 className="text-xl font-bold">
+                        {profileData?.full_name || "Harvester"}
+                      </h2>
+
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Shield size={10} />
+                          {verificationStatus === "verified"
+                            ? "Verified Harvester"
+                            : "Pending Verification"}
+                        </span>
+
+                        <span className="text-[10px] opacity-80">
+                          Active since {profileData?.joined_date || "2026"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 mt-2 text-yellow-300">
+                        {/* <Award size={12} />
                     <span className="text-xs font-bold text-white">
                       Eco Partner
                     </span> */}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
+                
 
-            {/* CONTENT */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
-              {/* EDIT BUTTON */}
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setIsEditingProfile(!isEditingProfile)}
-                  className="flex items-center gap-2 bg-[#769c2d] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-lime-700 transition shadow-sm"
-                >
-                  <Settings size={14} />
-                  {isEditingProfile ? "Cancel" : "Edit Profile"}
-                </button>
-              </div>
+                {/* CONTENT */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+                
+                  {/* EDIT BUTTON */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setIsEditingProfile(!isEditingProfile)}
+                      className="flex items-center gap-2 bg-[#769c2d] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-lime-700 transition shadow-sm"
+                    >
+                      <Settings size={14} />
+                      {isEditingProfile ? "Cancel" : "Edit Profile"}
+                    </button>
+                  </div>
 
-              {/* STATS */}
-              <div className="grid grid-cols-4 gap-3">
-                {[
-                  {
-                    label: "Active Bids",
-                    val: profileData?.active_bids || 0,
-                    icon: <Gavel size={16} />,
-                    color: "text-blue-500",
-                    bg: "bg-blue-50",
-                  },
-                  {
-                    label: "Recovered",
-                    val: profileData?.completed_pickups || 0,
-                    icon: <Package size={16} />,
-                    color: "text-green-500",
-                    bg: "bg-green-50",
-                  },
-                  {
-                    label: "Rating",
-                    val: Number(profileData?.average_rating || 0).toFixed(1),
-                    icon: <Star size={16} />,
-                    color: "text-yellow-500",
-                    bg: "bg-yellow-50",
-                  },
-                  {
-                    label: "Reviews",
-                    val: profileData?.total_reviews || 0,
-                    icon: <MessageSquareText size={16} />,
-                    color: "text-purple-500",
-                    bg: "bg-purple-50",
-                  },
-                ].map((stat, i) => (
-                  <div
-                    key={i}
-                    className={`${stat.bg} p-3 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center`}
-                  >
-                    <div className={`${stat.color} mb-1`}>{stat.icon}</div>
+                  {/* STATS */}
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      {
+                        label: "Active Bids",
+                        val: profileData?.active_bids || 0,
+                        icon: <Gavel size={16} />,
+                        color: "text-blue-500",
+                        bg: "bg-blue-50",
+                      },
+                      {
+                        label: "Recovered",
+                        val: profileData?.completed_pickups || 0,
+                        icon: <Package size={16} />,
+                        color: "text-green-500",
+                        bg: "bg-green-50",
+                      },
+                      {
+                        label: "Rating",
+                        val: Number(profileData?.average_rating || 0).toFixed(
+                          1,
+                        ),
+                        icon: <Star size={16} />,
+                        color: "text-yellow-500",
+                        bg: "bg-yellow-50",
+                      },
+                      {
+                        label: "Reviews",
+                        val: profileData?.total_reviews || 0,
+                        icon: <MessageSquareText size={16} />,
+                        color: "text-purple-500",
+                        bg: "bg-purple-50",
+                      },
+                    ].map((stat, i) => (
+                      <div
+                        key={i}
+                        className={`${stat.bg} p-3 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center`}
+                      >
+                        <div className={`${stat.color} mb-1`}>{stat.icon}</div>
 
-                    <div className="text-sm font-black text-gray-800">
-                      {stat.val}
-                    </div>
+                        <div className="text-sm font-black text-gray-800">
+                          {stat.val}
+                        </div>
 
-                    <div className="text-[9px] text-gray-500 font-medium leading-tight">
-                      {stat.label}
+                        <div className="text-[9px] text-gray-500 font-medium leading-tight">
+                          {stat.label}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
+                    <Award
+                      className="absolute right-4 top-4 opacity-10"
+                      size={60}
+                    />
+
+                    <div className="relative z-10">
+                      <h3 className="font-bold text-lg">
+                        Community Reputation
+                      </h3>
+
+                      <p className="text-[11px] opacity-70 mb-4">
+                        Seller feedback and completed recovery performance
+                      </p>
+
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {/* VERIFIED */}
+                        {verificationStatus === "verified" && (
+                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                            <CheckCircle2 size={10} />
+                            VERIFIED
+                          </span>
+                        )}
+
+                        {/* RATING */}
+                        <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                          <Star size={10} />
+                          {profileData?.average_rating
+                            ? Number(profileData.average_rating).toFixed(1)
+                            : "0.0"}{" "}
+                          Rating
+                        </span>
+
+                        {/* REVIEW COUNT */}
+                        <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                          <MessageSquareText size={10} />
+                          {profileData?.total_reviews || 0} Reviews
+                        </span>
+
+                        {/* TRUST LEVEL */}
+                        <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full text-[10px] font-bold">
+                          {profileData?.total_reviews >= 10
+                            ? "TOP HARVESTER"
+                            : profileData?.total_reviews >= 5
+                              ? "TRUSTED PARTNER"
+                              : "NEW MEMBER"}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
 
-              <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
-                <Award
-                  className="absolute right-4 top-4 opacity-10"
-                  size={60}
-                />
+                  {/* PERSONAL INFO */}
+                  <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                    <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
+                      Personal Information
+                    </h3>
 
-                <div className="relative z-10">
-                  <h3 className="font-bold text-lg">Community Reputation</h3>
+                    <div className="grid gap-4">
+                      {/* FULL NAME */}
+                      <div className="flex items-start gap-3">
+                        <User size={14} className="text-slate-400 mt-1" />
 
-                  <p className="text-[11px] opacity-70 mb-4">
-                    Seller feedback and completed recovery performance
-                  </p>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                            Full Name
+                          </p>
 
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {/* VERIFIED */}
-                    {verificationStatus === "verified" && (
-                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
-                        <CheckCircle2 size={10} />
-                        VERIFIED
-                      </span>
-                    )}
+                          <p className="text-sm font-semibold text-slate-700">
+                            {profileData?.full_name}
+                          </p>
+                        </div>
+                      </div>
 
-                    {/* RATING */}
-                    <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
-                      <Star size={10} />
-                      {profileData?.average_rating
-                        ? Number(profileData.average_rating).toFixed(1)
-                        : "0.0"}{" "}
-                      Rating
-                    </span>
+                      {/* EMAIL */}
+                      <div className="flex items-start gap-3">
+                        <Mail size={14} className="text-slate-400 mt-1" />
 
-                    {/* REVIEW COUNT */}
-                    <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
-                      <MessageSquareText size={10} />
-                      {profileData?.total_reviews || 0} Reviews
-                    </span>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                            Email Address
+                          </p>
 
-                    {/* TRUST LEVEL */}
-                    <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full text-[10px] font-bold">
-                      {profileData?.total_reviews >= 10
-                        ? "TOP HARVESTER"
-                        : profileData?.total_reviews >= 5
-                          ? "TRUSTED PARTNER"
-                          : "NEW MEMBER"}
-                    </span>
+                          <p className="text-sm font-semibold text-slate-700">
+                            {profileData?.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* PHONE */}
+                      <div className="flex items-start gap-3">
+                        <Phone size={14} className="text-slate-400 mt-1" />
+
+                        <div className="flex-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                            Phone Number
+                          </p>
+
+                          {isEditingProfile ? (
+                            <input
+                              type="text"
+                              value={profileData.phone}
+                              onChange={(e) =>
+                                setProfileData({
+                                  ...profileData,
+                                  phone: e.target.value,
+                                })
+                              }
+                              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-2xl text-sm"
+                            />
+                          ) : (
+                            <p className="text-sm font-semibold text-slate-700">
+                              {profileData?.phone || "No phone number"}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* LOCATION */}
+                      <div className="flex items-start gap-3">
+                        <MapPin size={14} className="text-slate-400 mt-1" />
+
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                            Assigned Area
+                          </p>
+
+                          <p className="text-sm font-semibold text-slate-700">
+                            {profileData?.assigned_area ||
+                              profileData?.barangay ||
+                              "Not assigned"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+                
 
-              {/* PERSONAL INFO */}
-              <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
-                  Personal Information
-                </h3>
+                {/* FOOTER */}
+                {isEditingProfile && (
+                  <div className="p-4 border-t border-slate-100 flex gap-3 bg-white">
+                    <button
+                      onClick={() => setIsEditingProfile(false)}
+                      className="flex-1 py-3 text-xs font-black text-slate-400"
+                    >
+                      Cancel
+                    </button>
 
-                <div className="grid gap-4">
-                  {/* FULL NAME */}
-                  <div className="flex items-start gap-3">
-                    <User size={14} className="text-slate-400 mt-1" />
-
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
-                        Full Name
-                      </p>
-
-                      <p className="text-sm font-semibold text-slate-700">
-                        {profileData?.full_name}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* EMAIL */}
-                  <div className="flex items-start gap-3">
-                    <Mail size={14} className="text-slate-400 mt-1" />
-
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
-                        Email Address
-                      </p>
-
-                      <p className="text-sm font-semibold text-slate-700">
-                        {profileData?.email}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* PHONE */}
-                  <div className="flex items-start gap-3">
-                    <Phone size={14} className="text-slate-400 mt-1" />
-
-                    <div className="flex-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
-                        Phone Number
-                      </p>
-
-                      {isEditingProfile ? (
-                        <input
-                          type="text"
-                          value={profileData.phone}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              phone: e.target.value,
+                    <button
+                      onClick={async () => {
+                        try {
+                          const { error } = await supabase
+                            .from("profiles")
+                            .update({
+                              phone: profileData.phone,
                             })
-                          }
-                          className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
-                        />
-                      ) : (
-                        <p className="text-sm font-semibold text-slate-700">
-                          {profileData?.phone || "No phone number"}
-                        </p>
-                      )}
-                    </div>
+                            .eq("id", session.user.id);
+
+                          if (error) throw error;
+
+                          setIsEditingProfile(false);
+                        } catch (err) {
+                          alert(err.message);
+                        }
+                      }}
+                      className="flex-1 bg-[#769c2d] text-white py-3 rounded-2xl font-black text-xs uppercase"
+                    >
+                      Save Changes
+                    </button>
                   </div>
-
-                  {/* LOCATION */}
-                  <div className="flex items-start gap-3">
-                    <MapPin size={14} className="text-slate-400 mt-1" />
-
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
-                        Assigned Area
-                      </p>
-
-                      <p className="text-sm font-semibold text-slate-700">
-                        {profileData?.assigned_area ||
-                          profileData?.barangay ||
-                          "Not assigned"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
-
-            {/* FOOTER */}
-            {isEditingProfile && (
-              <div className="p-4 border-t border-slate-100 flex gap-3 bg-white">
-                <button
-                  onClick={() => setIsEditingProfile(false)}
-                  className="flex-1 py-3 text-xs font-black text-slate-400"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  onClick={async () => {
-                    try {
-                      const { error } = await supabase
-                        .from("profiles")
-                        .update({
-                          phone: profileData.phone,
-                        })
-                        .eq("id", session.user.id);
-
-                      if (error) throw error;
-
-                      setIsEditingProfile(false);
-                    } catch (err) {
-                      alert(err.message);
-                    }
-                  }}
-                  className="flex-1 bg-[#769c2d] text-white py-3 rounded-xl font-black text-xs uppercase"
-                >
-                  Save Changes
-                </button>
+          )}
+          {verificationStatus === "rejected" && (
+            <div className="mb-8 p-6 bg-red-50 border-2 border-red-100 rounded-[2rem] flex items-center gap-6 animate-in slide-in-from-top duration-500">
+              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center flex-shrink-0">
+                <XCircle size={24} />
               </div>
-            )}
+              <div className="flex-1">
+                <h3 className="text-sm font-black text-red-800 uppercase tracking-tight">
+                  Account Verification Rejected
+                </h3>
+                <p className="text-xs text-red-600 font-medium mt-1">
+                  Reason:{" "}
+                  <span className="font-bold">
+                    "{rejectionReason || "No specific reason provided."}"
+                  </span>
+                </p>
+                <p className="text-[10px] text-red-400 mt-2">
+                  Please update your documents in Settings and re-submit for
+                  approval.
+                </p>
+              </div>
+              <button className="px-6 py-2 bg-red-600 text-white text-[10px] font-black rounded-2xl uppercase tracking-widest hover:bg-red-700 transition-colors">
+                Update Profile
+              </button>
+            </div>
+          )}
+
+          {/* --- STATS GRID --- */}
+          <div className="grid grid-cols-4 gap-6 mb-8">
+            <StatCard
+              label="Active Alerts"
+              value={dashboardStats.activeAlerts.toString()}
+            />
+
+            <StatCard
+              label="Pending Bids"
+              value={dashboardStats.pendingBids.toString()}
+            />
+
+            <StatCard
+              label="Acquired Parts"
+              value={dashboardStats.acquiredParts.toString()}
+            />
+
+            <StatCard
+              label="Total Spent"
+              value={dashboardStats.totalSpent}
+              isPrice
+            />
+          </div>
+
+          {/* --- NAVIGATION --- */}
+          <div className="bg-white/90 backdrop-blur-md rounded-[2rem] border border-white/50 shadow-lg px-6 py-5 flex flex-wrap gap-8 items-center">
+            <NavBtn
+              active={activeTab === "browse"}
+              onClick={() => setActiveTab("browse")}
+              icon={<Search size={16} />}
+              label="Browse Listings"
+            />
+
+            <NavBtn
+              active={activeTab === "bids"}
+              onClick={() => setActiveTab("bids")}
+              icon={<Gavel size={16} />}
+              label="My Bids"
+            />
+
+            <NavBtn
+              active={activeTab === "transactions"}
+              onClick={() => setActiveTab("transactions")}
+              icon={<Gavel size={16} />}
+              label="Transactions"
+            />
+
+            <NavBtn
+              active={activeTab === "map"}
+              onClick={() => {
+                if (!isVerified) {
+                  alert(
+                    "Access Denied: Urban Mine Map is restricted to Verified Professionals.",
+                  );
+                } else {
+                  setActiveTab("map");
+                }
+              }}
+              icon={
+                <Map size={16} className={!isVerified ? "opacity-50" : ""} />
+              }
+              label={isVerified ? "Urban Mine Map" : "Map (Locked)"}
+              disabled={!isVerified}
+            />
+
+            <NavBtn
+              active={activeTab === "leaderboard"}
+              onClick={() => setActiveTab("leaderboard")}
+              icon={<Trophy size={16} />}
+              label="E-waste Tracker"
+            />
+
+            <NavBtn
+              active={activeTab === "alerts"}
+              onClick={() => setActiveTab("alerts")}
+              icon={<Bell size={16} />}
+              label="My Alerts"
+            />
+
+            <NavBtn
+              active={activeTab === "messages"}
+              onClick={() => setActiveTab("messages")}
+              icon={<MessageSquare size={16} />}
+              label="Messages"
+            />
+
+            <NavBtn
+              active={activeTab === "donation"}
+              onClick={() => setActiveTab("donation")}
+              icon={<Gift size={16} />}
+              label="Donation"
+            />
           </div>
         </div>
-      )}
-      {verificationStatus === "rejected" && (
-        <div className="mb-8 p-6 bg-red-50 border-2 border-red-100 rounded-[2rem] flex items-center gap-6 animate-in slide-in-from-top duration-500">
-          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center flex-shrink-0">
-            <XCircle size={24} />
+      </div>
+      <div className="bg-white  border border-slate-100 shadow-sm p-4 mb-8">
+        <div className="p-6">
+        <div className="flex gap-3 items-center">
+          <div className="relative flex-1">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+              size={18}
+            />
+
+            <input
+              type="text"
+              placeholder="Search by device name or model..."
+              className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-lime-500/20"
+            />
           </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-black text-red-800 uppercase tracking-tight">
-              Account Verification Rejected
-            </h3>
-            <p className="text-xs text-red-600 font-medium mt-1">
-              Reason:{" "}
-              <span className="font-bold">
-                "{rejectionReason || "No specific reason provided."}"
-              </span>
-            </p>
-            <p className="text-[10px] text-red-400 mt-2">
-              Please update your documents in Settings and re-submit for
-              approval.
-            </p>
-          </div>
-          <button className="px-6 py-2 bg-red-600 text-white text-[10px] font-black rounded-xl uppercase tracking-widest hover:bg-red-700 transition-colors">
-            Update Profile
+
+          <select className="h-[56px] bg-slate-50 border border-slate-100 rounded-2xl px-5 text-sm font-semibold text-slate-600">
+            <option>All Conditions</option>
+          </select>
+
+          <button className="h-[56px] w-[56px] flex items-center justify-center bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 hover:bg-slate-100 transition">
+            <LayoutGrid size={18} />
           </button>
         </div>
-      )}
-
-      {/* --- STATS GRID --- */}
-      <div className="grid grid-cols-4 gap-6 mb-10">
-        <StatCard
-          label="Active Alerts"
-          value={dashboardStats.activeAlerts.toString()}
-        />
-
-        <StatCard
-          label="Pending Bids"
-          value={dashboardStats.pendingBids.toString()}
-        />
-
-        <StatCard
-          label="Acquired Parts"
-          value={dashboardStats.acquiredParts.toString()}
-        />
-
-        <StatCard
-          label="Total Spent"
-          value={dashboardStats.totalSpent}
-          isPrice
-        />
-      </div>
-
-      {/* --- NAVIGATION --- */}
-      <div className="flex gap-10 mb-7 items-center">
-        <NavBtn
-          active={activeTab === "browse"}
-          onClick={() => setActiveTab("browse")}
-          icon={<Search size={16} />}
-          label="Browse Listings"
-        />
-        <NavBtn
-          active={activeTab === "bids"}
-          onClick={() => setActiveTab("bids")}
-          icon={<Gavel size={16} />}
-          label="My Bids"
-        />
-        <NavBtn
-          active={activeTab === "transactions"}
-          onClick={() => setActiveTab("transactions")}
-          icon={<Gavel size={16} />}
-          label="Transactions"
-        />
-        <NavBtn
-          active={activeTab === "map"}
-          onClick={() => {
-            if (!isVerified) {
-              alert(
-                "Access Denied: Urban Mine Map is restricted to Verified Professionals.",
-              );
-            } else {
-              setActiveTab("map");
-            }
-          }}
-          icon={<Map size={16} className={!isVerified ? "opacity-50" : ""} />}
-          label={isVerified ? "Urban Mine Map" : "Map (Locked)"}
-          disabled={!isVerified}
-        />
-        <NavBtn
-          active={activeTab === "leaderboard"}
-          onClick={() => setActiveTab("leaderboard")}
-          icon={<Trophy size={16} />}
-          label="E-waste Tracker"
-        />
-        <NavBtn
-          active={activeTab === "alerts"}
-          onClick={() => setActiveTab("alerts")}
-          icon={<Bell size={16} />}
-          label="My Alerts"
-        />
-        <NavBtn
-          active={activeTab === "messages"}
-          onClick={() => setActiveTab("messages")}
-          icon={<MessageSquare size={16} />}
-          label="Messages"
-        />
-        <NavBtn
-          active={activeTab === "donation"}
-          onClick={() => setActiveTab("donation")}
-          icon={<Gift size={16} />}
-          label="Donation"
-        />
-      </div>
-      <div className="flex gap-3 mb-8">
-        <div className="relative flex-1">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-            size={18}
-          />
-          <input
-            type="text"
-            placeholder="Search by device name or model..."
-            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-lime-500/20"
-          />
-        </div>
-        <select className="bg-white border border-slate-200 rounded-xl px-4 text-sm font-medium">
-          <option>All Conditions</option>
-        </select>
-        <button className="p-3 bg-white border border-slate-200 rounded-xl">
-          <LayoutGrid size={18} />
-        </button>
       </div>
 
       <p className="text-xs font-bold text-slate-400 mb-6 flex justify-between">
-        <span>{listings.length} listings found</span>
+        <span className=" rounded-full px-3 py-1 ">
+          {listings.length} listings found
+        </span>
         <span>Sorted by: Nearest</span>
       </p>
 
       {/* --- TAB CONTENT --- */}
       {activeTab === "browse" ? (
-        <div className="grid grid-cols-2 gap-8 pb-20">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
           {listings.map((item) => (
             <ListingCard
               key={item.id}
@@ -1363,6 +1423,104 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           onSendMessage={handleSendMessageOnly}
         />
       )}
+      </div>
+      <footer className="mt-20 bg-[#07122b] text-white overflow-hidden">
+        <div className="max-w-7xl mx-auto px-10 py-16">
+          <div className="grid grid-cols-4 gap-12">
+            {/* LEFT */}
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center">
+                  <Leaf size={18} />
+                </div>
+
+                <h2 className="text-3xl font-bold">Wasteless</h2>
+              </div>
+
+              <p className="text-slate-400 leading-relaxed text-sm mb-6">
+                Valenzuela City's official e-waste management platform promoting
+                circular economy and sustainable electronics disposal.
+              </p>
+
+              <div className="flex gap-3">
+                <span className="px-4 py-2 rounded-full border border-emerald-500 text-emerald-400 text-xs">
+                  Eco-Certified
+                </span>
+
+                <span className="px-4 py-2 rounded-full border border-blue-500 text-blue-400 text-xs">
+                  City Partner
+                </span>
+              </div>
+            </div>
+
+            {/* QUICK LINKS */}
+            <div>
+              <h3 className="text-xl font-semibold mb-6">Quick Links</h3>
+
+              <div className="space-y-4 text-slate-400 text-sm">
+                <p>About Wasteless</p>
+                <p>How It Works</p>
+                <p>Environmental Impact</p>
+                <p>Partner Shops</p>
+                <p>Help Center</p>
+                <p>FAQs</p>
+              </div>
+            </div>
+
+            {/* LEGAL */}
+            <div>
+              <h3 className="text-xl font-semibold mb-6">Legal</h3>
+
+              <div className="space-y-4 text-slate-400 text-sm">
+                <p>Terms of Service</p>
+                <p>Privacy Policy</p>
+                <p>Cookie Policy</p>
+                <p>Data Protection</p>
+                <p>E-Waste Guidelines</p>
+                <p>Accessibility</p>
+              </div>
+            </div>
+
+            {/* CONTACT */}
+            <div>
+              <h3 className="text-xl font-semibold mb-6">Contact Us</h3>
+
+              <div className="space-y-5 text-slate-400 text-sm">
+                <div className="flex gap-3">
+                  <MapPin size={18} className="mt-1" />
+                  <p>
+                    Valenzuela City Hall
+                    <br />
+                    MacArthur Highway, Valenzuela City
+                    <br />
+                    Metro Manila, Philippines
+                  </p>
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  <Phone size={16} />
+                  <p>(02) 123-4567</p>
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  <Mail size={16} />
+                  <p>wasteless@valenzuela.gov.ph</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* BOTTOM */}
+          <div className="border-t border-white/10 mt-16 pt-8 flex justify-between items-center text-slate-500 text-sm">
+            <p>© 2026 Wasteless - Valenzuela City. All rights reserved.</p>
+
+            <div className="flex gap-8">
+              <p>Valenzuela City Government</p>
+              <p>DENR</p>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };
@@ -1514,7 +1672,7 @@ const MyBidsView = ({ bids }) => {
 
             {/* Seller Message/Note box from image_f1901c.png */}
             {bid.message && (
-              <div className="mb-6 p-4 bg-white border border-slate-100 rounded-xl flex items-start gap-3">
+              <div className="mb-6 p-4 bg-white border border-slate-100 rounded-2xl flex items-start gap-3">
                 <MessageSquare size={14} className="text-slate-300 mt-1" />
                 <p className="text-xs text-slate-500 font-medium">
                   {bid.message}
@@ -1534,10 +1692,10 @@ const MyBidsView = ({ bids }) => {
                   </p>
                 </div>
                 <div className="flex gap-3">
-                  <button className="px-8 py-3 bg-[#769c2d] text-white text-[10px] font-black rounded-xl uppercase tracking-widest hover:scale-105 transition-transform">
+                  <button className="px-8 py-3 bg-[#769c2d] text-white text-[10px] font-black rounded-2xl uppercase tracking-widest hover:scale-105 transition-transform">
                     Accept
                   </button>
-                  <button className="px-8 py-3 bg-white border border-blue-100 text-blue-400 text-[10px] font-black rounded-xl uppercase tracking-widest hover:bg-blue-50 transition-colors">
+                  <button className="px-8 py-3 bg-white border border-blue-100 text-blue-400 text-[10px] font-black rounded-2xl uppercase tracking-widest hover:bg-blue-50 transition-colors">
                     Decline
                   </button>
                 </div>
@@ -1551,11 +1709,11 @@ const MyBidsView = ({ bids }) => {
               </div>
 
               {bid.status === "accepted" ? (
-                <button className="px-6 py-2.5 bg-[#769c2d] text-white text-[9px] font-black rounded-xl uppercase tracking-widest shadow-lg shadow-lime-100 flex items-center gap-2 hover:scale-105 transition-transform">
+                <button className="px-6 py-2.5 bg-[#769c2d] text-white text-[9px] font-black rounded-2xl uppercase tracking-widest shadow-lg shadow-lime-100 flex items-center gap-2 hover:scale-105 transition-transform">
                   <MessageSquare size={12} /> Contact Seller
                 </button>
               ) : (
-                <button className="px-6 py-2.5 bg-white border border-slate-100 text-slate-400 text-[9px] font-black rounded-xl uppercase tracking-widest hover:bg-slate-50 transition-colors">
+                <button className="px-6 py-2.5 bg-white border border-slate-100 text-slate-400 text-[9px] font-black rounded-2xl uppercase tracking-widest hover:bg-slate-50 transition-colors">
                   View Listing
                 </button>
               )}
@@ -1563,6 +1721,7 @@ const MyBidsView = ({ bids }) => {
           </div>
         ))}
       </div>
+      
     </div>
   );
 };
@@ -1583,7 +1742,7 @@ const AlertsView = ({ notifications }) => {
         >
           {/* Dynamic Icon based on type */}
           <div
-            className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+            className={`w-8 h-8 rounded-2xl flex items-center justify-center ${
               n.type === "alert_match"
                 ? "bg-amber-100 text-amber-600"
                 : "bg-lime-100 text-[#769c2d]"
@@ -1622,6 +1781,7 @@ const AlertsView = ({ notifications }) => {
           </div>
         </div>
       ))}
+      
     </div>
   );
 };
@@ -1809,7 +1969,7 @@ const MessagesView = ({ session }) => {
 
         {/* Validation Message from image_e54af2.png */}
         {!isComplete && (
-          <div className="bg-amber-50 text-amber-600 p-3 rounded-xl text-[10px] font-bold text-center mb-4">
+          <div className="bg-amber-50 text-amber-600 p-3 rounded-2xl text-[10px] font-bold text-center mb-4">
             Please rate all categories before submitting
           </div>
         )}
@@ -1853,190 +2013,191 @@ const MessagesView = ({ session }) => {
   };
 
   return (
-    <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border border-white overflow-hidden min-h-[600px]">
-      {/* Sidebar: Message List */}
-      <div className="col-span-4 border-r border-slate-50 p-6">
-        <h2 className="text-xl font-black text-slate-800 mb-4">Messages</h2>
-        <div className="mb-4">
-          <input
-            type="text"
-            placeholder="Search conversations..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs outline-none"
-          />
-        </div>
-        <div className="space-y-1">
-          {conversations.map((chat) => (
-            <div
-              key={chat.listing_id}
-              onClick={() => setSelectedChat(chat)}
-              className={`p-4 border-b border-slate-100 cursor-pointer transition ${
-                selectedChat?.listing_id === chat.listing_id
-                  ? "bg-slate-100"
-                  : "hover:bg-slate-50"
-              }`}
-            >
-              <div className="flex justify-between items-start">
-                <div className="min-w-0">
-                  {/* Seller Name */}
-                  <h3 className="font-semibold text-slate-800 text-sm truncate">
-                    {chat.listings?.profiles?.full_name || "Unknown Seller"}
-                  </h3>
+    <div className="min-h-screen flex flex-col bg-[#f8fafc]">
+      {/* MAIN CONTENT */}
+      <div className="flex-1">
+        <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border border-white overflow-hidden min-h-[600px]">
+          {/* Sidebar: Message List */}
+          <div className="col-span-4 border-r border-slate-50 p-6">
+            <h2 className="text-xl font-black text-slate-800 mb-4">Messages</h2>
 
-                  {/* Rating */}
-                  <div className="flex items-center gap-2 mt-1">
-                    {renderStars(chat.listings?.profiles?.average_rating)}
-
-                    <span className="text-xs text-slate-500">
-                      {Number(
-                        chat.listings?.profiles?.average_rating || 0,
-                      ).toFixed(1)}{" "}
-                      ({chat.listings?.profiles?.total_reviews || 0})
-                    </span>
-                  </div>
-
-                  {/* Product */}
-                  <p className="text-xs text-slate-600 mt-1">
-                    Re: {chat.listings?.device_model}
-                  </p>
-
-                  {/* Last Message Preview */}
-                  <p className="text-xs text-slate-400 mt-1 truncate">
-                    Tap to view conversation
-                  </p>
-                </div>
-
-                <div className="flex flex-col items-end gap-2">
-                  <span className="text-[10px] text-slate-400">Recent</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Chat Area */}
-      <div className="col-span-8 flex flex-col bg-slate-50/30">
-        {selectedChat ? (
-          <>
-            <div className="p-6 bg-white border-b border-slate-100">
-              {/* Seller Header */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800">
-                    {selectedChat.listings?.profiles?.full_name}
-                  </h2>
-
-                  {/* Rating */}
-                  <div className="flex items-center gap-2 mt-1">
-                    {renderStars(
-                      selectedChat.listings?.profiles?.average_rating,
-                    )}
-
-                    <span className="text-sm text-slate-500">
-                      {Number(
-                        selectedChat.listings?.profiles?.average_rating || 0,
-                      ).toFixed(1)}{" "}
-                      ({selectedChat.listings?.profiles?.total_reviews || 0})
-                    </span>
-                  </div>
-
-                  {/* Product */}
-                  <p className="text-sm text-slate-500 mt-2">
-                    {selectedChat.listings?.device_model}
-                  </p>
-                </div>
-              </div>
-
-              {/* Bid Card */}
-              {/* <div className="mt-4 bg-slate-50 rounded-2xl p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">Your Bid</p>
-
-                  <p className="text-2xl font-bold text-slate-800">
-                    ₱
-                    {selectedBid
-                      ? Number(selectedBid.bid_amount).toLocaleString()
-                      : "0"}
-                  </p>
-                </div>
-
-                <span className="px-4 py-2 rounded-full text-sm font-semibold bg-orange-100 text-orange-600 capitalize">
-                  {selectedBid?.status ? `Bid ${selectedBid.status}` : "No Bid"}
-                </span>
-              </div> */}
+            <div className="mb-4">
+              <input
+                type="text"
+                placeholder="Search conversations..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs outline-none"
+              />
             </div>
 
-            <div className="flex-1 p-8 overflow-y-auto space-y-4">
-              {messages.map((msg) => (
+            <div className="space-y-1">
+              {conversations.map((chat) => (
                 <div
-                  key={msg.id}
-                  className={`flex ${msg.sender_id === session.user.id ? "justify-end" : "justify-start"}`}
+                  key={chat.listing_id}
+                  onClick={() => setSelectedChat(chat)}
+                  className={`p-4 border-b border-slate-100 cursor-pointer transition ${
+                    selectedChat?.listing_id === chat.listing_id
+                      ? "bg-slate-100"
+                      : "hover:bg-slate-50"
+                  }`}
                 >
-                  <div
-                    className={`px-5 py-3 rounded-2xl max-w-[70%] text-sm shadow-sm ${
-                      msg.sender_id === session.user.id
-                        ? "bg-[#769c2d] text-white rounded-br-md"
-                        : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
-                    }`}
-                  >
-                    {msg.content}
+                  <div className="flex justify-between items-start">
+                    <div className="min-w-0">
+                      {/* Seller Name */}
+                      <h3 className="font-semibold text-slate-800 text-sm truncate">
+                        {chat.listings?.profiles?.full_name || "Unknown Seller"}
+                      </h3>
+
+                      {/* Rating */}
+                      <div className="flex items-center gap-2 mt-1">
+                        {renderStars(chat.listings?.profiles?.average_rating)}
+
+                        <span className="text-xs text-slate-500">
+                          {Number(
+                            chat.listings?.profiles?.average_rating || 0,
+                          ).toFixed(1)}{" "}
+                          ({chat.listings?.profiles?.total_reviews || 0})
+                        </span>
+                      </div>
+
+                      {/* Product */}
+                      <p className="text-xs text-slate-600 mt-1">
+                        Re: {chat.listings?.device_model}
+                      </p>
+
+                      {/* Preview */}
+                      <p className="text-xs text-slate-400 mt-1 truncate">
+                        Tap to view conversation
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2">
+                      <span className="text-[10px] text-slate-400">Recent</span>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-
-            <div className="p-6 bg-white border-t border-slate-50 flex gap-4">
-              <input
-                type="text"
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 bg-slate-50 border-none rounded-2xl py-4 px-6 text-xs"
-              />
-              <button
-                onClick={handleSendMessage}
-                className="bg-[#769c2d] text-white p-4 rounded-2xl"
-              >
-                <Send size={18} />
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-slate-300 flex-col gap-4">
-            <MessageSquare size={40} />
-            <p className="text-xs font-bold uppercase">
-              Select a chat to view messages
-            </p>
           </div>
-        )}
+
+          {/* MAIN CHAT */}
+          <div className="col-span-8 flex flex-col bg-slate-50/30">
+            {selectedChat ? (
+              <>
+                {/* CHAT HEADER */}
+                <div className="p-6 bg-white border-b border-slate-100">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-800">
+                        {selectedChat.listings?.profiles?.full_name}
+                      </h2>
+
+                      <div className="flex items-center gap-2 mt-1">
+                        {renderStars(
+                          selectedChat.listings?.profiles?.average_rating,
+                        )}
+
+                        <span className="text-sm text-slate-500">
+                          {Number(
+                            selectedChat.listings?.profiles?.average_rating ||
+                              0,
+                          ).toFixed(1)}{" "}
+                          ({selectedChat.listings?.profiles?.total_reviews || 0}
+                          )
+                        </span>
+                      </div>
+
+                      <p className="text-sm text-slate-500 mt-2">
+                        {selectedChat.listings?.device_model}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* MESSAGES */}
+                <div className="flex-1 p-8 overflow-y-auto space-y-4">
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${
+                        msg.sender_id === session.user.id
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`px-5 py-3 rounded-2xl max-w-[70%] text-sm shadow-sm ${
+                          msg.sender_id === session.user.id
+                            ? "bg-[#769c2d] text-white rounded-br-md"
+                            : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
+                        }`}
+                      >
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* INPUT */}
+                <div className="p-6 bg-white border-t border-slate-50 flex gap-4">
+                  <input
+                    type="text"
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    placeholder="Type a message..."
+                    className="flex-1 bg-slate-50 border-none rounded-2xl py-4 px-6 text-xs"
+                  />
+
+                  <button
+                    onClick={handleSendMessage}
+                    className="bg-[#769c2d] text-white p-4 rounded-2xl"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-slate-300 flex-col gap-4">
+                <MessageSquare size={40} />
+
+                <p className="text-xs font-bold uppercase">
+                  Select a chat to view messages
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      
     </div>
   );
 };
 
 const StatCard = ({ label, value, isPrice }) => (
-  <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-white flex flex-col items-center justify-center">
+  <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 flex flex-col items-center justify-center min-h-[140px]">
     <span
       className={`text-3xl font-black text-slate-800 tracking-tighter ${isPrice ? "text-slate-900" : ""}`}
     >
       {isPrice ? `₱${value}` : value}
     </span>
-    <span className="text-[10px] text-slate-300 font-bold uppercase tracking-[0.2em] mt-1">
+    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-2">
       {label}
     </span>
   </div>
 );
 
-const NavBtn = ({ active, onClick, icon, label }) => (
+const NavBtn = ({ active, onClick, icon, label, disabled }) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-[11px] transition-all ${
+    disabled={disabled}
+    className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-black text-xs transition-all ${
       active
-        ? "bg-[#769c2d] text-white shadow-lg shadow-lime-900/20"
-        : "text-slate-400 hover:bg-white hover:text-slate-600"
-    }`}
+        ? "bg-[#769c2d] text-white shadow-md"
+        : "bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 border border-white/50"
+    } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
   >
-    {icon} {label}
+    {icon}
+    {label}
   </button>
 );
 
@@ -2244,6 +2405,7 @@ const ListingCard = ({ item, onBid, isVerified }) => {
           </div>
         </div>
       </div>
+      
     </div>
   );
 };
@@ -2387,7 +2549,7 @@ const PlaceBidModal = ({
                 onChange={(e) => setMessage(e.target.value)}
                 className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[1.5rem] text-xs font-medium h-32 resize-none focus:ring-2 focus:ring-lime-100 focus:border-lime-200"
               />
-              <div className="bg-lime-50/70 border border-lime-100/50 p-4 rounded-xl text-center text-lime-700 text-[11px] font-medium">
+              <div className="bg-lime-50/70 border border-lime-100/50 p-4 rounded-2xl text-center text-lime-700 text-[11px] font-medium">
                 <span className="font-bold">
                   Competitive bid - higher chance of acceptance
                 </span>
@@ -2398,7 +2560,7 @@ const PlaceBidModal = ({
           {activeTab === "question" && (
             <div className="space-y-6 animate-in fade-in duration-300">
               {/* --- QUESTION FORM --- */}
-              <div className="bg-emerald-50 border border-emerald-100/50 p-4 rounded-xl text-emerald-800 text-[11px] font-medium flex items-center gap-3">
+              <div className="bg-emerald-50 border border-emerald-100/50 p-4 rounded-2xl text-emerald-800 text-[11px] font-medium flex items-center gap-3">
                 <XCircle size={16} className="shrink-0" />
                 <div>
                   <span className="font-bold block">
@@ -2433,7 +2595,7 @@ const PlaceBidModal = ({
                     <button
                       key={q}
                       onClick={() => setQuestion(q)}
-                      className="text-left text-xs font-semibold text-slate-700 bg-white border border-slate-100 p-3 rounded-xl hover:bg-slate-50 transition-colors"
+                      className="text-left text-xs font-semibold text-slate-700 bg-white border border-slate-100 p-3 rounded-2xl hover:bg-slate-50 transition-colors"
                     >
                       {q}
                     </button>

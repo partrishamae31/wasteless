@@ -4,6 +4,7 @@ import CreateListingModal from "./CreateListingModal"; // Adjust path as needed
 import SellerMessages from "./SellerMessages"; // Ensure the filename matches
 import DonationModal from "./DonationModal";
 import RateBuyerModal from "./RateBuyerModal";
+import banner from "./assets/banner.jpeg";
 
 import {
   X,
@@ -36,6 +37,7 @@ import {
   Send,
   Check,
   Upload,
+  Leaf,
 } from "lucide-react";
 
 const SellerDashboard = ({ session }) => {
@@ -62,6 +64,12 @@ const SellerDashboard = ({ session }) => {
   const [listingToDonate, setListingToDonate] = useState(null);
   const [showRateModal, setShowRateModal] = useState(false);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const isRepairShop = user?.role === "repair_shop";
+  const isHarvester = user?.role === "harvester";
+
+  const displayName = isRepairShop ? user?.business_name : user?.displayName;
+
+  const displayRole = isRepairShop ? "Repair Shop" : "Tech Harvester";
 
   useEffect(() => {
     if (isVerificationModalOpen && profileData) {
@@ -311,6 +319,19 @@ const SellerDashboard = ({ session }) => {
   };
   const [messageUserCount, setMessageUserCount] = useState(0);
 
+  const getBuyerDisplayName = (profile) => {
+    if (!profile) return "Unknown User";
+
+    return profile.role === "repair_shop"
+      ? profile.business_name || "Repair Shop"
+      : profile.full_name || "Tech Harvester";
+  };
+  const getBuyerRoleLabel = (role) => {
+    if (role === "repair_shop") return "Repair Shop";
+    if (role === "harvester") return "Tech Harvester";
+
+    return "User";
+  };
   useEffect(() => {
     const fetchMessageUserCount = async () => {
       if (!session?.user) return;
@@ -479,7 +500,11 @@ const SellerDashboard = ({ session }) => {
           .select(
             `
           *,
-          harvester:harvester_id (full_name),
+          harvester:harvester_id (
+  full_name,
+  business_name,
+  role
+),
           listing:listing_id (device_model, asking_price)
         `,
           )
@@ -605,11 +630,13 @@ const SellerDashboard = ({ session }) => {
       .from("bids")
       .select(
         `
-      *,
-      profiles:bidder_id (
-        full_name
-      )
-    `,
+    *,
+    profiles:bidder_id (
+      full_name,
+      business_name,
+      role
+    )
+  `,
       )
       .eq("listing_id", listing.id)
       .order("amount", { ascending: false });
@@ -756,8 +783,9 @@ const SellerDashboard = ({ session }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans p-6 text-slate-800 relative">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 relative">
       {/* Header Area */}
+      <div className="p-6">
       <div className="flex justify-end items-center gap-4 mb-8 relative z-40">
         {/* Notification Bell with Toggle */}
         <div className="relative">
@@ -958,6 +986,7 @@ const SellerDashboard = ({ session }) => {
       </div>
 
       {/* Stats Cards & Main Dashboard Content (Keep existing code below here) */}
+
       {profileData?.verification_status === "rejected" && (
         <div className="mb-8 flex items-center gap-6 rounded-[2rem] border-2 border-red-100 bg-red-50 p-6 animate-in slide-in-from-top duration-500">
           <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600">
@@ -1225,19 +1254,20 @@ const SellerDashboard = ({ session }) => {
                               <div className="w-8 h-8 bg-[#3285a1] rounded-lg flex items-center justify-center text-white">
                                 <User size={16} />
                               </div>
-                              <div>
+                              <div className="flex items-center gap-2">
                                 <p className="text-xs font-bold text-slate-800">
-                                  {bid.profiles?.full_name}
+                                  {getBuyerDisplayName(bid.profiles)}
                                 </p>
-                                <p className="text-[10px] text-slate-400">
-                                  {new Date(bid.created_at).toLocaleDateString(
-                                    "en-US",
-                                    {
-                                      month: "short",
-                                      day: "numeric",
-                                    },
-                                  )}
-                                </p>
+
+                                <span
+                                  className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                    bid.profiles?.role === "repair_shop"
+                                      ? "bg-purple-100 text-purple-700"
+                                      : "bg-blue-100 text-blue-700"
+                                  }`}
+                                >
+                                  {getBuyerRoleLabel(bid.profiles?.role)}
+                                </span>
                               </div>
                             </div>
                             <span className="text-sm font-black text-[#3285a1]">
@@ -1601,7 +1631,6 @@ const SellerDashboard = ({ session }) => {
                   <Edit3 size={14} /> Edit Profile
                 </button>
               </div>
-
               {/* Stats Grid */}
               <div className="grid grid-cols-4 gap-3">
                 {[
@@ -1651,7 +1680,6 @@ const SellerDashboard = ({ session }) => {
                   </div>
                 ))}
               </div>
-
               {/* Trust Tier Section - Matching the purple card in mockup */}
               <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
                 <Shield
@@ -1668,13 +1696,13 @@ const SellerDashboard = ({ session }) => {
                   </p>
                   <div className="flex items-center gap-2 mb-4">
                     {/* Badge/Award Icon */}
-                    <span className="bg-yellow-400 text-yellow-900 text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1">
-                      <Award size={10} />
+                    {/* <span className="bg-yellow-400 text-yellow-900 text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1">
+                      <Award size={10} /> */}
                       {/* Logic: Change label based on review count */}
-                      {profileData?.total_reviews > 5
+                      {/* {profileData?.total_reviews > 5
                         ? "Top Seller"
                         : "Rising Star"}
-                    </span>
+                    </span> */}
 
                     {/* Star Rating & Review Count */}
                     <span className="text-xs font-bold flex items-center gap-1 text-white">
@@ -1715,8 +1743,6 @@ const SellerDashboard = ({ session }) => {
                   </div>
                 </div>
               </div>
-
-              Personal Information
               <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
                 <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
                   Personal Information
@@ -2020,6 +2046,104 @@ const SellerDashboard = ({ session }) => {
           </div>
         </div>
       )}
+      </div>
+      <footer className="mt-20 bg-[#07122b] text-white overflow-hidden">
+        <div className="max-w-7xl mx-auto px-10 py-16">
+          <div className="grid grid-cols-4 gap-12">
+            {/* LEFT */}
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center">
+                  <Leaf size={18} />
+                </div>
+
+                <h2 className="text-3xl font-bold">Wasteless</h2>
+              </div>
+
+              <p className="text-slate-400 leading-relaxed text-sm mb-6">
+                Valenzuela City's official e-waste management platform promoting
+                circular economy and sustainable electronics disposal.
+              </p>
+
+              <div className="flex gap-3">
+                <span className="px-4 py-2 rounded-full border border-emerald-500 text-emerald-400 text-xs">
+                  Eco-Certified
+                </span>
+
+                <span className="px-4 py-2 rounded-full border border-blue-500 text-blue-400 text-xs">
+                  City Partner
+                </span>
+              </div>
+            </div>
+
+            {/* QUICK LINKS */}
+            <div>
+              <h3 className="text-xl font-semibold mb-6">Quick Links</h3>
+
+              <div className="space-y-4 text-slate-400 text-sm">
+                <p>About Wasteless</p>
+                <p>How It Works</p>
+                <p>Environmental Impact</p>
+                <p>Partner Shops</p>
+                <p>Help Center</p>
+                <p>FAQs</p>
+              </div>
+            </div>
+
+            {/* LEGAL */}
+            <div>
+              <h3 className="text-xl font-semibold mb-6">Legal</h3>
+
+              <div className="space-y-4 text-slate-400 text-sm">
+                <p>Terms of Service</p>
+                <p>Privacy Policy</p>
+                <p>Cookie Policy</p>
+                <p>Data Protection</p>
+                <p>E-Waste Guidelines</p>
+                <p>Accessibility</p>
+              </div>
+            </div>
+
+            {/* CONTACT */}
+            <div>
+              <h3 className="text-xl font-semibold mb-6">Contact Us</h3>
+
+              <div className="space-y-5 text-slate-400 text-sm">
+                <div className="flex gap-3">
+                  <MapPin size={18} className="mt-1" />
+                  <p>
+                    Valenzuela City Hall
+                    <br />
+                    MacArthur Highway, Valenzuela City
+                    <br />
+                    Metro Manila, Philippines
+                  </p>
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  <Phone size={16} />
+                  <p>(02) 123-4567</p>
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  <Mail size={16} />
+                  <p>wasteless@valenzuela.gov.ph</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* BOTTOM */}
+          <div className="border-t border-white/10 mt-16 pt-8 flex justify-between items-center text-slate-500 text-sm">
+            <p>© 2026 Wasteless - Valenzuela City. All rights reserved.</p>
+
+            <div className="flex gap-8">
+              <p>Valenzuela City Government</p>
+              <p>DENR</p>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };

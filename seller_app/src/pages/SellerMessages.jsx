@@ -137,14 +137,37 @@ Date: ${meetupData.date} at ${meetupData.time}`,
         // Fetch profiles
         const { data: profiles } = await supabase
           .from("profiles")
-          .select("id, full_name, average_rating, total_reviews")
+          .select(
+            `
+  id,
+  full_name,
+  business_name,
+  role,
+  average_rating,
+  total_reviews
+`,
+          )
           .in("id", userIds);
 
         const profileMap = {};
         profiles?.forEach((p) => {
+          const normalizedRole = p.role?.toLowerCase();
+
+          const isRepairShop =
+            normalizedRole === "repair_shop" ||
+            normalizedRole === "repair shop";
+
           profileMap[p.id] = {
-            name: p.full_name,
+            name: isRepairShop
+              ? p.business_name || "Repair Shop"
+              : p.full_name || "Tech Harvester",
+
+            role: isRepairShop ? "Repair Shop" : "Tech Harvester",
+
+            roleType: isRepairShop ? "repair_shop" : "harvester",
+
             rating: Number(p.average_rating) || 0,
+
             reviewCount: Number(p.total_reviews) || 0,
           };
         });
@@ -165,8 +188,11 @@ Date: ${meetupData.date} at ${meetupData.time}`,
 
             acc.push({
               ...current,
+
               other_party_id: otherPartyId,
               other_party_name: otherPartyInfo.name,
+              other_party_role: otherPartyInfo.role,
+              other_party_role_type: otherPartyInfo.roleType,
               other_party_rating: otherPartyInfo.rating,
               other_party_review_count: otherPartyInfo.reviewCount,
             });
@@ -287,9 +313,21 @@ Date: ${meetupData.date} at ${meetupData.time}`,
               className={`p-4 cursor-pointer transition-all ${activeChat?.listing_id === conv.listing_id ? "bg-teal-50 border-l-4 border-[#2d7a7f]" : "hover:bg-slate-50"}`}
             >
               <div className="flex justify-between items-start mb-1">
-                <span className="font-bold text-xs text-slate-700">
-                  {conv.other_party_name || "Unknown Harvester"}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs text-slate-700">
+                    {conv.other_party_name || "Unknown User"}
+                  </span>
+
+                  <span
+                    className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                      conv.other_party_role_type === "repair_shop"
+                        ? "bg-violet-100 text-violet-700"
+                        : "bg-emerald-100 text-emerald-700"
+                    }`}
+                  >
+                    {conv.other_party_role}
+                  </span>
+                </div>
 
                 <span className="text-[10px] text-slate-400">
                   {new Date(conv.created_at).toLocaleTimeString([], {
@@ -328,9 +366,21 @@ Date: ${meetupData.date} at ${meetupData.time}`,
                   <User size={20} />
                 </div>
                 <div>
-                  <p className="font-bold text-xs text-slate-700">
-                    {activeChat.other_party_name || "Unknown Harvester"}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-xs text-slate-700">
+                      {activeChat.other_party_name || "Unknown User"}
+                    </p>
+
+                    <span
+                      className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        activeChat.other_party_role_type === "repair_shop"
+                          ? "bg-violet-100 text-violet-700"
+                          : "bg-emerald-100 text-emerald-700"
+                      }`}
+                    >
+                      {activeChat.other_party_role}
+                    </span>
+                  </div>
                   <p className="text-[10px] text-slate-400">
                     Active Conversation
                   </p>

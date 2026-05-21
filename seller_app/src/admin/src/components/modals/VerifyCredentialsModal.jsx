@@ -20,11 +20,12 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
     contactVerified: false,
   });
   const userRole = shopData?.role?.toLowerCase();
+
   const isSeller = userRole === "seller";
-  const isHarvester =
-    userRole === "harvester" ||
-    userRole === "repair shop" ||
-    userRole === "repair_shop";
+
+  const isRepairShop = userRole === "repair_shop" || userRole === "repair shop";
+
+  const isHarvester = userRole === "harvester";
 
   if (!isOpen) return null;
 
@@ -95,11 +96,15 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
     onClose();
   };
 
-  const isAllChecked = isSeller
-  ? checklist.permitValid &&
-    checklist.nameMatches &&
-    checklist.contactVerified
-  : Object.values(checklist).every((val) => val === true);
+  const isAllChecked =
+  isSeller || isHarvester
+    ? checklist.permitValid &&
+      checklist.nameMatches &&
+      checklist.contactVerified
+    : checklist.permitValid &&
+      checklist.certLegit &&
+      checklist.nameMatches &&
+      checklist.contactVerified;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6">
@@ -111,7 +116,9 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
               <h2 className="text-xl font-bold text-slate-800">
                 {isSeller
                   ? "Verify Seller Identity"
-                  : "Verify Repair Shop Credentials"}
+                  : isRepairShop
+                    ? "Verify Repair Shop Credentials"
+                    : "Verify Harvester Credentials"}
               </h2>
               <button
                 onClick={onClose}
@@ -126,12 +133,18 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
               <div className="grid grid-cols-2 gap-6 p-5 bg-slate-50 rounded-xl mb-6">
                 <div>
                   <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">
-                    {isSeller ? "Seller Name" : "Shop Name"}
+                    {isSeller
+                      ? "Seller Name"
+                      : isRepairShop
+                        ? "Shop Name"
+                        : "Harvester Name"}
                   </p>
                   <p className="text-sm font-medium text-slate-700">
                     {isSeller
                       ? shopData?.full_name || "Unknown Seller"
-                      : shopData?.business_name || "Repair Shop"}
+                      : isRepairShop
+                        ? shopData?.business_name || "Repair Shop"
+                        : shopData?.full_name || "Harvester"}
                   </p>
                 </div>
                 <div>
@@ -146,12 +159,21 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
 
               {/* Document Previews Section */}
               <div className="space-y-4 mb-8">
-                {isSeller ? (
+                {isSeller && (
                   <DocumentPreview
                     title="Government Valid ID"
                     url={shopData?.business_permit_url}
                   />
-                ) : (
+                )}
+
+                {isHarvester && (
+                  <DocumentPreview
+                    title="Government Valid ID"
+                    url={shopData?.business_permit_url}
+                  />
+                )}
+
+                {isRepairShop && (
                   <>
                     <DocumentPreview
                       title="Business Permit / DTI Registration"
@@ -172,7 +194,7 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
                   Verification Checklist:
                 </h3>
                 <div className="space-y-3">
-                  {isSeller ? (
+                  {isSeller && (
                     <>
                       <CheckItem
                         label="Government ID is clear and valid"
@@ -192,7 +214,31 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
                         onChange={() => handleCheck("contactVerified")}
                       />
                     </>
-                  ) : (
+                  )}
+
+                  {isHarvester && (
+                    <>
+                      <CheckItem
+                        label="Government ID is clear and valid"
+                        checked={checklist.permitValid}
+                        onChange={() => handleCheck("permitValid")}
+                      />
+
+                      <CheckItem
+                        label="Harvester identity matches registration details"
+                        checked={checklist.nameMatches}
+                        onChange={() => handleCheck("nameMatches")}
+                      />
+
+                      <CheckItem
+                        label="Contact information is verified"
+                        checked={checklist.contactVerified}
+                        onChange={() => handleCheck("contactVerified")}
+                      />
+                    </>
+                  )}
+
+                  {isRepairShop && (
                     <>
                       <CheckItem
                         label="Business permit is valid and not expired"

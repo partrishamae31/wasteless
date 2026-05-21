@@ -55,7 +55,6 @@ const AdminDashboard = () => {
     {
       label: "Total Users",
       val: stats.users,
-      trend: "+12%",
       icon: <Users size={20} />,
       color: "text-blue-500",
       bg: "bg-blue-50",
@@ -63,7 +62,6 @@ const AdminDashboard = () => {
     {
       label: "Active Listings",
       val: stats.listings,
-      trend: "+8%",
       icon: <Package size={20} />,
       color: "text-green-500",
       bg: "bg-green-50",
@@ -71,7 +69,6 @@ const AdminDashboard = () => {
     {
       label: "Verified Shops",
       val: stats.verifiedShops,
-      trend: "+15%",
       icon: <ShieldCheck size={20} />,
       color: "text-purple-500",
       bg: "bg-purple-50",
@@ -79,7 +76,6 @@ const AdminDashboard = () => {
     {
       label: "Devices Cataloged",
       val: stats.listings,
-      trend: "+22%",
       icon: <Database size={20} />,
       color: "text-orange-500",
       bg: "bg-orange-50",
@@ -314,10 +310,7 @@ const AdminDashboard = () => {
                 {item.icon}
               </div>
 
-              <div className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded-lg">
-                <ArrowUpRight size={12} />
-                {item.trend}
-              </div>
+              
             </div>
 
             <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">

@@ -144,7 +144,7 @@ const UrbanMineMap = ({ isVerified }) => {
       </div>
 
       {/* Map Mockup Area */}
-      <div className="bg-slate-50 border-2 border-white rounded-[3rem] h-[500px] relative overflow-hidden shadow-inner flex items-center justify-center">
+      <div className="bg-slate-50 border-2 border-white rounded-[3rem] h-[500px] relative overflow-visible shadow-inner flex items-center justify-center">
         <div className="absolute inset-0 opacity-10 grayscale pointer-events-none bg-[url('https://www.valenzuela.gov.ph/images/map_valenzuela.png')] bg-center bg-no-repeat bg-contain" />
 
         {/* Render Pins based on Data Density (REQ-1) */}
@@ -176,7 +176,7 @@ const UrbanMineMap = ({ isVerified }) => {
 
               {/* The Detail Card (Requirement: Click to Show) */}
               {selectedBarangay?.name === b.name && (
-                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-white p-4 rounded-2xl shadow-2xl border border-slate-100 z-50 min-w-[180px] animate-in zoom-in-95 duration-200">
+                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-white p-4 rounded-2xl shadow-2xl border border-slate-100 z-500 min-w-[180px] animate-in zoom-in-95 duration-200">
                   <div className="space-y-1">
                     <h4 className="text-xs font-black text-slate-800 uppercase">
                       Barangay {b.name}

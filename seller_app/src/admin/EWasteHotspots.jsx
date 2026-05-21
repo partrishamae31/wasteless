@@ -91,9 +91,9 @@ const EWasteHotspots = () => {
       <div className="max-w-[1600px] mx-auto">
         {/* HEADER */}
         <div className="mb-5">
-          <h1 className="text-[28px] font-semibold text-[#1E293B]">
+          {/* <h1 className="text-[28px] font-semibold text-[#1E293B]">
             E-Waste Hotspots
-          </h1>
+          </h1> */}
         </div>
 
         {/* TOP STATS */}

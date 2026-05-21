@@ -27,7 +27,7 @@ import {
   LogOut,
   ChevronRight,
   FileText,
-  Shield
+  Shield,
 } from "lucide-react";
 
 const AdminPanel = ({ onLogout }) => {
@@ -88,11 +88,11 @@ const AdminPanel = ({ onLogout }) => {
       icon: <Users size={18} />,
       badge: pendingVerificationCount,
     },
-    {
-      id: "admin-accounts",
-      label: "Admin Accounts",
-      icon: <Shield size={18} />,
-    },
+    // {
+    //   id: "admin-accounts",
+    //   label: "Admin Accounts",
+    //   icon: <Shield size={18} />,
+    // },
 
     {
       id: "transaction",
@@ -128,7 +128,7 @@ const AdminPanel = ({ onLogout }) => {
       <aside className="w-64 bg-[#1E293B] text-slate-400 flex flex-col shadow-xl">
         <div className="p-6 flex items-center gap-3 border-b border-slate-800/50">
           <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center">
-            <ShieldCheck size={20} className="text-white" />
+            {/* <ShieldCheck size={20} className="text-white" /> */}
           </div>
 
           <div>
@@ -179,8 +179,35 @@ const AdminPanel = ({ onLogout }) => {
           ))}
         </nav>
 
-        <div className="p-4 mt-auto">
-          <div className="bg-slate-800/40 rounded-2xl p-4 mb-4 flex items-center gap-3 border border-slate-700/30">
+        <div className="p-4 mt-auto space-y-3">
+          {/* ADMIN ACCOUNT BUTTON */}
+          <button
+            onClick={() => setActiveTab("admin-accounts")}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 group ${
+              activeTab === "admin-accounts"
+                ? "bg-teal-500/10 text-teal-400 border border-teal-500/20"
+                : "bg-slate-800/40 hover:bg-slate-800 text-slate-300"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={
+                  activeTab === "admin-accounts"
+                    ? "text-teal-400"
+                    : "text-slate-500 group-hover:text-slate-300"
+                }
+              >
+                <Shield size={18} />
+              </span>
+
+              <span className="text-sm font-medium">Admin Accounts</span>
+            </div>
+
+            {activeTab === "admin-accounts" && <ChevronRight size={14} />}
+          </button>
+
+          {/* ADMIN PROFILE CARD */}
+          <div className="bg-slate-800/40 rounded-2xl p-4 flex items-center gap-3 border border-slate-700/30">
             <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white">
               AU
             </div>
@@ -212,7 +239,7 @@ const AdminPanel = ({ onLogout }) => {
         {activeTab === "donated" && <DonatedDatabase />}
         {activeTab === "dropoff" && <DropOffPoints />}
         {activeTab === "user-management" && <UserManagement />}
-        {activeTab === "admin-accounts" && <AdminAccounts />}s
+        {activeTab === "admin-accounts" && <AdminAccounts />}
         {activeTab === "transaction" && <TransactionReview />}
         {activeTab === "database" && <DeviceDatabase />}
         {activeTab === "valuation" && <ValuationModel />}

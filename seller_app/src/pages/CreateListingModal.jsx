@@ -147,7 +147,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     hazardAcknowledged: false,
     valuationAcknowledged: false,
   });
-  
+
   // Add this helper object inside your file to handle dynamic breakdown mapping
   const CATEGORY_COMPONENTS_MAP = {
     Smartphone: {
@@ -470,11 +470,22 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const [formData, setFormData] = useState({
     category: "",
     model: "",
-    condition: "Defective", // Default condition
+    condition: "Defective",
     description: "",
     attachments: [],
     price: "",
+
+    // ADD THESE
+    base_part_value: 0,
+    base_scrap_value: 0,
   });
+  const normalizeModelName = (model) => {
+    return model
+      ?.toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[^a-z0-9]/g, "")
+      .trim();
+  };
 
   const fileInputRef = useRef(null);
   const [issues, setIssues] = useState({
@@ -617,62 +628,76 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       if (!formData.model || !formData.category) return;
 
       try {
-        const { data: matchedListings, error } = await supabase
+        // STEP 1: Fetch listings with same category
+        const { data: listings, error } = await supabase
           .from("listings")
-          .select("asking_price")
-          .ilike("device_model", formData.model.trim());
+          .select("device_model, asking_price, category")
+          .eq("category", formData.category);
 
         if (error) throw error;
 
-        // Requirement: Checked if model has been specified 3 or more times
-        if (matchedListings && matchedListings.length >= 3) {
+        // STEP 2: Normalize current input
+        const normalizedCurrentModel = normalizeModelName(formData.model);
+
+        // STEP 3: Match similar models
+        const matchedListings = listings.filter((item) => {
+          const normalizedDbModel = normalizeModelName(item.device_model);
+
+          return normalizedDbModel === normalizedCurrentModel;
+        });
+        console.log("Current Model:", formData.model);
+console.log("Matches Found:", matchedListings.length);
+
+        console.log("Matched Listings:", matchedListings);
+
+        // STEP 4: Historical market value activated
+        if (matchedListings.length >= 3) {
           setHasMarketHistory(true);
-          const totalMarketPrice = matchedListings.reduce(
-            (sum, item) => sum + Number(item.asking_price || 0),
+
+          const validPrices = matchedListings.filter(
+            (item) =>
+              item.asking_price &&
+              !isNaN(item.asking_price) &&
+              Number(item.asking_price) > 0,
+          );
+
+          const totalMarketPrice = validPrices.reduce(
+            (sum, item) => sum + Number(item.asking_price),
             0,
           );
-          const computedAverage = totalMarketPrice / matchedListings.length;
+
+          const computedAverage =
+            validPrices.length > 0 ? totalMarketPrice / validPrices.length : 0;
+
+          const estimatedPartValue = Math.round(computedAverage);
+          const estimatedScrapValue = Math.round(computedAverage * 0.15);
 
           setFormData((prev) => ({
             ...prev,
-            base_part_value: computedAverage,
-            base_scrap_value: computedAverage * 0.15,
+            base_part_value: estimatedPartValue,
+            base_scrap_value: estimatedScrapValue,
           }));
         } else {
-          // Trigger the 'No transaction history available' mode
+          // NO HISTORY FOUND
           setHasMarketHistory(false);
 
-          // Fetch baseline category rates for safety behind the scenes
-          const { data: fallbackRates } = await supabase
-            .from("device_valuation_rates")
-            .select("base_part_value, scrap_value")
-            .eq("category", formData.category)
-            .limit(1);
+          const categoryDefaults = {
+            Smartphone: { part: 3500, scrap: 0 },
+            Laptop: { part: 7000, scrap: 0 },
+            Tablet: { part: 4500, scrap: 0 },
+            Monitor: { part: 2500, scrap: 0 },
+            Parts: { part: 2000, scrap: 0 },
+            Others: { part: 1500, scrap: 0 },
+          };
 
-          if (fallbackRates && fallbackRates.length > 0) {
-            setFormData((prev) => ({
-              ...prev,
-              base_part_value: fallbackRates.base_part_value,
-              base_scrap_value: fallbackRates.scrap_value,
-            }));
-          } else {
-            const categoricalDefaults = {
-              Smartphone: { part: 3500, scrap: 500 },
-              Laptop: { part: 7000, scrap: 1000 },
-              Tablet: { part: 4500, scrap: 600 },
-              Monitor: { part: 2500, scrap: 400 },
-              Parts: { part: 2000, scrap: 300 },
-              Others: { part: 1500, scrap: 200 },
-            };
-            const activeDefault =
-              categoricalDefaults[formData.category] ||
-              categoricalDefaults.Others;
-            setFormData((prev) => ({
-              ...prev,
-              base_part_value: activeDefault.part,
-              base_scrap_value: activeDefault.scrap,
-            }));
-          }
+          const fallback =
+            categoryDefaults[formData.category] || categoryDefaults.Others;
+
+          setFormData((prev) => ({
+            ...prev,
+            base_part_value: fallback.part,
+            base_scrap_value: fallback.scrap,
+          }));
         }
       } catch (err) {
         console.error("Market Valuation Engine Failure:", err.message);
@@ -998,7 +1023,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         .insert([
           {
             seller_id: userId,
-            device_model: formData.model,
+            device_model: formData.model.trim().replace(/\s+/g, " "),
             condition: formData.condition,
             asking_price: finalPrice,
             scrap_value: scrapValue,

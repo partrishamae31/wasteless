@@ -157,6 +157,9 @@ function App() {
     if (role === "harvester") {
       return <HarvesterDashboard session={session} onLogout={handleLogout} />;
     }
+     if (role === "repair_shop") {
+      return <HarvesterDashboard session={session} onLogout={handleLogout} />;
+    }
 
     if (role === "env_officer") {
       return <EnvOfficerPanel onLogout={handleLogout} user={session?.user} />;

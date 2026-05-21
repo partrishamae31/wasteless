@@ -47,9 +47,9 @@ const DonationManagement = () => {
       <div className="max-w-[1600px] mx-auto">
         {/* PAGE TITLE */}
         <div className="mb-5">
-          <h1 className="text-[26px] font-semibold text-slate-700">
+          {/* <h1 className="text-[26px] font-semibold text-slate-700">
             Donation Management
-          </h1>
+          </h1> */}
         </div>
 
         {/* TOP STATS */}
