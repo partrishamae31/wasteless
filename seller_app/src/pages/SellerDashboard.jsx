@@ -136,7 +136,6 @@ const SellerDashboard = ({ session }) => {
 
   const handleSubmitRating = async ({ ratings, recommend, feedback }) => {
     try {
-      // Get selected transaction
       const selectedTransaction = transactions.find(
         (t) => t.id === selectedTxId,
       );
@@ -145,10 +144,8 @@ const SellerDashboard = ({ session }) => {
         throw new Error("Transaction not found.");
       }
 
-      // BUYER / HARVESTER ID
       const buyerId = selectedTransaction.harvester_id;
 
-      // Calculate average score
       const averageScore =
         (ratings.communication +
           ratings.punctuality +
@@ -156,7 +153,6 @@ const SellerDashboard = ({ session }) => {
           ratings.overall) /
         4;
 
-      // 1. INSERT REVIEW
       const { error: insertError } = await supabase.from("reviews").insert([
         {
           transaction_id: selectedTransaction.id,
@@ -181,7 +177,6 @@ const SellerDashboard = ({ session }) => {
 
       if (insertError) throw insertError;
 
-      // 2. FETCH ALL REVIEWS OF BUYER
       const { data: allReviews, error: reviewsError } = await supabase
         .from("reviews")
         .select("overall_rating")
@@ -189,7 +184,6 @@ const SellerDashboard = ({ session }) => {
 
       if (reviewsError) throw reviewsError;
 
-      // 3. CALCULATE UPDATED STATS
       const totalReviews = allReviews.length;
 
       const averageRating =
@@ -200,7 +194,6 @@ const SellerDashboard = ({ session }) => {
             ) / totalReviews
           : 0;
 
-      // 4. UPDATE PROFILE
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
@@ -211,7 +204,6 @@ const SellerDashboard = ({ session }) => {
 
       if (profileError) throw profileError;
 
-      // 5. CLOSE MODAL
       setShowRateModal(false);
 
       alert("Buyer rated successfully!");
@@ -250,12 +242,11 @@ const SellerDashboard = ({ session }) => {
     try {
       const { error } = await supabase
         .from("transactions")
-        .update({ status: "completed" }) // Ensure this matches your DB constraints
+        .update({ status: "completed" }) 
         .eq("id", txId);
 
       if (error) throw error;
 
-      // Update local state immediately
       setTransactions((prev) =>
         prev.map((t) => (t.id === txId ? { ...t, status: "completed" } : t)),
       );
@@ -264,11 +255,11 @@ const SellerDashboard = ({ session }) => {
       alert("Failed to update database: " + err.message);
     }
   };
+
   const handleCancelTransaction = async (txId) => {
     try {
       const txToCancel = transactions.find((t) => t.id === txId);
 
-      // 1. Update the transaction status in the DB
       const { error: txError } = await supabase
         .from("transactions")
         .update({
@@ -279,17 +270,15 @@ const SellerDashboard = ({ session }) => {
 
       if (txError) throw txError;
 
-      // 2. Re-open the listing status so it's active again
       if (txToCancel?.listing_id) {
         const { error: listingError } = await supabase
           .from("listings")
-          .update({ status: "active" }) // Changed from 'closed' back to 'active'
+          .update({ status: "active" }) 
           .eq("id", txToCancel.listing_id);
 
         if (listingError) throw listingError;
       }
 
-      // 3. Update local UI state
       setTransactions((prev) =>
         prev.map((t) => (t.id === txId ? { ...t, status: "cancelled" } : t)),
       );
@@ -301,6 +290,7 @@ const SellerDashboard = ({ session }) => {
       alert("Failed to cancel: Check your database permissions.");
     }
   };
+  
   const totalBidsCount = listings.reduce(
     (sum, item) => sum + (item.bids?.length || 0),
     0,
@@ -2315,14 +2305,12 @@ const NotificationItem = ({
       unread ? "bg-blue-50/10" : "bg-transparent"
     }`}
   >
-    {/* Icon with colored background */}
     <div
       className={`w-10 h-10 ${bg} rounded-xl flex items-center justify-center shrink-0 shadow-sm shadow-black/5`}
     >
       {React.cloneElement(icon, { size: 18, className: "text-white" })}
     </div>
 
-    {/* Content Area */}
     <div className="flex-1 min-w-0">
       <div className="flex justify-between items-start mb-0.5">
         <h4
@@ -2341,12 +2329,11 @@ const NotificationItem = ({
       </p>
     </div>
 
-    {/* Status & Actions Column */}
     <div className="flex flex-col items-center justify-between py-0.5">
       {unread ? (
         <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_0_4px_rgba(59,130,246,0.15)]" />
       ) : (
-        <div className="w-2 h-2" /> // Spacer
+        <div className="w-2 h-2" /> 
       )}
       <button
         onClick={(e) => {

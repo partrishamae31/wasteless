@@ -100,11 +100,11 @@ const AdminPanel = ({ onLogout }) => {
       icon: <FileSearch size={18} />,
       badge: 2,
     },
-    {
-      id: "database",
-      label: "Device Database",
-      icon: <Database size={18} />,
-    },
+    // {
+    //   id: "database",
+    //   label: "Device Database",
+    //   icon: <Database size={18} />,
+    // },
     {
       id: "valuation",
       label: "Valuation Model",
@@ -241,7 +241,7 @@ const AdminPanel = ({ onLogout }) => {
         {activeTab === "user-management" && <UserManagement />}
         {activeTab === "admin-accounts" && <AdminAccounts />}
         {activeTab === "transaction" && <TransactionReview />}
-        {activeTab === "database" && <DeviceDatabase />}
+        {/* {activeTab === "database" && <DeviceDatabase />} */}
         {activeTab === "valuation" && <ValuationModel />}
         {activeTab === "trust" && <TrustTierManagement />}
         {/* {activeTab === "compliance" && <ComplianceReport />} */}

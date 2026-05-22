@@ -628,7 +628,6 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       if (!formData.model || !formData.category) return;
 
       try {
-        // STEP 1: Fetch listings with same category
         const { data: listings, error } = await supabase
           .from("listings")
           .select("device_model, asking_price, category")
@@ -636,10 +635,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
         if (error) throw error;
 
-        // STEP 2: Normalize current input
         const normalizedCurrentModel = normalizeModelName(formData.model);
 
-        // STEP 3: Match similar models
         const matchedListings = listings.filter((item) => {
           const normalizedDbModel = normalizeModelName(item.device_model);
 
@@ -650,7 +647,6 @@ console.log("Matches Found:", matchedListings.length);
 
         console.log("Matched Listings:", matchedListings);
 
-        // STEP 4: Historical market value activated
         if (matchedListings.length >= 3) {
           setHasMarketHistory(true);
 
@@ -678,7 +674,6 @@ console.log("Matches Found:", matchedListings.length);
             base_scrap_value: estimatedScrapValue,
           }));
         } else {
-          // NO HISTORY FOUND
           setHasMarketHistory(false);
 
           const categoryDefaults = {
@@ -768,17 +763,14 @@ console.log("Matches Found:", matchedListings.length);
     Object.keys(activeComponentSchema).forEach((key) => {
       const component = activeComponentSchema[key];
 
-      // 1. Compute individual component baseline value
       const componentBaseValue = Math.round(baseValue * component.weight);
 
-      // 2. Evaluate if user-selected diagnostics hit this component matrix
       const hasDamage = component.issues.some((issue) =>
         selectedIssues.includes(issue),
       );
 
       const isComponentIntact = issues.noDamage || !hasDamage;
 
-      // 3. Accumulate only the intact component rows to guarantee alignment
       if (isComponentIntact) {
         sumOfIntactComponents += componentBaseValue;
       }
@@ -791,8 +783,6 @@ console.log("Matches Found:", matchedListings.length);
       });
     });
 
-    // CRITICAL FIX: Base total reusable calculation directly on the sum of what is intact
-    // This completely removes individual rounding conflicts
     const finalPartsValue = Math.max(sumOfIntactComponents, scrap);
 
     setReusableValue(Math.round(finalPartsValue));
@@ -1017,7 +1007,6 @@ console.log("Matches Found:", matchedListings.length);
       const finalPrice =
         formData.price === "" ? reusableValue : parseFloat(formData.price);
 
-      // 2. Map the array to the existing images column
       const { data: insertedData, error } = await supabase
         .from("listings")
         .insert([

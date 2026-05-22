@@ -61,7 +61,6 @@ const HarvesterAlerts = ({ session, isVerified }) => {
           .select("id, device_model, asking_price, condition, barangay, status")
           .eq("status", "active");
 
-        // DEVICE MODEL
         if (alert.device_model?.trim()) {
           query = query.ilike(
             "device_model",
@@ -69,7 +68,6 @@ const HarvesterAlerts = ({ session, isVerified }) => {
           );
         }
 
-        // CONDITION
         if (
           alert.condition &&
           alert.condition !== "Any Condition"
@@ -77,7 +75,6 @@ const HarvesterAlerts = ({ session, isVerified }) => {
           query = query.eq("condition", alert.condition);
         }
 
-        // MAX PRICE
         if (
           alert.max_price !== null &&
           alert.max_price !== undefined &&
@@ -89,7 +86,6 @@ const HarvesterAlerts = ({ session, isVerified }) => {
           );
         }
 
-        // BARANGAY
         if (
           alert.preferred_barangay &&
           alert.preferred_barangay.trim() !== ""
