@@ -72,14 +72,14 @@ const UserManagement = () => {
   }, [searchQuery, roleFilter, users]);
 
   const handleSuspendToggle = async (user) => {
-    const newStatus = user.status === "active" ? "suspended" : "active";
+    const currentStatus = (user.status || "").toLowerCase();
+
+    const newStatus = currentStatus === "active" ? "suspended" : "active";
+
+    const action = currentStatus === "active" ? "SUSPEND" : "ACTIVATE";
 
     if (
-      window.confirm(
-        `Are you sure you want to ${
-          newStatus === "suspended" ? "SUSPEND" : "ACTIVATE"
-        } ${user.full_name}?`,
-      )
+      window.confirm(`Are you sure you want to ${action} ${user.full_name}?`)
     ) {
       const { error } = await supabase
         .from("profiles")

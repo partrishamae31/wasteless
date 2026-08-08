@@ -22,17 +22,21 @@ function App() {
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isSuspended, setIsSuspended] = useState(false);
 
   // --- ADDED STATE FOR ENV OFFICER DEMO ---
   const [isAdminDemo, setIsAdminDemo] = useState(false);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+  await supabase.auth.signOut();
 
-    setSession(null);
-    setRole(null);
-    setIsAdminDemo(false); // Reset demo state on logout
-  };
+  setSession(null);
+  setRole(null);
+  setIsAdminDemo(false);
+
+  setIsSuspended(false);      // reset suspended state
+  setCurrentPage("login");    // go back to login page
+};
 
   // 🔥 SINGLE SOURCE OF TRUTH
   const loadUser = async (session) => {
@@ -49,7 +53,7 @@ function App() {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, status")
       .eq("id", session.user.id)
       .maybeSingle();
 
@@ -60,6 +64,18 @@ function App() {
       setIsUnauthorized(true);
       setCurrentPage("login");
     } else {
+      const accountStatus = (data.status || "").toLowerCase();
+
+      if (accountStatus === "suspended") {
+  setIsSuspended(true);
+  setSession(session);
+  setRole(data.role);
+
+  setLoading(false);
+  setIsChecked(true);
+  return;
+}
+
       setSession(session);
       setRole(data.role);
       setIsUnauthorized(false);
@@ -103,6 +119,30 @@ function App() {
       </div>
     );
   }
+  if (isSuspended) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="bg-white rounded-3xl shadow-xl p-10 max-w-md text-center">
+        <h1 className="text-3xl font-bold text-red-600 mb-4">
+          Account Suspended
+        </h1>
+
+        <p className="text-gray-600 mb-6">
+          Your account has been suspended by the administrator.
+          <br />
+          You cannot use the application while your account is suspended.
+        </p>
+
+        <button
+          onClick={handleLogout}
+          className="px-6 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700"
+        >
+          Logout
+        </button>
+      </div>
+    </div>
+  );
+}
 
   // --- ADDED ENV OFFICER DASHBOARD VIEW ---
   // This shows if the role is officially 'env_officer' OR if the demo bypass is clicked
@@ -157,7 +197,7 @@ function App() {
     if (role === "harvester") {
       return <HarvesterDashboard session={session} onLogout={handleLogout} />;
     }
-     if (role === "repair_shop") {
+    if (role === "repair_shop") {
       return <HarvesterDashboard session={session} onLogout={handleLogout} />;
     }
 

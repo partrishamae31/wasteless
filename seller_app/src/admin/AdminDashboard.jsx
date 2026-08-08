@@ -50,6 +50,7 @@ const AdminDashboard = () => {
   const [deviceStats, setDeviceStats] = useState([]);
   const [recoveryStats, setRecoveryStats] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [locations, setLocations] = useState([]);
 
   const metrics = [
     {
@@ -81,6 +82,71 @@ const AdminDashboard = () => {
       bg: "bg-orange-50",
     },
   ];
+  const exportAnalytics = async () => {
+    try {
+      const { data, error } = await supabase.from("transactions").select(`
+        id,
+        created_at,
+        amount,
+        barangay,
+        status,
+        listings!transactions_listing_id_fkey (
+          device_model,
+          category,
+          condition,
+          asking_price
+        )
+      `);
+
+      if (error) throw error;
+
+      const rows = data.map((item) => ({
+        Transaction_ID: item.id,
+        Date: new Date(item.created_at).toLocaleString(),
+        Status: item.status,
+        Barangay: item.barangay,
+        Category: item.listings?.category || "N/A",
+        Device: item.listings?.device_model || "N/A",
+        Condition: item.listings?.condition || "N/A",
+        Asking_Price: item.listings?.asking_price || "N/A",
+        Amount: item.amount,
+      }));
+
+      const headers = Object.keys(rows[0]);
+
+      const csv = [
+        headers.join(","),
+        ...rows.map((row) =>
+          headers
+            .map(
+              (header) => `"${String(row[header] ?? "").replace(/"/g, '""')}"`,
+            )
+            .join(","),
+        ),
+      ].join("\n");
+
+      const blob = new Blob([csv], {
+        type: "text/csv;charset=utf-8;",
+      });
+
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Recovery_Analytics_${
+        new Date().toISOString().split("T")[0]
+      }.csv`;
+
+      document.body.appendChild(link);
+      link.click();
+
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to export analytics.");
+    }
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -96,22 +162,20 @@ const AdminDashboard = () => {
           .from("listings")
           .select("*", { count: "exact", head: true });
 
-        const { count: transactionCount } = await supabase
-          .from("transactions")
-          .select("*", { count: "exact", head: true });
+        const { data, error } = await supabase.from("transactions").select("*");
 
         const { count: verifiedCount } = await supabase
           .from("profiles")
           .select("*", { count: "exact", head: true })
-          .eq("role", "repairshop")
-          .eq("verified", true);
+          .eq("role", "repair_shop")
+          .eq("is_verified", true);
 
         // PENDING REQUESTS
         const { data: pendingData } = await supabase
           .from("profiles")
           .select("*")
-          .eq("role", "repairshop")
-          .eq("verified", false)
+          .eq("role", "repair_shop")
+          .eq("is_verified", false)
           .limit(3);
 
         setPendingRequests(pendingData || []);
@@ -119,24 +183,83 @@ const AdminDashboard = () => {
         setStats({
           users: userCount || 0,
           listings: listCount || 0,
-          transactions: transactionCount || 0,
+          transactions: data?.length || 0,
           verifiedShops: verifiedCount || 0,
         });
 
+        // LOAD LOCATIONS (Completed Transactions Only)
+        const { data: locationData, error: locationError } = await supabase
+          .from("transactions")
+          .select("barangay")
+          .eq("status", "completed");
+
+        if (locationError) throw locationError;
+
+        const uniqueLocations = [
+          ...new Set(
+            (locationData || [])
+              .map((item) => item.barangay?.trim())
+              .filter(
+                (barangay) =>
+                  barangay !== null &&
+                  barangay !== undefined &&
+                  barangay !== "",
+              ),
+          ),
+        ].sort((a, b) => a.localeCompare(b));
+
+        setLocations(uniqueLocations);
+
         // TRANSACTION CHART
-        setChartData([
-          { month: "Jan", value: 42 },
-          { month: "Feb", value: 51 },
-          { month: "Mar", value: 60 },
-          { month: "Apr", value: 74 },
-          { month: "May", value: 68 },
-          { month: "Jun", value: 90 },
-        ]);
+        const { data: transactionItems } = await supabase
+          .from("transactions")
+          .select("created_at");
+
+        const monthlyTransactions = {};
+
+        (transactionItems || []).forEach((item) => {
+          const month = new Date(item.created_at).toLocaleString("en-US", {
+            month: "short",
+          });
+
+          monthlyTransactions[month] = (monthlyTransactions[month] || 0) + 1;
+        });
+
+        const monthOrder = [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ];
+
+        setChartData(
+          Object.entries(monthlyTransactions)
+            .sort((a, b) => monthOrder.indexOf(a[0]) - monthOrder.indexOf(b[0]))
+            .map(([month, value]) => ({
+              month,
+              value,
+            })),
+        );
 
         // RECOVERY QUERY
         let recoveryQuery = supabase
           .from("transactions")
-          .select("*")
+          .select(
+            `
+  *,
+  listings!transactions_listing_id_fkey (
+    category
+  )
+`,
+          )
           .eq("status", "completed");
 
         // DATE FILTER
@@ -170,26 +293,32 @@ const AdminDashboard = () => {
         }
 
         // LOCATION FILTER
-        if (selectedLocation !== "all") {
-          recoveryQuery = recoveryQuery.eq("barangay", selectedLocation);
+        if (selectedLocation && selectedLocation !== "all") {
+          recoveryQuery = recoveryQuery.eq("barangay", selectedLocation.trim());
         }
 
-        // CATEGORY FILTER
-        if (selectedCategory !== "all") {
-          recoveryQuery = recoveryQuery.eq("device_category", selectedCategory);
-        }
-
+        // Execute the quer
+        // Execute the filtered query
         const { data: recoveryItems, error: recoveryError } =
           await recoveryQuery;
 
         if (recoveryError) throw recoveryError;
 
-        const totalRecovered = recoveryItems.length;
+        // Start with all completed transactions
+        let filteredItems = recoveryItems || [];
+
+        if (selectedCategory !== "all") {
+          filteredItems = filteredItems.filter(
+            (item) => item.listings?.category === selectedCategory,
+          );
+        }
+
+        const totalRecovered = filteredItems.length;
 
         // RECOVERY TREND GRAPH
         const grouped = {};
 
-        recoveryItems.forEach((item) => {
+        filteredItems.forEach((item) => {
           const date = new Date(item.created_at).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
@@ -198,20 +327,20 @@ const AdminDashboard = () => {
           grouped[date] = (grouped[date] || 0) + 1;
         });
 
-        const formattedTrend = Object.entries(grouped).map(
-          ([day, recovered]) => ({
+        const formattedTrend = Object.entries(grouped)
+          .sort(([a], [b]) => new Date(a) - new Date(b))
+          .map(([day, recovered]) => ({
             day,
             recovered,
-          }),
-        );
+          }));
 
         setRecoveryData(formattedTrend);
 
         // DEVICE CATEGORY STATS
         const categories = {};
 
-        recoveryItems.forEach((item) => {
-          const category = item.device_category || "Unknown";
+        filteredItems.forEach((item) => {
+          const category = item.listings?.category || "Unknown";
 
           categories[category] = (categories[category] || 0) + 1;
         });
@@ -273,7 +402,36 @@ const AdminDashboard = () => {
     };
 
     fetchStats();
+
+    const channel = supabase
+      .channel("dashboard-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+        },
+        () => {
+          fetchStats();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [selectedCategory, selectedLocation, selectedDate]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-lg font-semibold text-slate-600">
+          Loading dashboard...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 bg-[#F8FAFC] min-h-screen">
@@ -290,7 +448,10 @@ const AdminDashboard = () => {
           </p>
         </div>
 
-        <button className="flex items-center gap-2 px-4 py-3 bg-[#2D7A7F] text-white rounded-2xl text-sm font-semibold hover:opacity-90 shadow-sm">
+        <button
+          onClick={exportAnalytics}
+          className="flex items-center gap-2 px-4 py-3 bg-[#2D7A7F] text-white rounded-2xl text-sm font-semibold hover:opacity-90 shadow-sm"
+        >
           <Download size={16} />
           Export Analytics
         </button>
@@ -309,8 +470,6 @@ const AdminDashboard = () => {
               >
                 {item.icon}
               </div>
-
-              
             </div>
 
             <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">
@@ -353,9 +512,12 @@ const AdminDashboard = () => {
             className="px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D7A7F]"
           >
             <option value="all">All Locations</option>
-            <option value="Malanday">Malanday</option>
-            <option value="Gen T">Gen T</option>
-            <option value="Karuhatan">Karuhatan</option>
+
+            {locations.map((location) => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
           </select>
 
           {/* CATEGORY */}
@@ -367,71 +529,11 @@ const AdminDashboard = () => {
             <option value="all">All Categories</option>
             <option value="Laptop">Laptop</option>
             <option value="Monitor">Monitor</option>
-            <option value="Phone">Phone</option>
+            <option value="Smartphone">Smartphone</option>
             <option value="Tablet">Tablet</option>
           </select>
         </div>
       </div>
-
-      {/* PENDING REQUESTS */}
-      {/* <div className="bg-orange-50 border border-orange-100 rounded-[1.8rem] p-6 mb-8">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center">
-            <AlertTriangle size={20} />
-          </div>
-
-          <div>
-            <h3 className="text-lg font-bold text-orange-900">
-              {pendingRequests.length} Pending Verification Requests
-            </h3>
-
-            <p className="text-sm text-orange-700">
-              Repair shops awaiting administrator approval
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {pendingRequests.length > 0 ? (
-            pendingRequests.map((shop, i) => (
-              <div
-                key={i}
-                className="bg-white border border-orange-100 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600">
-                    <Building2 size={18} />
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800">
-                      {shop.shop_name || "Repair Shop"}
-                    </h4>
-
-                    <p className="text-xs text-slate-500">
-                      {shop.email || "No email provided"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button className="px-4 py-2 rounded-xl bg-[#2D7A7F] text-white text-xs font-semibold hover:opacity-90">
-                    Review
-                  </button>
-
-                  <button className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-sm text-orange-700">
-              No pending requests available.
-            </div>
-          )}
-        </div>
-      </div> */}
 
       {/* ENVIRONMENTAL IMPACT */}
       <section className="mb-8">

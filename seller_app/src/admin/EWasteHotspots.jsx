@@ -1,4 +1,6 @@
-import React from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "../supabaseClient";
+
 import {
   Map,
   Users,
@@ -11,6 +13,8 @@ import {
 } from "lucide-react";
 
 const EWasteHotspots = () => {
+  const [hotspots, setHotspots] = useState([]);
+  const [dropOffPoints, setDropOffPoints] = useState([]);
   const stats = [
     {
       title: "Total Users",
@@ -42,49 +46,99 @@ const EWasteHotspots = () => {
     },
   ];
 
-  const hotspots = [
-    {
-      barangay: "Barangay 1",
-      intensity: "Very High",
-      devices: 25,
-      color: "bg-red-500",
-      glow: "bg-red-400/40",
-      trend: "+",
-    },
-    {
-      barangay: "Barangay Marulas",
-      intensity: "High",
-      devices: 15,
-      color: "bg-orange-500",
-      glow: "bg-orange-400/40",
-      trend: "+",
-    },
-    {
-      barangay: "Barangay 2",
-      intensity: "High",
-      devices: 12,
-      color: "bg-amber-500",
-      glow: "bg-amber-400/40",
-      trend: "-",
-    },
-    {
-      barangay: "Barangay San Roque",
-      intensity: "Medium",
-      devices: 9,
-      color: "bg-yellow-400",
-      glow: "bg-yellow-300/40",
-      trend: "+",
-    },
-  ];
+  const totalDevices = hotspots.reduce((sum, h) => sum + h.devices, 0);
 
+  const activeBarangays = hotspots.length;
+
+  const highZones = hotspots.filter(
+    (h) => h.intensity === "High" || h.intensity === "Very High",
+  ).length;
+
+  const topBarangay = hotspots[0]?.barangay ?? "-";
   const mapPoints = [
     { size: "w-24 h-24", pos: "left-[38%] top-[52%]", color: "bg-red-500/35" },
-    { size: "w-16 h-16", pos: "left-[48%] top-[45%]", color: "bg-orange-500/35" },
-    { size: "w-14 h-14", pos: "left-[55%] top-[38%]", color: "bg-orange-400/35" },
-    { size: "w-12 h-12", pos: "left-[63%] top-[33%]", color: "bg-amber-400/35" },
-    { size: "w-8 h-8", pos: "left-[22%] top-[68%]", color: "bg-emerald-400/40" },
-    { size: "w-10 h-10", pos: "left-[30%] top-[62%]", color: "bg-emerald-400/40" },
+    {
+      size: "w-16 h-16",
+      pos: "left-[48%] top-[45%]",
+      color: "bg-orange-500/35",
+    },
+    {
+      size: "w-14 h-14",
+      pos: "left-[55%] top-[38%]",
+      color: "bg-orange-400/35",
+    },
+    {
+      size: "w-12 h-12",
+      pos: "left-[63%] top-[33%]",
+      color: "bg-amber-400/35",
+    },
+    {
+      size: "w-8 h-8",
+      pos: "left-[22%] top-[68%]",
+      color: "bg-emerald-400/40",
+    },
+    {
+      size: "w-10 h-10",
+      pos: "left-[30%] top-[62%]",
+      color: "bg-emerald-400/40",
+    },
   ];
+  useEffect(() => {
+    const loadHotspots = async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("barangay")
+        .eq("status", "completed");
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      const grouped = {};
+
+      data.forEach((item) => {
+        if (!item.barangay) return;
+
+        grouped[item.barangay] = (grouped[item.barangay] || 0) + 1;
+      });
+
+      const maxDevices = Math.max(...Object.values(grouped));
+
+      const hotspotData = Object.entries(grouped)
+        .map(([barangay, devices]) => {
+          let intensity = "Low";
+          let color = "bg-emerald-400";
+          let trend = "+";
+
+          const percentage = devices / maxDevices;
+
+          if (percentage >= 0.75) {
+            intensity = "Very High";
+            color = "bg-red-500";
+          } else if (percentage >= 0.5) {
+            intensity = "High";
+            color = "bg-orange-500";
+          } else if (percentage >= 0.25) {
+            intensity = "Medium";
+            color = "bg-yellow-400";
+          }
+
+          return {
+            barangay,
+            devices,
+            intensity,
+            color,
+            trend,
+          };
+        })
+        .sort((a, b) => b.devices - a.devices);
+
+      setHotspots(hotspotData);
+    };
+
+    loadHotspots();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#F5F7FB] p-6">
@@ -151,10 +205,10 @@ const EWasteHotspots = () => {
           {/* SUMMARY BOXES */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
-              ["Total Data Points", "75"],
-              ["Active Barangays", "8"],
-              ["High Intensity Zones", "3"],
-              ["Top Category", "Tablet"],
+              ["Total Data Points", totalDevices],
+              ["Active Barangays", activeBarangays],
+              ["High Intensity Zones", highZones],
+              ["Top Hotspot", topBarangay],
             ].map((item, i) => (
               <div
                 key={i}
@@ -192,7 +246,7 @@ const EWasteHotspots = () => {
                     <span className="text-sm text-slate-400">{item}</span>
                     <ChevronDown size={16} className="text-slate-400" />
                   </div>
-                )
+                ),
               )}
             </div>
           </div>
