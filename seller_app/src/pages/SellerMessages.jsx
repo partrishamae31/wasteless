@@ -27,8 +27,11 @@ const SellerMessages = ({ userId, onTabChange }) => {
     date: "",
     time: "",
     location: "",
+    drop_off_point_id: "",
     notes: "",
   });
+
+  const [dropOffPoints, setDropOffPoints] = useState([]);
 
   const fetchAcceptedBidAmount = async () => {
     if (!activeChat) return;
@@ -46,8 +49,8 @@ const SellerMessages = ({ userId, onTabChange }) => {
   };
 
   const handleScheduleMeetup = async () => {
-    if (!meetupData.date || !meetupData.location || !meetupData.time) {
-      alert("Please fill in all fields.");
+    if (!meetupData.date || !meetupData.time || !meetupData.drop_off_point_id) {
+      alert("Please select a date, time, and drop-off point.");
       return;
     }
 
@@ -69,6 +72,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
       const { error: scheduleError } = await supabase
         .from("transactions")
         .update({
+          drop_off_point_id: meetupData.drop_off_point_id,
           barangay: meetupData.location,
           meetup_date: meetupData.date,
           meetup_time: meetupData.time,
@@ -205,6 +209,36 @@ Date: ${meetupData.date} at ${meetupData.time}`,
     };
     fetchConversations();
   }, [userId]);
+
+  useEffect(() => {
+    const fetchDropOffPoints = async () => {
+      const { data, error } = await supabase
+        .from("drop_off_points")
+        .select(
+          `
+        id,
+        name,
+        barangay,
+        city,
+        address,
+        latitude,
+        longitude,
+        is_active
+      `,
+        )
+        .eq("is_active", true)
+        .order("name", { ascending: true });
+
+      if (error) {
+        console.error("Error loading drop-off points:", error);
+        return;
+      }
+
+      setDropOffPoints(data || []);
+    };
+
+    fetchDropOffPoints();
+  }, []);
 
   useEffect(() => {
     if (!activeChat) return;
@@ -553,44 +587,56 @@ Date: ${meetupData.date} at ${meetupData.time}`,
               {/* Location Selection */}
               <div>
                 <label className="text-xs font-bold text-slate-600 flex items-center gap-2 mb-3">
-                  <MapPin size={16} className="text-[#2d7a7f]" /> Meeting
-                  Location
+                  <MapPin size={16} className="text-[#2d7a7f]" />
+                  Meeting Location
                 </label>
+
                 <div className="space-y-2">
-                  {[
-                    "Valenzuela City Hall - Main Entrance",
-                    "Barangay Hall - Your Barangay",
-                    "SM City Valenzuela - Main Entrance",
-                  ].map((loc) => (
-                    <button
-                      key={loc}
-                      onClick={() =>
-                        setMeetupData({ ...meetupData, location: loc })
-                      }
-                      className={`w-full p-4 flex items-center gap-3 text-left text-sm rounded-xl border transition-all ${
-                        meetupData.location === loc
-                          ? "border-[#2d7a7f] bg-teal-50/30 text-[#2d7a7f] font-medium"
-                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                      }`}
-                    >
-                      <Navigation
-                        size={14}
-                        className={
-                          meetupData.location === loc
-                            ? "text-[#2d7a7f]"
-                            : "text-slate-400"
+                  {dropOffPoints.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-400">
+                      No active drop-off points available.
+                    </div>
+                  ) : (
+                    dropOffPoints.map((point) => (
+                      <button
+                        key={point.id}
+                        type="button"
+                        onClick={() =>
+                          setMeetupData({
+                            ...meetupData,
+                            location: point.name,
+                            drop_off_point_id: point.id,
+                          })
                         }
-                      />
-                      {loc}
-                    </button>
-                  ))}
-                  <input
-                    placeholder="Or enter custom location"
-                    className="w-full p-4 border border-slate-200 rounded-xl text-sm outline-none mt-2"
-                    onChange={(e) =>
-                      setMeetupData({ ...meetupData, location: e.target.value })
-                    }
-                  />
+                        className={`w-full p-4 flex items-start gap-3 text-left rounded-xl border transition-all ${
+                          meetupData.drop_off_point_id === point.id
+                            ? "border-[#2d7a7f] bg-teal-50/30 text-[#2d7a7f] font-medium"
+                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        <Navigation
+                          size={14}
+                          className={
+                            meetupData.drop_off_point_id === point.id
+                              ? "text-[#2d7a7f] mt-1"
+                              : "text-slate-400 mt-1"
+                          }
+                        />
+
+                        <div>
+                          <p className="text-sm font-semibold">{point.name}</p>
+
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            {point.address}
+                          </p>
+
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            {point.barangay}, {point.city}
+                          </p>
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
 

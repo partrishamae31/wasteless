@@ -80,6 +80,7 @@ const BARANGAYS = [
 
 const DropOffPoints = () => {
   const [points, setPoints] = useState([]);
+  const [hotspots, setHotspots] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -118,7 +119,7 @@ const DropOffPoints = () => {
 
       setError(
         err.message ||
-          "Failed to load drop-off points. Please check your Supabase table."
+          "Failed to load drop-off points. Please check your Supabase table.",
       );
     } finally {
       setLoading(false);
@@ -155,15 +156,15 @@ const DropOffPoints = () => {
   const totalPoints = points.length;
 
   const activePoints = points.filter(
-    (point) => point.is_active !== false
+    (point) => point.is_active !== false,
   ).length;
 
   const inactivePoints = points.filter(
-    (point) => point.is_active === false
+    (point) => point.is_active === false,
   ).length;
 
   const barangayCount = new Set(
-    points.map((point) => point.barangay).filter(Boolean)
+    points.map((point) => point.barangay).filter(Boolean),
   ).size;
 
   // ---------------------------------------------------------
@@ -360,8 +361,7 @@ const DropOffPoints = () => {
       console.error("Save error:", err);
 
       setError(
-        err.message ||
-          "Failed to save the drop-off point. Please try again."
+        err.message || "Failed to save the drop-off point. Please try again.",
       );
     } finally {
       setSaving(false);
@@ -374,7 +374,7 @@ const DropOffPoints = () => {
 
   const handleDelete = async (id, name) => {
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${name}"?\n\nThis action cannot be undone.`
+      `Are you sure you want to delete "${name}"?\n\nThis action cannot be undone.`,
     );
 
     if (!confirmed) return;
@@ -397,10 +397,7 @@ const DropOffPoints = () => {
     } catch (err) {
       console.error("Delete error:", err);
 
-      setError(
-        err.message ||
-          "Failed to delete the drop-off point."
-      );
+      setError(err.message || "Failed to delete the drop-off point.");
     } finally {
       setDeletingId(null);
     }
@@ -431,16 +428,13 @@ const DropOffPoints = () => {
                 ...item,
                 is_active: newStatus,
               }
-            : item
-        )
+            : item,
+        ),
       );
     } catch (err) {
       console.error("Status update error:", err);
 
-      setError(
-        err.message ||
-          "Failed to update the drop-off point status."
-      );
+      setError(err.message || "Failed to update the drop-off point status.");
     }
   };
 
@@ -470,7 +464,6 @@ const DropOffPoints = () => {
   return (
     <div className="min-h-screen bg-[#F5F7FB] p-6">
       <div className="max-w-[1600px] mx-auto">
-
         {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
           <div>
@@ -497,11 +490,7 @@ const DropOffPoints = () => {
               disabled={loading}
               className="h-11 px-4 rounded-xl border border-slate-200 bg-white text-slate-600 flex items-center gap-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
             >
-              <RefreshCw
-                size={16}
-                className={loading ? "animate-spin" : ""}
-              />
-
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
 
@@ -510,7 +499,6 @@ const DropOffPoints = () => {
               className="h-11 px-4 rounded-xl bg-[#2D7A7F] text-white flex items-center gap-2 text-sm font-semibold hover:opacity-90 shadow-sm"
             >
               <Plus size={17} />
-
               Add Drop-off Point
             </button>
           </div>
@@ -544,9 +532,7 @@ const DropOffPoints = () => {
         {/* SUMMARY */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-            <p className="text-xs text-slate-400 mb-2">
-              Total Drop-off Points
-            </p>
+            <p className="text-xs text-slate-400 mb-2">Total Drop-off Points</p>
 
             <h2 className="text-3xl font-semibold text-slate-800">
               {totalPoints}
@@ -554,9 +540,7 @@ const DropOffPoints = () => {
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-            <p className="text-xs text-slate-400 mb-2">
-              Active Locations
-            </p>
+            <p className="text-xs text-slate-400 mb-2">Active Locations</p>
 
             <h2 className="text-3xl font-semibold text-emerald-600">
               {activePoints}
@@ -564,9 +548,7 @@ const DropOffPoints = () => {
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-            <p className="text-xs text-slate-400 mb-2">
-              Inactive Locations
-            </p>
+            <p className="text-xs text-slate-400 mb-2">Inactive Locations</p>
 
             <h2 className="text-3xl font-semibold text-slate-500">
               {inactivePoints}
@@ -574,9 +556,7 @@ const DropOffPoints = () => {
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-            <p className="text-xs text-slate-400 mb-2">
-              Barangays Covered
-            </p>
+            <p className="text-xs text-slate-400 mb-2">Barangays Covered</p>
 
             <h2 className="text-3xl font-semibold text-blue-600">
               {barangayCount}
@@ -618,9 +598,7 @@ const DropOffPoints = () => {
             <div className="py-20 flex flex-col items-center justify-center text-slate-400">
               <RefreshCw size={28} className="animate-spin mb-3" />
 
-              <p className="text-sm">
-                Loading drop-off points...
-              </p>
+              <p className="text-sm">Loading drop-off points...</p>
             </div>
           ) : filteredPoints.length === 0 ? (
             <div className="py-20 text-center">
@@ -721,10 +699,7 @@ const DropOffPoints = () => {
                       {/* PARTNER */}
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <Building2
-                            size={15}
-                            className="text-slate-400"
-                          />
+                          <Building2 size={15} className="text-slate-400" />
 
                           {point.partner || "—"}
                         </div>
@@ -734,24 +709,18 @@ const DropOffPoints = () => {
                       <td className="px-6 py-5">
                         {point.contact ? (
                           <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <Phone
-                              size={14}
-                              className="text-slate-400"
-                            />
+                            <Phone size={14} className="text-slate-400" />
 
                             {point.contact}
                           </div>
                         ) : (
-                          <span className="text-sm text-slate-400">
-                            —
-                          </span>
+                          <span className="text-sm text-slate-400">—</span>
                         )}
                       </td>
 
                       {/* COORDINATES */}
                       <td className="px-6 py-5">
-                        {point.latitude !== null &&
-                        point.longitude !== null ? (
+                        {point.latitude !== null && point.longitude !== null ? (
                           <button
                             onClick={() => openMap(point)}
                             className="text-left group"
@@ -792,9 +761,7 @@ const DropOffPoints = () => {
                             }`}
                           />
 
-                          {point.is_active !== false
-                            ? "Active"
-                            : "Inactive"}
+                          {point.is_active !== false ? "Active" : "Inactive"}
                         </button>
                       </td>
 
@@ -810,18 +777,13 @@ const DropOffPoints = () => {
                           </button>
 
                           <button
-                            onClick={() =>
-                              handleDelete(point.id, point.name)
-                            }
+                            onClick={() => handleDelete(point.id, point.name)}
                             disabled={deletingId === point.id}
                             className="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50"
                             title="Delete"
                           >
                             {deletingId === point.id ? (
-                              <RefreshCw
-                                size={16}
-                                className="animate-spin"
-                              />
+                              <RefreshCw size={16} className="animate-spin" />
                             ) : (
                               <Trash2 size={16} />
                             )}
@@ -844,14 +806,11 @@ const DropOffPoints = () => {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden">
-
             {/* MODAL HEADER */}
             <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-slate-800">
-                  {editingId
-                    ? "Edit Drop-off Point"
-                    : "Add Drop-off Point"}
+                  {editingId ? "Edit Drop-off Point" : "Add Drop-off Point"}
                 </h2>
 
                 <p className="text-xs text-slate-400 mt-1">
@@ -874,7 +833,6 @@ const DropOffPoints = () => {
               className="overflow-y-auto max-h-[calc(90vh-150px)]"
             >
               <div className="p-6 space-y-6">
-
                 {error && (
                   <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
                     {error}
@@ -888,7 +846,6 @@ const DropOffPoints = () => {
                   </h3>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
                     {/* NAME */}
                     <div className="md:col-span-2">
                       <label className="block text-xs font-semibold text-slate-500 mb-2">
@@ -916,15 +873,10 @@ const DropOffPoints = () => {
                         onChange={handleChange}
                         className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#2D7A7F]/20 focus:border-[#2D7A7F]"
                       >
-                        <option value="">
-                          Select barangay
-                        </option>
+                        <option value="">Select barangay</option>
 
                         {BARANGAYS.map((barangay) => (
-                          <option
-                            key={barangay}
-                            value={barangay}
-                          >
+                          <option key={barangay} value={barangay}>
                             {barangay}
                           </option>
                         ))}
@@ -975,15 +927,41 @@ const DropOffPoints = () => {
                         GPS Coordinates
                       </h3>
 
-                      <p className="text-xs text-slate-400 mt-1">
-                        Use the official latitude and longitude of
-                        the physical drop-off location.
-                      </p>
+                      <div className="text-xs text-slate-500 mt-2 space-y-1">
+                        <p className="font-medium text-slate-600">
+                          How to get the exact coordinates:
+                        </p>
+
+                        <p>
+                          1. Open Google Maps and find the exact drop-off
+                          location.
+                        </p>
+
+                        <p>2. Right-click the exact location on the map.</p>
+
+                        <p>
+                          3. Click the displayed latitude and longitude to copy
+                          them.
+                        </p>
+
+                        <p>
+                          4. Paste the first number into Latitude and the second
+                          into Longitude.
+                        </p>
+
+                        <p className="mt-2 text-blue-600 font-medium">
+                          Example: 14.701234, 120.983456
+                        </p>
+
+                        <p className="text-amber-600">
+                          Make sure the pin is on the actual drop-off point, not
+                          just somewhere within the barangay.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
                     {/* LATITUDE */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-500 mb-2">
@@ -1031,7 +1009,6 @@ const DropOffPoints = () => {
                   </h3>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
                     <div>
                       <label className="block text-xs font-semibold text-slate-500 mb-2">
                         Contact Number
@@ -1109,8 +1086,7 @@ const DropOffPoints = () => {
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                     {DEVICE_OPTIONS.map((device) => {
-                      const selected =
-                        form.accepted_devices.includes(device);
+                      const selected = form.accepted_devices.includes(device);
 
                       return (
                         <button
@@ -1149,20 +1125,14 @@ const DropOffPoints = () => {
                 >
                   {saving ? (
                     <>
-                      <RefreshCw
-                        size={16}
-                        className="animate-spin"
-                      />
-
+                      <RefreshCw size={16} className="animate-spin" />
                       Saving...
                     </>
                   ) : (
                     <>
                       <Save size={16} />
 
-                      {editingId
-                        ? "Save Changes"
-                        : "Add Drop-off Point"}
+                      {editingId ? "Save Changes" : "Add Drop-off Point"}
                     </>
                   )}
                 </button>
