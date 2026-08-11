@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 
-import "leaflet/dist/leaflet.css";
-
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
-
 import {
   Map,
   Users,
@@ -66,59 +62,37 @@ const EWasteHotspots = () => {
         .from("transactions")
         .select(
           `
-    id,
-    barangay,
-    status,
-    created_at,
-    drop_off_point_id,
-    drop_off_points (
-      id,
-      name,
-      barangay,
-      city,
-      address,
-      latitude,
-      longitude
-    )
-  `,
+        id,
+        barangay,
+        status,
+        created_at,
+        drop_off_point_id
+      `,
         )
         .eq("status", "completed");
 
       if (error) {
-        console.error(error);
+        console.error("Error loading hotspots:", error);
         return;
       }
 
       const grouped = {};
 
       data.forEach((transaction) => {
-        const point = transaction.drop_off_points;
+        if (!transaction.barangay) return;
 
-        if (!point) return;
-
-        if (!grouped[point.id]) {
-          grouped[point.id] = {
-            id: point.id,
-            name: point.name,
-            barangay: point.barangay,
-            city: point.city,
-            address: point.address,
-            latitude: Number(point.latitude),
-            longitude: Number(point.longitude),
-            devices: 0,
-          };
+        if (!grouped[transaction.barangay]) {
+          grouped[transaction.barangay] = 0;
         }
 
-        grouped[point.id].devices += 1;
+        grouped[transaction.barangay] += 1;
       });
 
-      const points = Object.values(grouped);
+      const maxDevices = Math.max(...Object.values(grouped), 1);
 
-      const maxDevices = Math.max(...points.map((point) => point.devices), 1);
-
-      const hotspotData = points
-        .map((point) => {
-          const percentage = point.devices / maxDevices;
+      const hotspotData = Object.entries(grouped)
+        .map(([barangay, devices]) => {
+          const percentage = devices / maxDevices;
 
           let intensity = "Low";
           let color = "bg-emerald-400";
@@ -135,7 +109,8 @@ const EWasteHotspots = () => {
           }
 
           return {
-            ...point,
+            barangay,
+            devices,
             intensity,
             color,
             trend: "+",
@@ -293,79 +268,75 @@ const EWasteHotspots = () => {
               </div>
 
               {/* MAP CANVAS */}
-              <div className="relative h-[520px] rounded-3xl overflow-hidden border border-[#E9EDF5]">
-                <MapContainer
-                  center={[14.676, 120.983]}
-                  zoom={12}
-                  scrollWheelZoom={true}
-                  className="h-full w-full"
-                >
-                  <TileLayer
-                    attribution="&copy; OpenStreetMap contributors"
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
+              <div className="relative h-[520px] rounded-3xl bg-[#F4F6FA] overflow-hidden border border-[#E9EDF5]">
+                {/* Privacy notice */}
+                <div className="absolute top-4 left-4 z-10 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-400 shadow-sm">
+                  E-waste activity is shown by area for privacy.
+                </div>
 
-                  {hotspots.map((spot) => {
-                    let radius = 12;
-                    let mapColor = "#34d399";
+                {/* Hotspot visualization */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {hotspots.length === 0 ? (
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-slate-400">
+                        No e-waste activity recorded yet.
+                      </p>
+                      <p className="text-xs text-slate-300 mt-1">
+                        Completed transactions will appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="relative w-full h-full">
+                      {hotspots.map((spot, index) => {
+                        const positions = [
+                          { left: "38%", top: "52%" },
+                          { left: "48%", top: "45%" },
+                          { left: "55%", top: "38%" },
+                          { left: "63%", top: "33%" },
+                          { left: "22%", top: "68%" },
+                          { left: "30%", top: "62%" },
+                        ];
 
-                    if (spot.intensity === "Medium") {
-                      radius = 18;
-                      mapColor = "#facc15";
-                    }
+                        const position = positions[index % positions.length];
 
-                    if (spot.intensity === "High") {
-                      radius = 25;
-                      mapColor = "#f97316";
-                    }
+                        let size = "w-12 h-12";
+                        let color = "bg-emerald-400/40";
 
-                    if (spot.intensity === "Very High") {
-                      radius = 35;
-                      mapColor = "#ef4444";
-                    }
+                        if (spot.intensity === "Medium") {
+                          size = "w-16 h-16";
+                          color = "bg-yellow-400/45";
+                        }
 
-                    return (
-                      <CircleMarker
-                        key={spot.id}
-                        center={[spot.latitude, spot.longitude]}
-                        radius={radius}
-                        pathOptions={{
-                          color: mapColor,
-                          fillColor: mapColor,
-                          fillOpacity: 0.35,
-                          weight: 2,
-                        }}
-                      >
-                        <Popup>
-                          <div className="min-w-[200px]">
-                            <h3 className="font-semibold text-slate-700">
-                              {spot.name}
-                            </h3>
+                        if (spot.intensity === "High") {
+                          size = "w-20 h-20";
+                          color = "bg-orange-500/45";
+                        }
 
-                            <p className="text-xs text-slate-400 mt-1">
-                              {spot.barangay}, {spot.city}
-                            </p>
+                        if (spot.intensity === "Very High") {
+                          size = "w-28 h-28";
+                          color = "bg-red-500/45";
+                        }
 
-                            <div className="mt-3 space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span>Devices</span>
-                                <strong>{spot.devices}</strong>
-                              </div>
-
-                              <div className="flex justify-between">
-                                <span>Intensity</span>
-                                <strong>{spot.intensity}</strong>
-                              </div>
-                            </div>
+                        return (
+                          <div
+                            key={spot.barangay}
+                            className={`absolute ${size} ${color}
+                rounded-full
+                -translate-x-1/2
+                -translate-y-1/2
+                flex items-center justify-center
+                transition-all duration-300`}
+                            style={{
+                              left: position.left,
+                              top: position.top,
+                            }}
+                          >
+                            <div className="w-4 h-4 rounded-full bg-white/80 shadow-sm" />
                           </div>
-                        </Popup>
-                      </CircleMarker>
-                    );
-                  })}
-                </MapContainer>
-
-                <div className="absolute top-4 left-4 z-[1000] bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-400 shadow-sm">
-                  Click on hotspots for details
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
