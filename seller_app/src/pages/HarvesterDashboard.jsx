@@ -7,6 +7,7 @@ import TransactionsView from "./TransactionsView";
 import BarangayLeaderboard from "./BarangayLeaderboard"; // Ensure path is correct
 import bannerBg from "./assets/banner.jpeg";
 import DonationTab from "./DonationTab";
+import SellerProfileModal from "./SellerProfileModal";
 
 import {
   Search,
@@ -45,7 +46,11 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("browse");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [conditionFilter, setConditionFilter] = useState("All Conditions");
+  const [sortOption, setSortOption] = useState("Newest");
   const [selectedListing, setSelectedListing] = useState(null);
+  const [selectedSellerId, setSelectedSellerId] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -539,37 +544,59 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         .from("listings")
         .select(
           `
-    *,
-    bids(
-  amount,
-  bidder_id,
-  profiles:bidder_id (
-    full_name
-  )
-),
-    profiles:seller_id (
-      full_name,
-      barangay
-    )
-  `,
+        *,
+        bids(
+          amount,
+          bidder_id,
+          status,
+          created_at,
+          profiles:bidder_id (
+            full_name
+          )
+        ),
+        profiles:seller_id (
+          id,
+          full_name,
+          barangay,
+          average_rating
+        )
+      `,
         )
         .eq("status", "active")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      const formattedData = data.map((listing) => {
+      const formattedData = (data || []).map((listing) => {
+        const bids = Array.isArray(listing.bids) ? listing.bids : [];
+
         const highestBid =
-          listing.bids && listing.bids.length > 0
-            ? listing.bids.reduce((max, bid) =>
-                bid.amount > max.amount ? bid : max,
+          bids.length > 0
+            ? bids.reduce((max, bid) =>
+                Number(bid.amount || 0) > Number(max.amount || 0) ? bid : max,
               )
             : null;
 
+        /*
+         * IMPORTANT:
+         * Seller information comes directly from profiles.
+         */
+        const sellerName = listing.profiles?.full_name?.trim() || "Seller";
+
         return {
           ...listing,
-          highest_bid: highestBid ? highestBid.amount : null,
+
+          seller_name: sellerName,
+
+          seller_barangay: listing.profiles?.barangay || "Valenzuela",
+
+          seller_rating: Number(listing.profiles?.average_rating || 0),
+
+          highest_bid: highestBid ? Number(highestBid.amount) : null,
+
           highest_bidder: highestBid?.profiles?.full_name || null,
+
+          bid_count: bids.length,
         };
       });
 
@@ -695,9 +722,44 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     }
   };
+  const filteredListings = listings
+    .filter((item) => {
+      const search = searchTerm.toLowerCase().trim();
+
+      if (!search) return true;
+
+      return (
+        item.device_model?.toLowerCase().includes(search) ||
+        item.device_type?.toLowerCase().includes(search) ||
+        item.category?.toLowerCase().includes(search) ||
+        item.seller_name?.toLowerCase().includes(search)
+      );
+    })
+    .filter((item) => {
+      if (conditionFilter === "All Conditions") {
+        return true;
+      }
+
+      return item.condition?.toLowerCase() === conditionFilter.toLowerCase();
+    })
+    .sort((a, b) => {
+      if (sortOption === "Price Low") {
+        return Number(a.asking_price || 0) - Number(b.asking_price || 0);
+      }
+
+      if (sortOption === "Price High") {
+        return Number(b.asking_price || 0) - Number(a.asking_price || 0);
+      }
+
+      if (sortOption === "Highest Bid") {
+        return Number(b.highest_bid || 0) - Number(a.highest_bid || 0);
+      }
+
+      // Newest
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
   return (
     <div className="min-h-screen bg-[#f1f5f9] font-sans text-slate-900">
-      
       {/* ===== TOP BANNER ===== */}
       <div
         className="relative overflow-hidden min-h-[380px] px-6 pt-6 pb-10 bg-cover bg-center"
@@ -908,6 +970,21 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               )}
             </div>
           </div>
+          {selectedSellerId && (
+            <SellerProfileModal
+              sellerId={selectedSellerId}
+              onClose={() => setSelectedSellerId(null)}
+              onMessage={(seller) => {
+                setSelectedSellerId(null);
+
+                // Optional:
+                // switch to your Messages tab here
+                // if you want "Message Seller" to open
+                // the messaging interface.
+                console.log("Message seller:", seller.id);
+              }}
+            />
+          )}
           {showProfileModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
@@ -961,11 +1038,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     </div>
                   </div>
                 </div>
-                
 
                 {/* CONTENT */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
-                
                   {/* EDIT BUTTON */}
                   <div className="flex justify-end">
                     <button
@@ -1164,7 +1239,6 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     </div>
                   </div>
                 </div>
-                
 
                 {/* FOOTER */}
                 {isEditingProfile && (
@@ -1323,106 +1397,175 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           </div>
         </div>
       </div>
+
       <div className="bg-white  border border-slate-100 shadow-sm p-4 mb-8">
-        <div className="p-6">
-        <div className="flex gap-3 items-center">
-          <div className="relative flex-1">
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-              size={18}
-            />
+        {/* =========================================================
+    SEARCH + FILTER
+========================================================= */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-5">
+          <div className="flex flex-col md:flex-row gap-3">
+            {/* SEARCH */}
+            <div className="relative flex-1">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                size={17}
+              />
 
-            <input
-              type="text"
-              placeholder="Search by device name or model..."
-              className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-lime-500/20"
-            />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by device name or model..."
+                className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20 focus:border-[#769c2d]"
+              />
+
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            {/* CONDITION */}
+            <select
+              value={conditionFilter}
+              onChange={(e) => setConditionFilter(e.target.value)}
+              className="md:w-40 px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20"
+            >
+              <option>All Conditions</option>
+              <option>Working</option>
+              <option>Defective</option>
+              <option>Parts Only</option>
+            </select>
+
+            {/* SORT */}
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+              className="md:w-36 px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20"
+            >
+              <option value="Newest">Newest</option>
+              <option value="Price Low">Price: Low</option>
+              <option value="Price High">Price: High</option>
+              <option value="Highest Bid">Highest Bid</option>
+            </select>
           </div>
-
-          <select className="h-[56px] bg-slate-50 border border-slate-100 rounded-2xl px-5 text-sm font-semibold text-slate-600">
-            <option>All Conditions</option>
-          </select>
-
-          <button className="h-[56px] w-[56px] flex items-center justify-center bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 hover:bg-slate-100 transition">
-            <LayoutGrid size={18} />
-          </button>
         </div>
-      </div>
 
-      <p className="text-xs font-bold text-slate-400 mb-6 flex justify-between">
-        <span className=" rounded-full px-3 py-1 ">
-          {listings.length} listings found
-        </span>
-        <span>Sorted by: Nearest</span>
-      </p>
+        {/* RESULT COUNT */}
+        <div className="flex justify-between items-center mb-4 px-1">
+          <p className="text-[10px] font-bold text-slate-400">
+            {filteredListings.length}{" "}
+            {filteredListings.length === 1 ? "listing" : "listings"} found
+          </p>
 
-      {/* --- TAB CONTENT --- */}
-      {activeTab === "browse" ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
-          {listings.map((item) => (
-            <ListingCard
-              key={item.id}
-              item={item}
-              onBid={() => setSelectedListing(item)}
-              isVerified={isVerified}
-            />
-          ))}
-        </div>
-      ) : activeTab === "leaderboard" ? (
-        <BarangayLeaderboard />
-      ) : activeTab === "bids" ? (
-        <MyBidsView bids={myBids} />
-      ) : activeTab === "transactions" ? (
-        <TransactionsView
-          transactions={transactions}
-          selectedTransaction={selectedTransaction}
-          onSelect={setSelectedTransaction}
-          handleCompleteHandover={handleCompleteHandover}
-          session={session} // Add this prop
-        />
-      ) : activeTab === "inventory" ? ( // ADD THIS
-        <InventoryView userId={session?.user?.id} />
-      ) : activeTab === "map" ? ( // ADD THIS BLOCK
-        <UrbanMineMap isVerified={isVerified} />
-      ) : activeTab === "messages" ? (
-        <MessagesView session={session} />
-      ) : activeTab === "alerts" ? (
-        <div className="space-y-8">
-          {/* This allows you to both manage alert settings AND see your matches */}
-          <HarvesterAlerts session={session} isVerified={isVerified} />
-
-          {/* ADD THIS LINE TO RENDER THE NOTIFICATIONS LIST */}
-          <AlertsView
-            notifications={notifications.filter(
-              (n) => n.type === "alert_match",
-            )}
-          />
-        </div>
-      ) : activeTab === "donation" ? (
-        <DonationTab
-          profileData={profileData}
-          onOpenDonationModal={() => setDonationModalOpen(true)}
-        />
-      ) : (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-300 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-          <LayoutGrid size={48} className="mb-4 opacity-20" />
-          <p className="font-bold text-sm uppercase tracking-widest">
-            Section Coming Soon
+          <p className="text-[9px] font-bold text-slate-400">
+            Sorted by: <span className="text-slate-600">{sortOption}</span>
           </p>
         </div>
-      )}
 
-      {selectedListing && (
-        <PlaceBidModal
-          listing={selectedListing}
-          onClose={() => setSelectedListing(null)}
-          // Pass user id for the Ask Question functionality
-          session={session}
-          onSubmit={handlePlaceBid}
-          // Pass the new function for sending just a message
-          onSendMessage={handleSendMessageOnly}
-        />
-      )}
+        <p className="text-xs font-bold text-slate-400 mb-6 flex justify-between">
+          <span className=" rounded-full px-3 py-1 ">
+            {listings.length} listings found
+          </span>
+          <span>Sorted by: Nearest</span>
+        </p>
+
+        {/* --- TAB CONTENT --- */}
+        {activeTab === "browse" ? (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-20">
+            {loading ? (
+              <div className="xl:col-span-2 py-20 text-center">
+                <div className="w-8 h-8 border-2 border-[#769c2d] border-t-transparent rounded-full animate-spin mx-auto" />
+
+                <p className="text-xs font-bold text-slate-400 mt-3">
+                  Loading listings...
+                </p>
+              </div>
+            ) : filteredListings.length === 0 ? (
+              <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 py-20 text-center">
+                <Box size={36} className="mx-auto text-slate-200" />
+
+                <p className="text-sm font-black text-slate-500 mt-4">
+                  No listings found
+                </p>
+
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Try another search or condition.
+                </p>
+              </div>
+            ) : (
+              filteredListings.map((item) => (
+                <ListingCard
+                  key={item.id}
+                  item={item}
+                  onBid={() => setSelectedListing(item)}
+                  onSellerClick={() =>
+                    setSelectedSellerId(item.seller_id || item.profiles?.id)
+                  }
+                  isVerified={isVerified}
+                />
+              ))
+            )}
+          </div>
+        ) : activeTab === "leaderboard" ? (
+          <BarangayLeaderboard />
+        ) : activeTab === "bids" ? (
+          <MyBidsView bids={myBids} />
+        ) : activeTab === "transactions" ? (
+          <TransactionsView
+            transactions={transactions}
+            selectedTransaction={selectedTransaction}
+            onSelect={setSelectedTransaction}
+            handleCompleteHandover={handleCompleteHandover}
+            session={session} // Add this prop
+          />
+        ) : activeTab === "inventory" ? ( // ADD THIS
+          <InventoryView userId={session?.user?.id} />
+        ) : activeTab === "map" ? ( // ADD THIS BLOCK
+          <UrbanMineMap isVerified={isVerified} />
+        ) : activeTab === "messages" ? (
+          <MessagesView session={session} />
+        ) : activeTab === "alerts" ? (
+          <div className="space-y-8">
+            {/* This allows you to both manage alert settings AND see your matches */}
+            <HarvesterAlerts session={session} isVerified={isVerified} />
+
+            {/* ADD THIS LINE TO RENDER THE NOTIFICATIONS LIST */}
+            <AlertsView
+              notifications={notifications.filter(
+                (n) => n.type === "alert_match",
+              )}
+            />
+          </div>
+        ) : activeTab === "donation" ? (
+          <DonationTab
+            profileData={profileData}
+            onOpenDonationModal={() => setDonationModalOpen(true)}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-300 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
+            <LayoutGrid size={48} className="mb-4 opacity-20" />
+            <p className="font-bold text-sm uppercase tracking-widest">
+              Section Coming Soon
+            </p>
+          </div>
+        )}
+
+        {selectedListing && (
+          <PlaceBidModal
+            listing={selectedListing}
+            onClose={() => setSelectedListing(null)}
+            // Pass user id for the Ask Question functionality
+            session={session}
+            onSubmit={handlePlaceBid}
+            // Pass the new function for sending just a message
+            onSendMessage={handleSendMessageOnly}
+          />
+        )}
       </div>
       <footer className="mt-20 bg-[#07122b] text-white overflow-hidden">
         <div className="max-w-7xl mx-auto px-10 py-16">
@@ -1721,7 +1864,6 @@ const MyBidsView = ({ bids }) => {
           </div>
         ))}
       </div>
-      
     </div>
   );
 };
@@ -1781,7 +1923,6 @@ const AlertsView = ({ notifications }) => {
           </div>
         </div>
       ))}
-      
     </div>
   );
 };
@@ -2167,8 +2308,6 @@ const MessagesView = ({ session }) => {
           </div>
         </div>
       </div>
-
-      
     </div>
   );
 };
@@ -2207,23 +2346,25 @@ const MenuLink = ({ icon, label }) => (
   </button>
 );
 
-const ListingCard = ({ item, onBid, isVerified }) => {
+const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
   const [activeIndex, setActiveIndex] = React.useState(0);
 
-  const getConditionStyles = (cond) => {
-    switch (cond?.toLowerCase()) {
+  const getConditionStyles = (condition) => {
+    switch (condition?.toLowerCase()) {
       case "defective":
-        return "bg-blue-50 text-blue-600";
+        return "bg-blue-50 text-blue-600 border-blue-100";
+
       case "working":
-        return "bg-emerald-50 text-emerald-600";
+        return "bg-emerald-50 text-emerald-600 border-emerald-100";
+
       case "parts only":
-        return "bg-orange-50 text-orange-600";
+        return "bg-orange-50 text-orange-600 border-orange-100";
+
       default:
-        return "bg-slate-50 text-slate-600";
+        return "bg-slate-50 text-slate-600 border-slate-100";
     }
   };
 
-  // FIXED MEDIA HANDLING
   const listingMedia = Array.isArray(item.images)
     ? item.images
     : item.images
@@ -2233,7 +2374,9 @@ const ListingCard = ({ item, onBid, isVerified }) => {
   const currentMedia = listingMedia[activeIndex] || null;
 
   const isVideoFile = (url) => {
-    if (!url || typeof url !== "string") return false;
+    if (!url || typeof url !== "string") {
+      return false;
+    }
 
     return (
       url.includes(".mp4") ||
@@ -2247,95 +2390,140 @@ const ListingCard = ({ item, onBid, isVerified }) => {
   const nextMedia = (e) => {
     e.stopPropagation();
 
+    if (listingMedia.length <= 1) return;
+
     setActiveIndex((prev) => (prev === listingMedia.length - 1 ? 0 : prev + 1));
   };
 
   const prevMedia = (e) => {
     e.stopPropagation();
 
+    if (listingMedia.length <= 1) return;
+
     setActiveIndex((prev) => (prev === 0 ? listingMedia.length - 1 : prev - 1));
   };
 
+  const highestBid = Number(item.highest_bid || 0);
+
+  const askingPrice = Number(item.asking_price || 0);
+
+  const bidCount = Number(item.bid_count || 0);
+
+  const competition =
+    bidCount >= 5
+      ? "High Competition"
+      : bidCount >= 2
+        ? "Moderate Competition"
+        : "No Competition";
+
+  const competitionStyle =
+    bidCount >= 5
+      ? "bg-red-50 text-red-500"
+      : bidCount >= 2
+        ? "bg-orange-50 text-orange-500"
+        : "bg-emerald-50 text-emerald-500";
+
+  const sellerName = item.seller_name || item.profiles?.full_name || "Seller";
+
+  const sellerBarangay =
+    item.seller_barangay || item.profiles?.barangay || "Valenzuela";
+
+  const postedDate = item.created_at
+    ? new Date(item.created_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Recently";
+
+  const sellerRating = Number(
+    item.seller_rating || item.profiles?.average_rating || 0,
+  );
+
   return (
-    <div
-      onClick={onBid}
-      className="bg-white rounded-[2.5rem] overflow-hidden border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative group cursor-pointer"
-    >
-      {/* MEDIA SECTION */}
-      <div className="relative h-64 bg-slate-100 overflow-hidden">
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-200">
+      {/* =====================================================
+          IMAGE
+      ===================================================== */}
+      <div
+        className="relative h-[250px] bg-slate-100 overflow-hidden cursor-pointer group"
+        onClick={onBid}
+      >
         {currentMedia ? (
           isVideoFile(currentMedia) ? (
             <video
               src={currentMedia}
               className="w-full h-full object-cover"
-              controls
               muted
+              controls
             />
           ) : (
             <img
               src={currentMedia}
-              alt={item.device_model}
+              alt={item.device_model || "E-waste listing"}
+              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
               onError={(e) => {
-                e.target.src = "https://placehold.co/600x400?text=No+Image";
+                e.currentTarget.src =
+                  "https://placehold.co/700x500?text=No+Image";
               }}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
           )
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
-            <Box size={42} />
+            <Box size={38} />
 
-            <p className="text-[10px] font-bold uppercase tracking-widest mt-3">
-              No Media Uploaded
+            <p className="text-[9px] font-bold uppercase tracking-widest mt-2">
+              No Image
             </p>
           </div>
         )}
 
         {/* CONDITION */}
-        <div className="absolute top-4 left-4 z-20">
+        <div className="absolute top-3 left-3">
           <span
-            className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm backdrop-blur-sm ${getConditionStyles(item.condition)}`}
+            className={`px-2.5 py-1 rounded-full border text-[8px] font-black uppercase ${getConditionStyles(
+              item.condition,
+            )}`}
           >
-            {item.condition || "Condition"}
+            {item.condition || "Unknown"}
           </span>
         </div>
 
-        {/* MEDIA COUNT */}
+        {/* IMAGE COUNT */}
         {listingMedia.length > 1 && (
-          <div className="absolute top-4 right-4 bg-black/70 backdrop-blur-sm text-white px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 z-20">
-            <Camera size={11} />
+          <div className="absolute bottom-3 right-3 bg-black/60 text-white px-2 py-1 rounded-full text-[8px] font-bold">
             {activeIndex + 1}/{listingMedia.length}
           </div>
         )}
 
-        {/* LEFT BUTTON */}
+        {/* LEFT */}
         {listingMedia.length > 1 && (
           <button
             onClick={prevMedia}
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm transition"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 text-slate-500 shadow-sm hover:bg-white"
           >
             ←
           </button>
         )}
 
-        {/* RIGHT BUTTON */}
+        {/* RIGHT */}
         {listingMedia.length > 1 && (
           <button
             onClick={nextMedia}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm transition"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 text-slate-500 shadow-sm hover:bg-white"
           >
             →
           </button>
         )}
 
-        {/* DOT INDICATORS */}
+        {/* DOTS */}
         {listingMedia.length > 1 && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1">
             {listingMedia.map((_, index) => (
               <div
                 key={index}
-                className={`w-2 h-2 rounded-full transition-all ${
-                  activeIndex === index ? "bg-white scale-125" : "bg-white/40"
+                className={`w-1.5 h-1.5 rounded-full ${
+                  activeIndex === index ? "bg-white" : "bg-white/50"
                 }`}
               />
             ))}
@@ -2343,69 +2531,149 @@ const ListingCard = ({ item, onBid, isVerified }) => {
         )}
       </div>
 
-      {/* CONTENT */}
-      <div className="p-8">
-        {/* ICON */}
-        <div className="absolute top-[18.5rem] right-8 z-10">
-          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 shadow-md border border-slate-100 group-hover:text-[#769c2d] transition-colors">
-            <Box size={28} />
-          </div>
-        </div>
-
-        {/* TITLE */}
-        <div className="mb-5 pr-16">
-          <h3 className="text-xl font-black text-slate-800 leading-tight">
+      {/* =====================================================
+          CONTENT
+      ===================================================== */}
+      <div className="p-4">
+        {/* DEVICE TITLE */}
+        <div className="mb-2">
+          <h3 className="text-sm font-black text-slate-800">
             {item.device_model || "Device Name"}
           </h3>
 
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-            {item.device_type || item.category || "Generic Model"}
+          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+            {item.device_type || item.category || "E-waste Device"}
           </p>
         </div>
 
+        {/* RATING */}
+        {sellerRating > 0 && (
+          <div className="flex items-center gap-1 mb-2">
+            <span className="text-yellow-400 text-[10px]">★</span>
+
+            <span className="text-[9px] font-bold text-slate-500">
+              {sellerRating.toFixed(1)}
+            </span>
+          </div>
+        )}
+
         {/* DESCRIPTION */}
-        <p className="text-xs text-slate-500 mb-5 leading-relaxed line-clamp-2 min-h-[40px]">
-          {item.description || "Description not available for this listing."}
+        <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-2 min-h-[30px]">
+          {item.description || "No description provided for this listing."}
         </p>
 
         {/* LOCATION */}
-        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mb-6">
-          <MapPin size={13} className="text-slate-300" />
+        <div className="flex items-center gap-1.5 mt-3">
+          <MapPin size={11} className="text-slate-400" />
 
-          <span>Barangay {item.profiles?.barangay || "Unknown"}</span>
+          <span className="text-[9px] font-bold text-slate-400">
+            Barangay {sellerBarangay}
+          </span>
         </div>
 
-        {/* PRICE */}
-        <div className="bg-[#f0f9ff] rounded-[2rem] p-5 border border-blue-100/50">
-          <div className="flex justify-between items-center">
+        {/* =================================================
+            PRICE BOX
+        ================================================= */}
+        <div className="mt-3 bg-[#f5f8ff] border border-blue-100 rounded-xl p-3">
+          <div className="grid grid-cols-2 gap-3">
+            {/* ASKING */}
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+              <p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">
                 Asking Price
               </p>
 
-              <p className="text-2xl font-black text-[#769c2d]">
-                ₱{Number(item.asking_price || 0).toLocaleString()}
+              <p className="text-base font-black text-slate-800 mt-0.5">
+                ₱{askingPrice.toLocaleString()}
               </p>
             </div>
 
+            {/* HIGHEST BID */}
+            <div>
+              <p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">
+                Current Highest Bid
+              </p>
+
+              <p className="text-base font-black text-[#769c2d] mt-0.5">
+                {highestBid > 0
+                  ? `₱${highestBid.toLocaleString()}`
+                  : "No bids yet"}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-blue-100 mt-2 pt-2 flex items-center justify-between">
+            <span className="text-[7px] text-slate-400">
+              Total Bids: <strong className="text-slate-600">{bidCount}</strong>
+            </span>
+
+            <span
+              className={`px-2 py-1 rounded-full text-[7px] font-black ${competitionStyle}`}
+            >
+              {competition}
+            </span>
+          </div>
+        </div>
+
+        {/* =================================================
+            SELLER
+        ================================================= */}
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            {/* SELLER PROFILE */}
+            <div
+              className="min-w-0 cursor-pointer group"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSellerClick?.();
+              }}
+            >
+              <p className="text-[7px] text-slate-400 uppercase font-bold">
+                Seller
+              </p>
+
+              <div className="flex items-center gap-1.5 mt-1">
+                {/* Seller Avatar */}
+                <div className="w-6 h-6 rounded-full bg-[#4a7c59] text-white flex items-center justify-center text-[8px] font-black shrink-0">
+                  {sellerName
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </div>
+
+                {/* Seller Name */}
+                <span className="text-[9px] font-bold text-slate-700 truncate max-w-[150px] group-hover:text-[#769c2d] transition-colors">
+                  {sellerName}
+                </span>
+              </div>
+
+              {/* Click hint */}
+              <p className="text-[7px] text-slate-300 mt-1 group-hover:text-[#769c2d] transition-colors">
+                Click to view profile
+              </p>
+            </div>
+
+            {/* BID BUTTON */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onBid();
               }}
               disabled={!isVerified}
-              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+              className={`px-4 py-2.5 rounded-lg text-[8px] font-black uppercase tracking-wide flex items-center gap-1.5 transition-all ${
                 isVerified
-                  ? "bg-[#769c2d] hover:bg-lime-700 text-white shadow-lg"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  ? "bg-[#769c2d] text-white hover:bg-[#658724]"
+                  : "bg-slate-100 text-slate-400 cursor-not-allowed"
               }`}
             >
-              {isVerified ? "Place Bid" : "Locked"}
+              <MessageSquare size={11} />
+
+              {isVerified ? "Bid or Message" : "Locked"}
             </button>
           </div>
         </div>
       </div>
-      
     </div>
   );
 };
@@ -2506,8 +2774,38 @@ const PlaceBidModal = ({
               </span>
             </div>
             <span className="text-[10px] text-emerald-600 font-bold bg-white/70 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-inner">
-              <MapPin size={12} /> Barangay Marulas
+              <MapPin size={12} />
+              Barangay{" "}
+              {listing.profiles?.barangay ||
+                listing.seller_barangay ||
+                "Valenzuela"}
             </span>
+            <div className="mt-4 flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-[#4a7c59] text-white flex items-center justify-center text-[9px] font-black">
+                {(
+                  listing.profiles?.full_name ||
+                  listing.seller_name ||
+                  "Seller"
+                )
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </div>
+
+              <div>
+                <p className="text-[8px] text-slate-400 uppercase font-bold">
+                  Seller
+                </p>
+
+                <p className="text-[10px] font-black text-slate-700">
+                  {listing.profiles?.full_name ||
+                    listing.seller_name ||
+                    "Seller"}
+                </p>
+              </div>
+            </div>
           </div>
 
           {activeTab === "bid" && (
