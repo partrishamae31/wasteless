@@ -1,4 +1,6 @@
-import React from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "../supabaseClient";
+
 import {
   Map,
   Users,
@@ -11,6 +13,8 @@ import {
 } from "lucide-react";
 
 const EWasteHotspots = () => {
+  const [hotspots, setHotspots] = useState([]);
+  const [dropOffPoints, setDropOffPoints] = useState([]);
   const stats = [
     {
       title: "Total Users",
@@ -42,58 +46,92 @@ const EWasteHotspots = () => {
     },
   ];
 
-  const hotspots = [
-    {
-      barangay: "Barangay 1",
-      intensity: "Very High",
-      devices: 25,
-      color: "bg-red-500",
-      glow: "bg-red-400/40",
-      trend: "+",
-    },
-    {
-      barangay: "Barangay Marulas",
-      intensity: "High",
-      devices: 15,
-      color: "bg-orange-500",
-      glow: "bg-orange-400/40",
-      trend: "+",
-    },
-    {
-      barangay: "Barangay 2",
-      intensity: "High",
-      devices: 12,
-      color: "bg-amber-500",
-      glow: "bg-amber-400/40",
-      trend: "-",
-    },
-    {
-      barangay: "Barangay San Roque",
-      intensity: "Medium",
-      devices: 9,
-      color: "bg-yellow-400",
-      glow: "bg-yellow-300/40",
-      trend: "+",
-    },
-  ];
+  const totalDevices = hotspots.reduce((sum, h) => sum + h.devices, 0);
 
-  const mapPoints = [
-    { size: "w-24 h-24", pos: "left-[38%] top-[52%]", color: "bg-red-500/35" },
-    { size: "w-16 h-16", pos: "left-[48%] top-[45%]", color: "bg-orange-500/35" },
-    { size: "w-14 h-14", pos: "left-[55%] top-[38%]", color: "bg-orange-400/35" },
-    { size: "w-12 h-12", pos: "left-[63%] top-[33%]", color: "bg-amber-400/35" },
-    { size: "w-8 h-8", pos: "left-[22%] top-[68%]", color: "bg-emerald-400/40" },
-    { size: "w-10 h-10", pos: "left-[30%] top-[62%]", color: "bg-emerald-400/40" },
-  ];
+  const activeBarangays = hotspots.length;
+
+  const highZones = hotspots.filter(
+    (h) => h.intensity === "High" || h.intensity === "Very High",
+  ).length;
+
+  const topBarangay = hotspots[0]?.barangay ?? "-";
+
+  useEffect(() => {
+    const loadHotspots = async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(
+          `
+        id,
+        barangay,
+        status,
+        created_at,
+        drop_off_point_id
+      `,
+        )
+        .eq("status", "completed");
+
+      if (error) {
+        console.error("Error loading hotspots:", error);
+        return;
+      }
+
+      const grouped = {};
+
+      data.forEach((transaction) => {
+        if (!transaction.barangay) return;
+
+        if (!grouped[transaction.barangay]) {
+          grouped[transaction.barangay] = 0;
+        }
+
+        grouped[transaction.barangay] += 1;
+      });
+
+      const maxDevices = Math.max(...Object.values(grouped), 1);
+
+      const hotspotData = Object.entries(grouped)
+        .map(([barangay, devices]) => {
+          const percentage = devices / maxDevices;
+
+          let intensity = "Low";
+          let color = "bg-emerald-400";
+
+          if (percentage >= 0.75) {
+            intensity = "Very High";
+            color = "bg-red-500";
+          } else if (percentage >= 0.5) {
+            intensity = "High";
+            color = "bg-orange-500";
+          } else if (percentage >= 0.25) {
+            intensity = "Medium";
+            color = "bg-yellow-400";
+          }
+
+          return {
+            barangay,
+            devices,
+            intensity,
+            color,
+            trend: "+",
+          };
+        })
+        .sort((a, b) => b.devices - a.devices);
+
+      setHotspots(hotspotData);
+    };
+
+    loadHotspots();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#F5F7FB] p-6">
       <div className="max-w-[1600px] mx-auto">
         {/* HEADER */}
         <div className="mb-5">
-          <h1 className="text-[28px] font-semibold text-[#1E293B]">
+          {/* <h1 className="text-[28px] font-semibold text-[#1E293B]">
             E-Waste Hotspots
-          </h1>
+          </h1> */}
         </div>
 
         {/* TOP STATS */}
@@ -151,10 +189,10 @@ const EWasteHotspots = () => {
           {/* SUMMARY BOXES */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
-              ["Total Data Points", "75"],
-              ["Active Barangays", "8"],
-              ["High Intensity Zones", "3"],
-              ["Top Category", "Tablet"],
+              ["Total Data Points", totalDevices],
+              ["Active Barangays", activeBarangays],
+              ["High Intensity Zones", highZones],
+              ["Top Hotspot", topBarangay],
             ].map((item, i) => (
               <div
                 key={i}
@@ -192,7 +230,7 @@ const EWasteHotspots = () => {
                     <span className="text-sm text-slate-400">{item}</span>
                     <ChevronDown size={16} className="text-slate-400" />
                   </div>
-                )
+                ),
               )}
             </div>
           </div>
@@ -231,20 +269,75 @@ const EWasteHotspots = () => {
 
               {/* MAP CANVAS */}
               <div className="relative h-[520px] rounded-3xl bg-[#F4F6FA] overflow-hidden border border-[#E9EDF5]">
-                {/* helper */}
-                <div className="absolute top-4 left-4 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-400 shadow-sm">
-                  Click on hotspots for details
+                {/* Privacy notice */}
+                <div className="absolute top-4 left-4 z-10 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-400 shadow-sm">
+                  E-waste activity is shown by area for privacy.
                 </div>
 
-                {/* hotspot circles */}
-                {mapPoints.map((point, i) => (
-                  <div
-                    key={i}
-                    className={`absolute ${point.pos} ${point.size} rounded-full ${point.color} flex items-center justify-center`}
-                  >
-                    <div className="w-4 h-4 rounded-full bg-white/70"></div>
-                  </div>
-                ))}
+                {/* Hotspot visualization */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {hotspots.length === 0 ? (
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-slate-400">
+                        No e-waste activity recorded yet.
+                      </p>
+                      <p className="text-xs text-slate-300 mt-1">
+                        Completed transactions will appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="relative w-full h-full">
+                      {hotspots.map((spot, index) => {
+                        const positions = [
+                          { left: "38%", top: "52%" },
+                          { left: "48%", top: "45%" },
+                          { left: "55%", top: "38%" },
+                          { left: "63%", top: "33%" },
+                          { left: "22%", top: "68%" },
+                          { left: "30%", top: "62%" },
+                        ];
+
+                        const position = positions[index % positions.length];
+
+                        let size = "w-12 h-12";
+                        let color = "bg-emerald-400/40";
+
+                        if (spot.intensity === "Medium") {
+                          size = "w-16 h-16";
+                          color = "bg-yellow-400/45";
+                        }
+
+                        if (spot.intensity === "High") {
+                          size = "w-20 h-20";
+                          color = "bg-orange-500/45";
+                        }
+
+                        if (spot.intensity === "Very High") {
+                          size = "w-28 h-28";
+                          color = "bg-red-500/45";
+                        }
+
+                        return (
+                          <div
+                            key={spot.barangay}
+                            className={`absolute ${size} ${color}
+                rounded-full
+                -translate-x-1/2
+                -translate-y-1/2
+                flex items-center justify-center
+                transition-all duration-300`}
+                            style={{
+                              left: position.left,
+                              top: position.top,
+                            }}
+                          >
+                            <div className="w-4 h-4 rounded-full bg-white/80 shadow-sm" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

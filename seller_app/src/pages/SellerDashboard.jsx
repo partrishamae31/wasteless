@@ -1250,7 +1250,7 @@ const SellerDashboard = ({ session }) => {
 
                         <div className="flex items-center gap-2 text-[11px] text-[#a16207] py-2">
                           <span className="opacity-60">
-                            📅 Listed on{" "}
+                            Listed on{" "}
                             {new Date(
                               donationReminder.created_at,
                             ).toLocaleDateString("en-PH", {
@@ -1366,7 +1366,7 @@ const SellerDashboard = ({ session }) => {
 
                         <div className="mt-3 text-sm text-slate-600">
                           <p>
-                            **Status:** Waiting for admin to assign a drop-off
+                            Status: Waiting for admin to assign a drop-off
                             point.
                           </p>
                         </div>
