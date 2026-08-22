@@ -5,7 +5,7 @@ import UrbanMineMap from "./UrbanMineMap";
 import InventoryView from "./InventoryView";
 import TransactionsView from "./TransactionsView";
 import BarangayLeaderboard from "./BarangayLeaderboard"; // Ensure path is correct
-import bannerBg from "./assets/banner.jpeg";
+import bannerBg from "./assets/banner.png";
 import DonationTab from "./DonationTab";
 import SellerProfileModal from "./SellerProfileModal";
 
@@ -1467,12 +1467,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           </p>
         </div>
 
-        <p className="text-xs font-bold text-slate-400 mb-6 flex justify-between">
+        {/* <p className="text-xs font-bold text-slate-400 mb-6 flex justify-between">
           <span className=" rounded-full px-3 py-1 ">
             {listings.length} listings found
           </span>
           <span>Sorted by: Nearest</span>
-        </p>
+        </p> */}
 
         {/* --- TAB CONTENT --- */}
         {activeTab === "browse" ? (

@@ -100,29 +100,6 @@ const DonationTab = ({ profileData }) => {
   return (
     <>
       <div className="space-y-6 animate-fadeIn">
-        {/* TOP STATS */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-            <h2 className="text-4xl font-black text-slate-800">5</h2>
-            <p className="text-xs text-slate-400 mt-1">Active Alerts</p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-            <h2 className="text-4xl font-black text-slate-800">3</h2>
-            <p className="text-xs text-slate-400 mt-1">Pending Bids</p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-            <h2 className="text-4xl font-black text-slate-800">24</h2>
-            <p className="text-xs text-slate-400 mt-1">Acquired Parts</p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-            <h2 className="text-4xl font-black text-slate-800">₱45,200</h2>
-            <p className="text-xs text-slate-400 mt-1">Total Spent</p>
-          </div>
-        </div>
-
         {/* HEADER */}
         <div className="flex justify-between items-center">
           <div>

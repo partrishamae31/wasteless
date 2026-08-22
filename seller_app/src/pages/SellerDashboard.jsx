@@ -4,7 +4,9 @@ import CreateListingModal from "./CreateListingModal"; // Adjust path as needed
 import SellerMessages from "./SellerMessages"; // Ensure the filename matches
 import DonationModal from "./DonationModal";
 import RateBuyerModal from "./RateBuyerModal";
-import banner from "./assets/banner.jpeg";
+import SellerDonationTab from "./SellerDonationTab";
+import SellerRepairShopsTab from "./SellerRepairShopsTab";
+import banner from "./assets/banner.png";
 
 import {
   X,
@@ -39,6 +41,7 @@ import {
   Upload,
   Leaf,
   Gift,
+  Wrench,
 } from "lucide-react";
 
 const SellerDashboard = ({ session }) => {
@@ -1194,7 +1197,13 @@ const SellerDashboard = ({ session }) => {
 
         {/* Tabs Navigation */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex mb-8">
-          {["listings", "messages", "transactions"].map((tab) => (
+          {[
+            "listings",
+            "messages",
+            "transactions",
+            "donation",
+            "repair-shops",
+          ].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1207,7 +1216,16 @@ const SellerDashboard = ({ session }) => {
               {tab === "listings" && <Package size={18} />}
               {tab === "messages" && <MessageSquare size={18} />}
               {tab === "transactions" && <ArrowLeftRight size={18} />}
-              {tab === "listings" ? "My Listings" : tab}
+              {tab === "donation" && <Gift size={18} />}
+              {tab === "repair-shops" && <Wrench size={18} />}
+
+              {tab === "listings"
+                ? "My Listings"
+                : tab === "repair-shops"
+                  ? "Repair Shops"
+                  : tab === "donation"
+                    ? "Donation"
+                    : tab}
             </button>
           ))}
         </div>
@@ -1561,7 +1579,6 @@ const SellerDashboard = ({ session }) => {
           )}
 
           {/* --- TRANSACTIONS TAB --- */}
-          {/* --- TRANSACTIONS TAB --- */}
           {activeTab === "transactions" && (
             <div className="animate-in fade-in duration-500 max-w-6xl mx-auto">
               <h3 className="text-sm font-bold text-slate-700 mb-4">
@@ -1781,6 +1798,24 @@ const SellerDashboard = ({ session }) => {
               </div>
             </div>
           )}
+          {activeTab === "donation" && (
+  <SellerDonationTab
+    listings={listings}
+    donationConfig={donationConfig}
+    onDonate={handleConfirmDonation}
+    onBackToListings={() => setActiveTab("listings")}
+  />
+)}
+{activeTab === "repair-shops" && (
+  <SellerRepairShopsTab
+    session={session}
+    sellerBarangay={
+      profileData?.barangay ||
+      session?.user?.user_metadata?.barangay ||
+      ""
+    }
+  />
+)}
         </div>
         {/* Profile Modal Overlay */}
         {showProfileModal && (
