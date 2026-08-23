@@ -40,6 +40,7 @@ import {
   Star,
   Gift,
   Leaf,
+  CalendarDays,
 } from "lucide-react";
 
 const HarvesterDashboard = ({ session, onLogout }) => {
@@ -66,13 +67,22 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     full_name: "Loading...",
     initials: "??",
     email: "",
-    phone: "",
+    contact_number: "",
     role: "Harvester",
     joined_date: "",
+
     // Harvester metrics
     completed_pickups: 0,
     active_bids: 0,
     eco_points: 0,
+
+    // Recovery Contribution
+    recovered_devices: 0,
+    co2_recovered_kg: 0,
+
+    assigned_area: "",
+    average_rating: 0,
+    total_reviews: 0,
   });
   const [verificationStatus, setVerificationStatus] = useState("verified");
   const isVerified = verificationStatus === "verified";
@@ -165,11 +175,28 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           .eq("status", "pending");
 
         // COMPLETED TRANSACTIONS COUNT
-        const { count: pickupsCount } = await supabase
+        // COMPLETED TRANSACTIONS + CO₂ RECOVERY
+        const { data: recoveryData, error: recoveryError } = await supabase
           .from("transactions")
-          .select("*", { count: "exact", head: true })
+          .select("carbon_saved")
           .eq("harvester_id", session.user.id)
           .eq("status", "completed");
+
+        if (recoveryError) {
+          console.error(
+            "Error fetching recovery contribution:",
+            recoveryError.message,
+          );
+        }
+
+        const pickupsCount = recoveryData?.length || 0;
+
+        const totalCo2Recovered =
+          recoveryData?.reduce(
+            (total, transaction) =>
+              total + Number(transaction.carbon_saved || 0),
+            0,
+          ) || 0;
 
         const name = profile?.full_name || "Harvester User";
 
@@ -184,7 +211,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           full_name: name,
           initials,
           email: session.user.email || "",
-          phone: profile?.contact_number || "",
+          contact_number: profile?.contact_number || "",
           role: profile?.role || "Harvester",
 
           joined_date: profile?.created_at
@@ -197,6 +224,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           // STATS
           active_bids: bidsCount || 0,
           completed_pickups: pickupsCount || 0,
+
+          // RECOVERY CONTRIBUTION
+          recovered_devices: pickupsCount || 0,
+          co2_recovered_kg: Number(totalCo2Recovered.toFixed(2)),
 
           // RATINGS
           average_rating: Number(profile?.average_rating || 0),
@@ -1103,6 +1134,61 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     ))}
                   </div>
 
+                  {/* CO2 RECOVERY CONTRIBUTION */}
+                  <div className="mt-5 w-full">
+                    <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-sky-50 p-5 shadow-sm">
+                      {/* HEADER */}
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+                            <Leaf size={21} />
+                          </div>
+
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-black uppercase text-[#145374]">
+                              CO₂ Recovery Contribution
+                            </h3>
+
+                            <p className="mt-1 text-[10px] text-[#3b91ad]">
+                              From harvesting & processing e-waste
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* TOTAL CO2 */}
+                        <div className="shrink-0 text-right">
+                          <div className="text-2xl font-black text-[#145374]">
+                            {Number(profileData?.co2_recovered_kg || 0).toFixed(
+                              2,
+                            )}
+                            <span className="ml-1 text-sm">kg</span>
+                          </div>
+
+                          <p className="text-[9px] text-[#3b91ad]">
+                            CO₂e recovered
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* DEVICE COUNT */}
+                      <div className="mt-4 flex items-center gap-3 border-t border-emerald-200 pt-4">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
+                          <Package size={17} />
+                        </div>
+
+                        <div>
+                          <span className="text-sm font-black text-[#145374]">
+                            {profileData?.recovered_devices || 0} devices
+                          </span>
+
+                          <span className="ml-2 text-[10px] text-[#3b91ad]">
+                            recovered & processed
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
                     <Award
                       className="absolute right-4 top-4 opacity-10"
@@ -1155,45 +1241,93 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   </div>
 
                   {/* PERSONAL INFO */}
+                  {/* PERSONAL INFO */}
                   <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                    <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
-                      Personal Information
-                    </h3>
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h3 className="font-bold text-gray-800 text-sm">
+                        Personal Information
+                      </h3>
 
-                    <div className="grid gap-4">
+                      {isEditingProfile && (
+                        <span className="text-[9px] font-bold uppercase text-[#769c2d] bg-lime-50 px-2 py-1 rounded-full">
+                          Editing
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid gap-5">
                       {/* FULL NAME */}
                       <div className="flex items-start gap-3">
-                        <User size={14} className="text-slate-400 mt-1" />
+                        <User
+                          size={14}
+                          className="text-slate-400 mt-1 shrink-0"
+                        />
 
-                        <div>
+                        <div className="flex-1">
                           <p className="text-[10px] font-bold text-slate-400 uppercase">
                             Full Name
                           </p>
 
-                          <p className="text-sm font-semibold text-slate-700">
-                            {profileData?.full_name}
-                          </p>
+                          {isEditingProfile ? (
+                            <input
+                              type="text"
+                              value={profileData?.full_name || ""}
+                              onChange={(e) =>
+                                setProfileData((prev) => ({
+                                  ...prev,
+                                  full_name: e.target.value,
+                                }))
+                              }
+                              placeholder="Enter your full name"
+                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                            />
+                          ) : (
+                            <p className="text-sm font-semibold text-slate-700">
+                              {profileData?.full_name || "No name provided"}
+                            </p>
+                          )}
                         </div>
                       </div>
 
                       {/* EMAIL */}
                       <div className="flex items-start gap-3">
-                        <Mail size={14} className="text-slate-400 mt-1" />
+                        <Mail
+                          size={14}
+                          className="text-slate-400 mt-1 shrink-0"
+                        />
 
-                        <div>
+                        <div className="flex-1">
                           <p className="text-[10px] font-bold text-slate-400 uppercase">
                             Email Address
                           </p>
 
-                          <p className="text-sm font-semibold text-slate-700">
-                            {profileData?.email}
-                          </p>
+                          {isEditingProfile ? (
+                            <input
+                              type="email"
+                              value={profileData?.email || ""}
+                              onChange={(e) =>
+                                setProfileData((prev) => ({
+                                  ...prev,
+                                  email: e.target.value,
+                                }))
+                              }
+                              placeholder="Enter your email"
+                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                            />
+                          ) : (
+                            <p className="text-sm font-semibold text-slate-700">
+                              {profileData?.email || "No email provided"}
+                            </p>
+                          )}
                         </div>
                       </div>
 
                       {/* PHONE */}
                       <div className="flex items-start gap-3">
-                        <Phone size={14} className="text-slate-400 mt-1" />
+                        <Phone
+                          size={14}
+                          className="text-slate-400 mt-1 shrink-0"
+                        />
 
                         <div className="flex-1">
                           <p className="text-[10px] font-bold text-slate-400 uppercase">
@@ -1202,37 +1336,101 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
                           {isEditingProfile ? (
                             <input
-                              type="text"
-                              value={profileData.phone}
+                              type="tel"
+                              value={profileData?.contact_number || ""}
                               onChange={(e) =>
-                                setProfileData({
-                                  ...profileData,
-                                  phone: e.target.value,
-                                })
+                                setProfileData((prev) => ({
+                                  ...prev,
+                                  contact_number: e.target.value,
+                                }))
                               }
-                              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-2xl text-sm"
+                              placeholder="Enter your phone number"
+                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
                             />
                           ) : (
                             <p className="text-sm font-semibold text-slate-700">
-                              {profileData?.phone || "No phone number"}
+                              {profileData?.contact_number || "No phone number"}
                             </p>
                           )}
                         </div>
                       </div>
 
-                      {/* LOCATION */}
+                      {/* BARANGAY / ASSIGNED AREA */}
                       <div className="flex items-start gap-3">
-                        <MapPin size={14} className="text-slate-400 mt-1" />
+                        <MapPin
+                          size={14}
+                          className="text-slate-400 mt-1 shrink-0"
+                        />
 
-                        <div>
+                        <div className="flex-1">
                           <p className="text-[10px] font-bold text-slate-400 uppercase">
-                            Assigned Area
+                            Assigned Area / Barangay
                           </p>
 
-                          <p className="text-sm font-semibold text-slate-700">
-                            {profileData?.assigned_area ||
-                              profileData?.barangay ||
-                              "Not assigned"}
+                          {isEditingProfile ? (
+                            <input
+                              type="text"
+                              value={profileData?.assigned_area || ""}
+                              onChange={(e) =>
+                                setProfileData((prev) => ({
+                                  ...prev,
+                                  assigned_area: e.target.value,
+                                }))
+                              }
+                              placeholder="Enter your barangay"
+                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                            />
+                          ) : (
+                            <p className="text-sm font-semibold text-slate-700">
+                              {profileData?.assigned_area || "Not assigned"}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ROLE - DISPLAY ONLY */}
+                      <div className="flex items-start gap-3">
+                        <Shield
+                          size={14}
+                          className="text-slate-400 mt-1 shrink-0"
+                        />
+
+                        <div className="flex-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                            Account Role
+                          </p>
+
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 bg-lime-50 text-[#769c2d] px-3 py-1.5 rounded-full text-xs font-bold">
+                              <Shield size={11} />
+                              {profileData?.role || "Harvester"}
+                            </span>
+
+                            <p className="text-[9px] text-slate-400 mt-1">
+                              Account role cannot be changed by the user.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* JOINED DATE - DISPLAY ONLY */}
+                      <div className="flex items-start gap-3">
+                        <CalendarDays
+                          size={14}
+                          className="text-slate-400 mt-1 shrink-0"
+                        />
+
+                        <div className="flex-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                            Active Since
+                          </p>
+
+                          <p className="text-sm font-semibold text-slate-700 mt-1">
+                            {profileData?.joined_date || "2026"}
+                          </p>
+
+                          <p className="text-[9px] text-slate-400 mt-1">
+                            Automatically based on your account creation date.
                           </p>
                         </div>
                       </div>
@@ -1253,18 +1451,58 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     <button
                       onClick={async () => {
                         try {
-                          const { error } = await supabase
+                          if (!session?.user?.id) {
+                            alert("User session not found.");
+                            return;
+                          }
+
+                          console.log("Saving profile:", {
+                            id: session.user.id,
+                            full_name: profileData.full_name,
+                            email: profileData.email,
+                            contact_number: profileData.contact_number,
+                            barangay: profileData.assigned_area,
+                          });
+
+                          const { data, error } = await supabase
                             .from("profiles")
                             .update({
-                              phone: profileData.phone,
+                              full_name: profileData.full_name?.trim(),
+                              email: profileData.email?.trim(),
+                              contact_number: profileData.contact_number?.trim() || null,
+                              barangay:
+                                profileData.assigned_area?.trim() || null,
                             })
-                            .eq("id", session.user.id);
+                            .eq("id", session.user.id)
+                            .select()
+                            .single();
 
-                          if (error) throw error;
+                          if (error) {
+                            console.error("PROFILE UPDATE ERROR:", error);
+                            alert(`Failed to update profile: ${error.message}`);
+                            return;
+                          }
+
+                          console.log("PROFILE UPDATED:", data);
+
+                          // Update the displayed profile immediately
+                          setProfileData((prev) => ({
+                            ...prev,
+                            full_name: data.full_name,
+                            email: data.email,
+                            contact_number: data.contact_number || "",
+                            assigned_area: data.barangay || "",
+                          }));
 
                           setIsEditingProfile(false);
+
+                          alert("Profile updated successfully!");
                         } catch (err) {
-                          alert(err.message);
+                          console.error(
+                            "Unexpected profile update error:",
+                            err,
+                          );
+                          alert(`Error: ${err.message}`);
                         }
                       }}
                       className="flex-1 bg-[#769c2d] text-white py-3 rounded-2xl font-black text-xs uppercase"

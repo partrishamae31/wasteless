@@ -1,9 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  useMap,
+} from "react-leaflet";
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+
 import {
   BadgeCheck,
   Building2,
@@ -16,28 +23,18 @@ import {
   X,
   Phone,
   Send,
+  Package,
+  ShoppingBag,
+  User,
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 
-/**
- * SellerRepairShopsTab
- *
- * Displays verified repair shops from the profiles table.
- *
- * Expected profile fields already used by the seller dashboard:
- * - id
- * - role
- * - business_name
- * - full_name
- * - barangay
- * - verification_status
- * - average_rating
- * - total_reviews
- *
- * Optional fields are handled safely:
- * - specialties / specialty / categories
- * - contact_number
- * - price_range
- */
+/* =========================================================
+   BARANGAY COORDINATES
+   ========================================================= */
 
 const BARANGAY_COORDINATES = {
   Karuhatan: [14.7015, 120.9755],
@@ -66,12 +63,64 @@ const BARANGAY_COORDINATES = {
   "Wawang Pulo": [14.6635, 120.9455],
 };
 
+/* =========================================================
+   LEAFLET ICON
+   ========================================================= */
+
+const repairShopIcon = new L.DivIcon({
+  className: "",
+  html: `
+    <div style="
+      width:34px;
+      height:34px;
+      border-radius:50%;
+      background:#3285a1;
+      border:4px solid white;
+      box-shadow:0 3px 12px rgba(0,0,0,.25);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:white;
+      font-size:15px;
+      font-weight:900;
+    ">
+    </div>
+  `,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+  popupAnchor: [0, -18],
+});
+
+const barangayIcon = new L.DivIcon({
+  className: "",
+  html: `
+    <div style="
+      width:28px;
+      height:28px;
+      border-radius:50%;
+      background:#10b981;
+      border:4px solid white;
+      box-shadow:0 3px 10px rgba(0,0,0,.2);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:white;
+      font-size:12px;
+    ">
+    </div>
+  `,
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+/* =========================================================
+   MAP RESIZE FIX
+   ========================================================= */
+
 const MapResizeFix = () => {
   const map = useMap();
 
   useEffect(() => {
-    // Leaflet needs a moment to calculate the size
-    // when the map becomes visible after being hidden.
     const timer = setTimeout(() => {
       map.invalidateSize();
     }, 200);
@@ -82,26 +131,39 @@ const MapResizeFix = () => {
   return null;
 };
 
-const RepairShopMap = ({ shops, barangay, sellerBarangay, onShopClick }) => {
-  const coordinates = BARANGAY_COORDINATES[barangay] ||
-    BARANGAY_COORDINATES[sellerBarangay] || [14.676, 120.983];
+/* =========================================================
+   REPAIR SHOP MAP
+   ========================================================= */
 
-  console.log("MAP COORDINATES:", coordinates);
-  console.log("MAP BARANGAY:", barangay);
-  console.log("MAP SHOPS:", shops);
+const RepairShopMap = ({
+  shops,
+  barangay,
+  sellerBarangay,
+  onShopClick,
+}) => {
+  const coordinates =
+    BARANGAY_COORDINATES[barangay] ||
+    BARANGAY_COORDINATES[sellerBarangay] ||
+    [14.676, 120.983];
 
   return (
     <div className="relative z-0 isolate w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      {/* Barangay label */}
+      {/* Header */}
       <div className="absolute left-4 top-4 z-[1000] rounded-xl bg-white px-3 py-2 shadow-lg">
-        <p className="text-[9px] font-black text-slate-700">Brgy. {barangay}</p>
+        <p className="text-[9px] font-black text-slate-700">
+          Brgy. {barangay}
+        </p>
 
-        <p className="text-[7px] text-slate-400">Valenzuela City</p>
+        <p className="text-[7px] text-slate-400">
+          Valenzuela City
+        </p>
       </div>
 
       {/* Shop count */}
       <div className="absolute right-4 top-4 z-[1000] rounded-xl bg-[#3285a1] px-3 py-2 text-white shadow-lg">
-        <p className="text-[9px] font-black">{shops.length} Repair Shops</p>
+        <p className="text-[9px] font-black">
+          {shops.length} Repair Shops
+        </p>
 
         <p className="mt-0.5 text-[7px] text-white/70">
           Click a pin for details
@@ -127,12 +189,18 @@ const RepairShopMap = ({ shops, barangay, sellerBarangay, onShopClick }) => {
         />
 
         {/* Barangay center */}
-        <Marker position={coordinates}>
+        <Marker
+          position={coordinates}
+          icon={barangayIcon}
+        >
           <Popup>
             <div className="text-center">
-              <p className="font-black text-slate-800">{barangay}</p>
+              <p className="font-black text-slate-800">
+                {barangay}
+              </p>
+
               <p className="text-xs text-slate-500">
-                Repair shops in this barangay
+                Barangay center
               </p>
             </div>
           </Popup>
@@ -140,23 +208,40 @@ const RepairShopMap = ({ shops, barangay, sellerBarangay, onShopClick }) => {
 
         {/* Repair shop markers */}
         {shops.map((shop, index) => {
+          /*
+            Your profiles table does not currently contain
+            latitude / longitude.
+
+            Therefore these are APPROXIMATE positions around
+            the barangay center.
+          */
+
+          const row = Math.floor(index / 3);
+          const column = index % 3;
+
           const markerPosition = [
-            coordinates[0] + ((index % 3) - 1) * 0.002,
-            coordinates[1] + (Math.floor(index / 3) - 1) * 0.002,
+            coordinates[0] + (row - 1) * 0.0012,
+            coordinates[1] + (column - 1) * 0.0012,
           ];
+
+          const shopName =
+            shop.business_name ||
+            shop.full_name ||
+            "Repair Shop";
 
           return (
             <Marker
               key={shop.id}
               position={markerPosition}
+              icon={repairShopIcon}
               eventHandlers={{
                 click: () => onShopClick(shop),
               }}
             >
               <Popup>
-                <div className="min-w-[180px]">
+                <div className="min-w-[190px]">
                   <p className="font-black text-slate-800">
-                    {shop.business_name || shop.full_name || "Repair Shop"}
+                    {shopName}
                   </p>
 
                   <p className="mt-1 text-xs text-slate-500">
@@ -171,8 +256,18 @@ const RepairShopMap = ({ shops, barangay, sellerBarangay, onShopClick }) => {
                     />
 
                     <span className="text-xs font-bold">
-                      {Number(shop.average_rating || 0).toFixed(1)}
+                      {Number(
+                        shop.average_rating || 0
+                      ).toFixed(1)}
                     </span>
+
+                    <span className="text-[10px] text-slate-400">
+                      ({shop.total_reviews || 0})
+                    </span>
+                  </div>
+
+                  <div className="mt-2 text-xs text-slate-500">
+                    {shop.purchaseCount || 0} completed purchases
                   </div>
 
                   <button
@@ -192,7 +287,8 @@ const RepairShopMap = ({ shops, barangay, sellerBarangay, onShopClick }) => {
       {/* Legend */}
       <div className="absolute bottom-4 right-4 z-[1000] rounded-xl bg-white p-3 shadow-lg">
         <div className="flex items-center gap-2 text-[9px] text-slate-500">
-          <span className="h-3 w-3 rounded-full bg-[#3285a1]" />
+          <span className="flex h-3 w-3 items-center justify-center rounded-full bg-[#3285a1] text-[6px]">
+          </span>
           Repair Shop
         </div>
 
@@ -201,237 +297,811 @@ const RepairShopMap = ({ shops, barangay, sellerBarangay, onShopClick }) => {
           Barangay Center
         </div>
       </div>
+
+      {/* Approximate location notice */}
+      <div className="absolute bottom-4 left-4 z-[1000] max-w-[220px] rounded-lg bg-white/95 px-3 py-2 text-[8px] text-slate-500 shadow">
+        Shop locations are approximate because exact coordinates are not
+        currently stored in the profiles table.
+      </div>
     </div>
   );
 };
-const SellerRepairShopsTab = ({ session, sellerBarangay = "" }) => {
+
+/* =========================================================
+   MAIN COMPONENT
+   ========================================================= */
+
+const SellerRepairShopsTab = ({
+  session,
+  sellerBarangay = "",
+}) => {
   const [shops, setShops] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
   const [search, setSearch] = useState("");
-  const [barangayFilter, setBarangayFilter] = useState("All Barangays");
+  const [barangayFilter, setBarangayFilter] =
+    useState("All Barangays");
+
   const [sortBy, setSortBy] = useState("rating");
   const [verifiedOnly, setVerifiedOnly] = useState(true);
-  const [openOnly, setOpenOnly] = useState(false);
+
   const [selectedShop, setSelectedShop] = useState(null);
+
   const [viewMode, setViewMode] = useState("list");
 
-  useEffect(() => {
-    const fetchRepairShops = async () => {
+  const [shopTransactions, setShopTransactions] =
+    useState([]);
+
+  const [shopReviews, setShopReviews] = useState([]);
+
+  const [loadingShopDetails, setLoadingShopDetails] =
+    useState(false);
+
+  /* =========================================================
+     MESSAGING
+     ========================================================= */
+
+  const [messageShop, setMessageShop] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [messageText, setMessageText] = useState("");
+  const [loadingMessages, setLoadingMessages] =
+    useState(false);
+  const [sendingMessage, setSendingMessage] =
+    useState(false);
+
+  /* =========================================================
+     FETCH REPAIR SHOPS
+     ========================================================= */
+
+  const fetchRepairShops = async (showRefresh = false) => {
+    if (showRefresh) {
+      setRefreshing(true);
+    } else {
       setLoading(true);
+    }
 
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("role", "repair_shop");
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          `
+            id,
+            full_name,
+            role,
+            barangay,
+            is_verified,
+            created_at,
+            business_name,
+            verification_status,
+            email,
+            status,
+            contact_number,
+            average_rating,
+            total_reviews,
+            buyer_type
+          `
+        )
+        .eq("role", "repair_shop");
 
-        console.log("ALL PROFILES:", data);
-        console.log("REPAIR SHOP DETAILS:", data?.[0]);
-        console.log("verification_status:", data?.[0]?.verification_status);
-        console.log("status:", data?.[0]?.status);
-        console.log("is_verified:", data?.[0]?.is_verified);
+      if (error) throw error;
 
-        if (error) throw error;
+      /*
+        Only active repair shops.
+      */
 
-        const verifiedShops = (data || []).filter((shop) => {
-          if (!verifiedOnly) return true;
+      const activeShops = (data || []).filter(
+        (shop) =>
+          String(shop.status || "active").toLowerCase() ===
+          "active"
+      );
 
-          return (
-            shop.is_verified === true ||
-            shop.verification_status?.toLowerCase() === "verified"
-          );
-        });
+      /*
+        Verification filter.
+      */
 
-        const withPurchaseCounts = await Promise.all(
-          verifiedShops.map(async (shop) => {
-            const { count } = await supabase
-              .from("transactions")
-              .select("id", { count: "exact", head: true })
-              .eq("harvester_id", shop.id)
-              .eq("status", "completed");
+      const verifiedShops = activeShops.filter((shop) => {
+        if (!verifiedOnly) return true;
 
-            return {
-              ...shop,
-              purchaseCount: count || 0,
-            };
-          }),
+        return (
+          shop.is_verified === true ||
+          String(
+            shop.verification_status || ""
+          ).toLowerCase() === "verified"
         );
+      });
 
-        setShops(withPurchaseCounts);
-      } catch (error) {
-        console.error("Error loading repair shops:", error);
-        setShops([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+      /*
+        Get completed purchase count for each shop.
+      */
 
+      const shopsWithStats = await Promise.all(
+        verifiedShops.map(async (shop) => {
+          const { data: transactionData, error: transactionError } =
+            await supabase
+              .from("transactions")
+              .select(
+                `
+                  id,
+                  amount,
+                  status,
+                  created_at,
+                  completed_at,
+                  listing_id,
+                  listings (
+                    id,
+                    device_model,
+                    category,
+                    condition,
+                    seller_id,
+                    status
+                  )
+                `
+              )
+              .eq("harvester_id", shop.id)
+              .eq("status", "completed")
+              .order("completed_at", {
+                ascending: false,
+              });
+
+          if (transactionError) {
+            console.error(
+              "Transaction error for shop:",
+              shop.id,
+              transactionError
+            );
+          }
+
+          const completedTransactions =
+            transactionData || [];
+
+          /*
+            Get reviews for this shop through its transactions.
+          */
+
+          const transactionIds =
+            completedTransactions.map(
+              (transaction) => transaction.id
+            );
+
+          let reviews = [];
+
+          if (transactionIds.length > 0) {
+            const { data: reviewData, error: reviewError } =
+              await supabase
+                .from("reviews")
+                .select(
+                  `
+                    id,
+                    transaction_id,
+                    seller_id,
+                    reviewer_id,
+                    communication_rating,
+                    punctuality_rating,
+                    condition_rating,
+                    overall_rating,
+                    recommend,
+                    comment,
+                    created_at
+                  `
+                )
+                .in(
+                  "transaction_id",
+                  transactionIds
+                )
+                .order("created_at", {
+                  ascending: false,
+                });
+
+            if (reviewError) {
+              console.error(
+                "Review error:",
+                reviewError
+              );
+            }
+
+            reviews = reviewData || [];
+          }
+
+          return {
+            ...shop,
+            purchaseCount:
+              completedTransactions.length,
+            completedTransactions,
+            reviews,
+          };
+        })
+      );
+
+      setShops(shopsWithStats);
+    } catch (error) {
+      console.error(
+        "Error loading repair shops:",
+        error
+      );
+
+      setShops([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
     fetchRepairShops();
+
+    /*
+      Refresh when transactions/profiles change.
+    */
+
+    const channel = supabase
+      .channel("repair-shop-tab-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+        },
+        () => {
+          fetchRepairShops(true);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "profiles",
+        },
+        () => {
+          fetchRepairShops(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [verifiedOnly]);
 
-  const barangays = useMemo(() => {
-    const values = shops.map((shop) => shop.barangay).filter(Boolean);
+  /* =========================================================
+     BARANGAYS
+     ========================================================= */
 
-    return ["All Barangays", ...Array.from(new Set(values)).sort()];
+  const barangays = useMemo(() => {
+    const values = shops
+      .map((shop) => shop.barangay)
+      .filter(Boolean);
+
+    return [
+      "All Barangays",
+      ...Array.from(new Set(values)).sort(),
+    ];
   }, [shops]);
+
+  /* =========================================================
+     FILTERED SHOPS
+     ========================================================= */
 
   const filteredShops = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     const result = shops.filter((shop) => {
-      const name = shop.business_name || shop.full_name || "Repair Shop";
+      const name =
+        shop.business_name ||
+        shop.full_name ||
+        "Repair Shop";
 
       const location = shop.barangay || "";
 
-      const specialties =
-        shop.specialties || shop.specialty || shop.categories || "";
+      const buyerType = shop.buyer_type || "";
 
       const matchesSearch =
         !query ||
         name.toLowerCase().includes(query) ||
         location.toLowerCase().includes(query) ||
-        String(specialties).toLowerCase().includes(query) ||
-        String(shop.full_name || "")
+        String(
+          shop.full_name || ""
+        )
+          .toLowerCase()
+          .includes(query) ||
+        String(buyerType)
           .toLowerCase()
           .includes(query);
 
       const matchesBarangay =
-        barangayFilter === "All Barangays" || location === barangayFilter;
+        barangayFilter === "All Barangays" ||
+        location === barangayFilter;
 
-      const matchesOpen =
-        !openOnly ||
-        shop.is_open === true ||
-        shop.open_now === true ||
-        String(shop.business_status || "").toLowerCase() === "open";
-
-      return matchesSearch && matchesBarangay && matchesOpen;
+      return (
+        matchesSearch &&
+        matchesBarangay
+      );
     });
 
-    return result.sort((a, b) => {
+    return [...result].sort((a, b) => {
       if (sortBy === "purchases") {
-        return (b.purchaseCount || 0) - (a.purchaseCount || 0);
+        return (
+          Number(b.purchaseCount || 0) -
+          Number(a.purchaseCount || 0)
+        );
       }
 
-      return Number(b.average_rating || 0) - Number(a.average_rating || 0);
+      if (sortBy === "reviews") {
+        return (
+          Number(b.total_reviews || 0) -
+          Number(a.total_reviews || 0)
+        );
+      }
+
+      return (
+        Number(b.average_rating || 0) -
+        Number(a.average_rating || 0)
+      );
     });
-  }, [shops, search, barangayFilter, sortBy, openOnly]);
+  }, [
+    shops,
+    search,
+    barangayFilter,
+    sortBy,
+  ]);
+
+  /* =========================================================
+     STATISTICS
+     ========================================================= */
 
   const totalShops = filteredShops.length;
 
-  const verifiedShopsCount = filteredShops.filter(
-    (shop) =>
-      shop.is_verified === true ||
-      String(shop.verification_status || "").toLowerCase() === "verified",
-  ).length;
+  const verifiedShopsCount =
+    filteredShops.filter(
+      (shop) =>
+        shop.is_verified === true ||
+        String(
+          shop.verification_status || ""
+        ).toLowerCase() === "verified"
+    ).length;
 
-  const openShopsCount = filteredShops.filter(
-    (shop) =>
-      shop.is_open === true ||
-      shop.open_now === true ||
-      String(shop.business_status || "").toLowerCase() === "open",
-  ).length;
+  const totalPurchases =
+    filteredShops.reduce(
+      (total, shop) =>
+        total +
+        Number(shop.purchaseCount || 0),
+      0
+    );
 
-  const totalPurchases = filteredShops.reduce(
-    (total, shop) => total + Number(shop.purchaseCount || 0),
-    0,
-  );
+  const totalReviews =
+    filteredShops.reduce(
+      (total, shop) =>
+        total +
+        Number(shop.total_reviews || 0),
+      0
+    );
 
   const currentBarangay =
     barangayFilter === "All Barangays"
       ? sellerBarangay || "Valenzuela City"
       : barangayFilter;
 
-  const getSpecialties = (shop) => {
-    const raw =
-      shop.specialties ||
-      shop.specialty ||
-      shop.categories ||
-      "Mobile Phones, Tablets, Laptops";
+  /* =========================================================
+     HELPERS
+     ========================================================= */
 
-    if (Array.isArray(raw)) return raw;
+  const isVerified = (shop) =>
+    shop.is_verified === true ||
+    String(
+      shop.verification_status || ""
+    ).toLowerCase() === "verified";
 
-    return String(raw)
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  };
-
-  const handleContact = (shop) => {
-    setSelectedShop(shop);
-  };
+  const getShopName = (shop) =>
+    shop.business_name ||
+    shop.full_name ||
+    "Repair Shop";
 
   const getShopAddress = (shop) => {
-    return (
-      shop.address ||
-      shop.business_address ||
-      (shop.barangay
-        ? `Brgy. ${shop.barangay}, Valenzuela City`
-        : "Valenzuela City")
-    );
-  };
-
-  const getShopHours = (shop) => {
-    return (
-      shop.opening_hours ||
-      shop.operating_hours ||
-      shop.business_hours ||
-      "Business hours not provided"
-    );
-  };
-
-  const getShopContact = (shop) => {
-    return (
-      shop.contact_number ||
-      shop.phone ||
-      shop.mobile_number ||
-      "Contact number not provided"
-    );
-  };
-
-  const getAcceptedDevices = (shop) => {
-    const raw =
-      shop.accepted_devices ||
-      shop.acceptedDevices ||
-      shop.specialties ||
-      shop.specialty ||
-      shop.categories;
-
-    if (Array.isArray(raw) && raw.length > 0) {
-      return raw;
+    if (shop.barangay) {
+      return `Brgy. ${shop.barangay}, Valenzuela City`;
     }
 
-    if (typeof raw === "string" && raw.trim()) {
-      return raw
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
+    return "Valenzuela City";
+  };
+
+  const getShopContact = (shop) =>
+    shop.contact_number ||
+    "Contact number not provided";
+
+  const getShopRating = (shop) =>
+    Number(shop.average_rating || 0);
+
+  const getDeviceCategories = (shop) => {
+    const transactions =
+      shop.completedTransactions || [];
+
+    const categories = transactions
+      .map(
+        (transaction) =>
+          transaction.listings?.category
+      )
+      .filter(Boolean);
+
+    return Array.from(
+      new Set(categories)
+    );
+  };
+
+  const getDeviceModels = (shop) => {
+    const transactions =
+      shop.completedTransactions || [];
+
+    const models = transactions
+      .map(
+        (transaction) =>
+          transaction.listings?.device_model
+      )
+      .filter(Boolean);
+
+    return Array.from(
+      new Set(models)
+    );
+  };
+
+  const getTier = (rating) => {
+    if (rating >= 4.7) return "Platinum";
+    if (rating >= 4.5) return "Gold";
+    if (rating >= 4) return "Silver";
+    return "Bronze";
+  };
+
+  const getTierClass = (rating) => {
+    if (rating >= 4.7) {
+      return "bg-[#3285a1]";
     }
 
-    return ["Smartphones", "Tablets", "Laptops", "Accessories"];
+    if (rating >= 4.5) {
+      return "bg-amber-500";
+    }
+
+    if (rating >= 4) {
+      return "bg-emerald-500";
+    }
+
+    return "bg-red-500";
   };
+
+  /* =========================================================
+     LOAD SHOP DETAILS
+     ========================================================= */
+
+  const openShopProfile = async (shop) => {
+    setSelectedShop(shop);
+    setLoadingShopDetails(true);
+
+    try {
+      /*
+        Fetch completed transactions again so the
+        modal always has fresh information.
+      */
+
+      const { data: transactionData, error } =
+        await supabase
+          .from("transactions")
+          .select(
+            `
+              id,
+              amount,
+              status,
+              created_at,
+              completed_at,
+              listing_id,
+              meetup_date,
+              meetup_time,
+              listings (
+                id,
+                device_model,
+                category,
+                condition,
+                seller_id,
+                status,
+                asking_price,
+                scrap_value
+              )
+            `
+          )
+          .eq("harvester_id", shop.id)
+          .eq("status", "completed")
+          .order("completed_at", {
+            ascending: false,
+          });
+
+      if (error) throw error;
+
+      const transactions =
+        transactionData || [];
+
+      const transactionIds =
+        transactions.map(
+          (transaction) => transaction.id
+        );
+
+      let reviews = [];
+
+      if (transactionIds.length > 0) {
+        const { data: reviewData, error: reviewError } =
+          await supabase
+            .from("reviews")
+            .select(
+              `
+                id,
+                transaction_id,
+                seller_id,
+                reviewer_id,
+                communication_rating,
+                punctuality_rating,
+                condition_rating,
+                overall_rating,
+                recommend,
+                comment,
+                created_at
+              `
+            )
+            .in(
+              "transaction_id",
+              transactionIds
+            )
+            .order("created_at", {
+              ascending: false,
+            });
+
+        if (reviewError) {
+          console.error(
+            "Could not load reviews:",
+            reviewError
+          );
+        }
+
+        reviews = reviewData || [];
+      }
+
+      const updatedShop = {
+        ...shop,
+        purchaseCount:
+          transactions.length,
+        completedTransactions:
+          transactions,
+        reviews,
+      };
+
+      setSelectedShop(updatedShop);
+
+      /*
+        Also update the shop in the main list.
+      */
+
+      setShops((previous) =>
+        previous.map((item) =>
+          item.id === shop.id
+            ? updatedShop
+            : item
+        )
+      );
+
+      setShopTransactions(transactions);
+      setShopReviews(reviews);
+    } catch (error) {
+      console.error(
+        "Error loading shop details:",
+        error
+      );
+
+      setShopTransactions(
+        shop.completedTransactions || []
+      );
+
+      setShopReviews(
+        shop.reviews || []
+      );
+    } finally {
+      setLoadingShopDetails(false);
+    }
+  };
+
+  /* =========================================================
+     MESSAGING
+     ========================================================= */
+
+  const loadMessages = async (shop) => {
+    if (!session?.user?.id || !shop?.id) {
+      return;
+    }
+
+    setLoadingMessages(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("messages")
+        .select(
+          `
+            id,
+            listing_id,
+            sender_id,
+            receiver_id,
+            content,
+            is_read,
+            created_at
+          `
+        )
+        .or(
+          `and(sender_id.eq.${session.user.id},receiver_id.eq.${shop.id}),and(sender_id.eq.${shop.id},receiver_id.eq.${session.user.id})`
+        )
+        .order("created_at", {
+          ascending: true,
+        });
+
+      if (error) throw error;
+
+      setMessages(data || []);
+
+      /*
+        Mark messages from the repair shop as read.
+      */
+
+      const unreadIds = (data || [])
+        .filter(
+          (message) =>
+            message.receiver_id ===
+              session.user.id &&
+            !message.is_read
+        )
+        .map((message) => message.id);
+
+      if (unreadIds.length > 0) {
+        await supabase
+          .from("messages")
+          .update({ is_read: true })
+          .in("id", unreadIds);
+      }
+    } catch (error) {
+      console.error(
+        "Error loading messages:",
+        error
+      );
+
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const openMessageModal = async (shop) => {
+    setMessageShop(shop);
+    setMessageText("");
+
+    await loadMessages(shop);
+  };
+
+  useEffect(() => {
+    if (!messageShop?.id || !session?.user?.id) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(
+        `repair-shop-messages-${messageShop.id}`
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `receiver_id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          const message = payload.new;
+
+          if (
+            message.sender_id ===
+            messageShop.id
+          ) {
+            setMessages((previous) => [
+              ...previous,
+              message,
+            ]);
+
+            supabase
+              .from("messages")
+              .update({ is_read: true })
+              .eq("id", message.id);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [
+    messageShop?.id,
+    session?.user?.id,
+  ]);
+
+  const sendMessage = async () => {
+    const content = messageText.trim();
+
+    if (
+      !content ||
+      !session?.user?.id ||
+      !messageShop?.id
+    ) {
+      return;
+    }
+
+    setSendingMessage(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: session.user.id,
+          receiver_id: messageShop.id,
+          content,
+          listing_id: null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setMessages((previous) => [
+        ...previous,
+        data,
+      ]);
+
+      setMessageText("");
+    } catch (error) {
+      console.error(
+        "Error sending message:",
+        error
+      );
+
+      alert(
+        "Unable to send message. Please try again."
+      );
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  /* =========================================================
+     RETURN
+     ========================================================= */
 
   return (
     <div className="animate-in fade-in duration-500 space-y-3">
-      {/* =========================================================
-        REPAIR SHOP HEADER
-    ========================================================= */}
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
+
       <div className="rounded-[1.25rem] bg-gradient-to-r from-[#2d86a3] to-[#14516d] p-5 text-white shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-white/60">
               <MapPin size={11} />
+
               Brgy. {currentBarangay}
             </div>
 
-            <h2 className="mt-1 text-xl font-black">Repair Shops Near You</h2>
+            <h2 className="mt-1 text-xl font-black">
+              Repair Shops Near You
+            </h2>
 
             <p className="mt-0.5 text-[10px] text-white/60">
-              {totalShops} registered buyers in your barangay
+              Find verified repair shops and buyers
+              for your electronic devices
             </p>
           </div>
 
-          {/* Shop count */}
-          <div className="hidden sm:flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm">
+          <div className="hidden h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm sm:flex">
             <span className="text-xl font-black leading-none">
               {totalShops}
             </span>
@@ -451,8 +1121,10 @@ const SellerRepairShopsTab = ({ session, sellerBarangay = "" }) => {
 
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, specialty..."
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
+            placeholder="Search shop, owner, barangay..."
             className="w-full rounded-xl border border-white/15 bg-white/10 px-9 py-2.5 text-[10px] text-white placeholder:text-white/40 outline-none transition focus:bg-white/15"
           />
         </div>
@@ -461,7 +1133,9 @@ const SellerRepairShopsTab = ({ session, sellerBarangay = "" }) => {
         <div className="mt-3 flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setViewMode("list")}
+            onClick={() =>
+              setViewMode("list")
+            }
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[9px] font-black transition ${
               viewMode === "list"
                 ? "bg-white text-[#2d86a3]"
@@ -474,7 +1148,9 @@ const SellerRepairShopsTab = ({ session, sellerBarangay = "" }) => {
 
           <button
             type="button"
-            onClick={() => setViewMode("map")}
+            onClick={() =>
+              setViewMode("map")
+            }
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[9px] font-black transition ${
               viewMode === "map"
                 ? "bg-white text-[#2d86a3]"
@@ -484,172 +1160,247 @@ const SellerRepairShopsTab = ({ session, sellerBarangay = "" }) => {
             <MapPin size={11} />
             Map View
           </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              fetchRepairShops(true)
+            }
+            disabled={refreshing}
+            className="ml-auto flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-[9px] font-black text-white hover:bg-white/20 disabled:opacity-50"
+          >
+            <RefreshCw
+              size={11}
+              className={
+                refreshing
+                  ? "animate-spin"
+                  : ""
+              }
+            />
+
+            Refresh
+          </button>
         </div>
       </div>
 
-      {/* =========================================================
-        FILTERS
-    ========================================================= */}
+      {/* =====================================================
+          FILTERS
+      ===================================================== */}
+
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={barangayFilter}
-          onChange={(e) => setBarangayFilter(e.target.value)}
+          onChange={(e) =>
+            setBarangayFilter(
+              e.target.value
+            )
+          }
           className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[9px] font-semibold text-slate-600 outline-none"
         >
           {barangays.map((barangay) => (
-            <option key={barangay}>{barangay}</option>
+            <option
+              key={barangay}
+              value={barangay}
+            >
+              {barangay}
+            </option>
           ))}
         </select>
 
         <select
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
+          onChange={(e) =>
+            setSortBy(e.target.value)
+          }
           className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[9px] font-semibold text-slate-600 outline-none"
         >
-          <option value="rating">Top Rated</option>
-          <option value="purchases">Most Purchases</option>
+          <option value="rating">
+            Top Rated
+          </option>
+
+          <option value="purchases">
+            Most Purchases
+          </option>
+
+          <option value="reviews">
+            Most Reviews
+          </option>
         </select>
 
         <button
           type="button"
-          onClick={() => setVerifiedOnly((value) => !value)}
+          onClick={() =>
+            setVerifiedOnly(
+              (value) => !value
+            )
+          }
           className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-bold transition ${
             verifiedOnly
               ? "border-emerald-200 bg-emerald-50 text-emerald-700"
               : "border-slate-200 bg-white text-slate-500"
           }`}
         >
-          <BadgeCheck size={11} className="mr-1 inline" />
-          Verified
-        </button>
+          <BadgeCheck
+            size={11}
+            className="mr-1 inline"
+          />
 
-        <button
-          type="button"
-          onClick={() => setOpenOnly((value) => !value)}
-          className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-bold transition ${
-            openOnly
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-slate-200 bg-white text-slate-500"
-          }`}
-        >
-          <Clock3 size={11} className="mr-1 inline" />
-          Open Now
+          Verified
         </button>
 
         {sellerBarangay && (
           <button
             type="button"
             onClick={() => {
-              setBarangayFilter(sellerBarangay);
+              setBarangayFilter(
+                sellerBarangay
+              );
+
               setViewMode("map");
             }}
             className="rounded-lg border border-[#3285a1]/20 bg-[#3285a1]/5 px-2.5 py-1.5 text-[9px] font-bold text-[#3285a1]"
           >
-            <MapPin size={11} className="mr-1 inline" />
+            <MapPin
+              size={11}
+              className="mr-1 inline"
+            />
+
             My Barangay
           </button>
         )}
       </div>
 
-      {/* =========================================================
-        STATISTICS
-    ========================================================= */}
-      {!loading && filteredShops.length > 0 && (
-        <div>
-          <div className="mb-2">
-            <h3 className="text-sm font-black text-slate-700">
-              Repair Shop Map — {currentBarangay}
-            </h3>
+      {/* =====================================================
+          STATISTICS
+      ===================================================== */}
 
-            <p className="text-[9px] text-slate-400">
-              Registered buyers within your barangay
-            </p>
+      {!loading &&
+        filteredShops.length > 0 && (
+          <div>
+            <div className="mb-2">
+              <h3 className="text-sm font-black text-slate-700">
+                Repair Shop Overview
+              </h3>
+
+              <p className="text-[9px] text-slate-400">
+                Registered repair shops and completed
+                purchase activity
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {/* Total */}
+              <div className="rounded-xl bg-blue-50 p-3">
+                <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
+                  <Building2
+                    size={11}
+                    className="text-[#3285a1]"
+                  />
+
+                  Total Shops
+                </div>
+
+                <p className="mt-1 text-lg font-black text-slate-700">
+                  {totalShops}
+                </p>
+
+                <p className="text-[8px] text-slate-400">
+                  selected area
+                </p>
+              </div>
+
+              {/* Verified */}
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
+                  <BadgeCheck
+                    size={11}
+                    className="text-emerald-500"
+                  />
+
+                  Verified
+                </div>
+
+                <p className="mt-1 text-lg font-black text-slate-700">
+                  {verifiedShopsCount}
+                </p>
+
+                <p className="text-[8px] text-slate-400">
+                  admin verified
+                </p>
+              </div>
+
+              {/* Reviews */}
+              <div className="rounded-xl bg-purple-50 p-3">
+                <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
+                  <Star
+                    size={11}
+                    className="text-purple-500"
+                  />
+
+                  Reviews
+                </div>
+
+                <p className="mt-1 text-lg font-black text-slate-700">
+                  {totalReviews}
+                </p>
+
+                <p className="text-[8px] text-slate-400">
+                  submitted reviews
+                </p>
+              </div>
+
+              {/* Purchases */}
+              <div className="rounded-xl bg-amber-50 p-3">
+                <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
+                  <Wrench
+                    size={11}
+                    className="text-amber-500"
+                  />
+
+                  Purchases
+                </div>
+
+                <p className="mt-1 text-lg font-black text-slate-700">
+                  {totalPurchases}
+                </p>
+
+                <p className="text-[8px] text-slate-400">
+                  completed
+                </p>
+              </div>
+            </div>
           </div>
+        )}
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {/* Total Shops */}
-            <div className="rounded-xl bg-blue-50 p-3">
-              <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
-                <Building2 size={11} className="text-[#3285a1]" />
-                Total Shops
-              </div>
+      {/* =====================================================
+          BARANGAY NOTICE
+      ===================================================== */}
 
-              <p className="mt-1 text-lg font-black text-slate-700">
-                {totalShops}
-              </p>
-
-              <p className="text-[8px] text-slate-400">
-                in Brgy. {currentBarangay}
-              </p>
-            </div>
-
-            {/* Verified */}
-            <div className="rounded-xl bg-emerald-50 p-3">
-              <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
-                <BadgeCheck size={11} className="text-emerald-500" />
-                Verified
-              </div>
-
-              <p className="mt-1 text-lg font-black text-slate-700">
-                {verifiedShopsCount}
-              </p>
-
-              <p className="text-[8px] text-slate-400">admin-verified</p>
-            </div>
-
-            {/* Open */}
-            <div className="rounded-xl bg-purple-50 p-3">
-              <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
-                <Clock3 size={11} className="text-purple-500" />
-                Open Now
-              </div>
-
-              <p className="mt-1 text-lg font-black text-slate-700">
-                {openShopsCount}
-              </p>
-
-              <p className="text-[8px] text-slate-400">accepting drop-offs</p>
-            </div>
-
-            {/* Purchases */}
-            <div className="rounded-xl bg-amber-50 p-3">
-              <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
-                <Wrench size={11} className="text-amber-500" />
-                Total Purchases
-              </div>
-
-              <p className="mt-1 text-lg font-black text-slate-700">
-                {totalPurchases}
-              </p>
-
-              <p className="text-[8px] text-slate-400">completed</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================
-        BARANGAY LOCK NOTICE
-    ========================================================= */}
       {sellerBarangay && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
           <div className="flex items-start gap-2">
-            <MapPin size={13} className="mt-0.5 shrink-0 text-blue-600" />
+            <MapPin
+              size={13}
+              className="mt-0.5 shrink-0 text-blue-600"
+            />
 
             <p className="text-[9px] leading-relaxed text-blue-700">
-              <span className="font-black">Barangay-Locked View:</span> Only
-              repair shops registered within{" "}
-              <span className="font-black">Brgy. {sellerBarangay}</span> are
-              shown. Exact shop addresses are only revealed after initiating
-              contact.
+              <span className="font-black">
+                Barangay-Locked View:
+              </span>{" "}
+              Repair shops are filtered according
+              to the seller's registered barangay.
+              Exact shop addresses are not stored
+              in the current profiles table.
             </p>
           </div>
         </div>
       )}
 
-      {/* =========================================================
-        CONTENT
-    ========================================================= */}
+      {/* =====================================================
+          LOADING
+      ===================================================== */}
+
       {loading ? (
         <div className="rounded-xl border border-slate-100 bg-white p-12 text-center">
           <div className="mx-auto h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-[#3285a1]" />
@@ -660,420 +1411,975 @@ const SellerRepairShopsTab = ({ session, sellerBarangay = "" }) => {
         </div>
       ) : filteredShops.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
-          <Building2 className="mx-auto mb-3 text-slate-200" size={34} />
+          <Building2
+            className="mx-auto mb-3 text-slate-200"
+            size={34}
+          />
 
           <h4 className="text-sm font-black text-slate-700">
             No repair shops found
           </h4>
 
           <p className="mt-1 text-[9px] text-slate-400">
-            There are no verified repair shops in{" "}
-            {barangayFilter === "All Barangays"
-              ? "your selected area"
-              : `Brgy. ${barangayFilter}`}
-            .
+            Try changing your search,
+            barangay, or verification filter.
           </p>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSearch("");
+              setBarangayFilter(
+                "All Barangays"
+              );
+            }}
+            className="mt-4 rounded-lg bg-[#3285a1] px-4 py-2 text-[9px] font-black text-white"
+          >
+            Clear Filters
+          </button>
         </div>
       ) : (
         <>
-          {/* =====================================================
-            MAP
-        ===================================================== */}
-          <RepairShopMap
-            shops={filteredShops}
-            barangay={currentBarangay}
-            sellerBarangay={sellerBarangay}
-            onShopClick={(shop) => setSelectedShop(shop)}
-          />
+          {/* =================================================
+              MAP VIEW
+          ================================================= */}
 
-          {/* =====================================================
-            SHOP CARDS
-        ===================================================== */}
-          <div className="mt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div>
+          {viewMode === "map" && (
+            <div>
+              <div className="mb-2">
                 <h3 className="text-sm font-black text-slate-700">
-                  Repair Shops
+                  Repair Shop Map —{" "}
+                  {currentBarangay}
                 </h3>
 
                 <p className="text-[9px] text-slate-400">
-                  Click a shop to view details
+                  Click a repair shop pin to view
+                  its profile.
                 </p>
               </div>
 
-              <span className="rounded-lg bg-[#3285a1]/10 px-2 py-1 text-[8px] font-black text-[#3285a1]">
-                {filteredShops.length} Shops
-              </span>
+              <RepairShopMap
+                shops={filteredShops}
+                barangay={currentBarangay}
+                sellerBarangay={
+                  sellerBarangay
+                }
+                onShopClick={
+                  openShopProfile
+                }
+              />
             </div>
+          )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              {filteredShops.map((shop) => {
-                const rating = Number(shop.average_rating || 0);
+          {/* =================================================
+              SHOP LIST
+          ================================================= */}
 
-                const specialties = getSpecialties(shop);
+          {viewMode === "list" && (
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-slate-700">
+                    Repair Shops
+                  </h3>
 
-                const shopName =
-                  shop.business_name || shop.full_name || "Repair Shop";
+                  <p className="text-[9px] text-slate-400">
+                    Click a shop to view its profile
+                  </p>
+                </div>
 
-                const isOpen =
-                  shop.is_open === true ||
-                  shop.open_now === true ||
-                  String(shop.business_status || "").toLowerCase() === "open";
+                <span className="rounded-lg bg-[#3285a1]/10 px-2 py-1 text-[8px] font-black text-[#3285a1]">
+                  {filteredShops.length} Shops
+                </span>
+              </div>
 
-                /* Tier */
-                const tier =
-                  rating >= 4.7
-                    ? "Platinum"
-                    : rating >= 4.5
-                      ? "Gold"
-                      : rating >= 4
-                        ? "Silver"
-                        : "Bronze";
+              <div className="grid gap-3 sm:grid-cols-2">
+                {filteredShops.map(
+                  (shop) => {
+                    const rating =
+                      getShopRating(
+                        shop
+                      );
 
-                const tierDot =
-                  tier === "Platinum"
-                    ? "bg-[#3285a1]"
-                    : tier === "Gold"
-                      ? "bg-amber-500"
-                      : tier === "Silver"
-                        ? "bg-emerald-500"
-                        : "bg-red-500";
+                    const tier =
+                      getTier(rating);
 
-                return (
-                  <button
-                    key={shop.id}
-                    type="button"
-                    onClick={() => setSelectedShop(shop)}
-                    className="group w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                  >
-                    {/* Shop name */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h4 className="truncate text-[11px] font-black text-slate-800">
-                          {shopName}
-                        </h4>
+                    return (
+                      <button
+                        key={shop.id}
+                        type="button"
+                        onClick={() =>
+                          openShopProfile(
+                            shop
+                          )
+                        }
+                        className="group w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      >
+                        {/* Name */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="truncate text-[11px] font-black text-slate-800">
+                                {getShopName(
+                                  shop
+                                )}
+                              </h4>
 
-                        <p className="mt-0.5 text-[8px] text-slate-400">
-                          {shop.purchaseCount || 0} purchases completed
-                        </p>
-                      </div>
+                              {isVerified(
+                                shop
+                              ) && (
+                                <BadgeCheck
+                                  size={
+                                    13
+                                  }
+                                  className="shrink-0 text-emerald-500"
+                                  fill="white"
+                                />
+                              )}
+                            </div>
 
-                      <span
-                        className={`mt-1 h-2 w-2 shrink-0 rounded-full ${tierDot}`}
-                      />
-                    </div>
+                            <p className="mt-0.5 text-[8px] text-slate-400">
+                              {shop.purchaseCount ||
+                                0}{" "}
+                              completed
+                              purchases
+                            </p>
+                          </div>
 
-                    {/* Details */}
-                    <div className="mt-3 grid grid-cols-[1fr_auto] gap-y-1 text-[9px]">
-                      <span className="text-slate-400">Rating</span>
+                          <span
+                            className={`mt-1 h-2 w-2 shrink-0 rounded-full ${getTierClass(
+                              rating
+                            )}`}
+                            title={tier}
+                          />
+                        </div>
 
-                      <span className="font-black text-[#3285a1]">
-                        {rating > 0
-                          ? `${rating.toFixed(1)} ★ (${shop.total_reviews || 0})`
-                          : "New"}
-                      </span>
+                        {/* Rating */}
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map(
+                              (star) => (
+                                <Star
+                                  key={
+                                    star
+                                  }
+                                  size={
+                                    11
+                                  }
+                                  className="text-amber-400"
+                                  fill={
+                                    star <=
+                                    Math.round(
+                                      rating
+                                    )
+                                      ? "currentColor"
+                                      : "none"
+                                  }
+                                />
+                              )
+                            )}
+                          </div>
 
-                      <span className="text-slate-400">Response</span>
+                          <span className="text-[9px] font-black text-slate-700">
+                            {rating > 0
+                              ? rating.toFixed(
+                                  1
+                                )
+                              : "New"}
+                          </span>
 
-                      <span className="text-slate-500">
-                        {shop.response_time || shop.responseTime || "< 1 hour"}
-                      </span>
+                          <span className="text-[8px] text-slate-400">
+                            (
+                            {shop.total_reviews ||
+                              0}{" "}
+                            reviews)
+                          </span>
+                        </div>
 
-                      <span className="text-slate-400">Hours</span>
+                        {/* Information */}
+                        <div className="mt-3 space-y-1.5 text-[9px]">
+                          <div className="flex items-center gap-2 text-slate-400">
+                            <MapPin
+                              size={
+                                10
+                              }
+                            />
 
-                      <span className="text-right text-slate-500">
-                        {isOpen ? (
-                          <>
-                            Open <span className="text-emerald-500">●</span>
-                          </>
-                        ) : (
-                          <>
-                            Closed <span className="text-red-500">●</span>
-                          </>
+                            <span>
+                              Brgy.{" "}
+                              {shop.barangay ||
+                                "Not provided"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-slate-400">
+                            <Wrench
+                              size={
+                                10
+                              }
+                            />
+
+                            <span>
+                              {shop.buyer_type ||
+                                "Repair shop buyer"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-slate-400">
+                            <ShoppingBag
+                              size={
+                                10
+                              }
+                            />
+
+                            <span>
+                              {shop.purchaseCount ||
+                                0}{" "}
+                              completed
+                              purchases
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Device categories */}
+                        {getDeviceCategories(
+                          shop
+                        ).length >
+                          0 && (
+                          <div className="mt-3 flex flex-wrap gap-1">
+                            {getDeviceCategories(
+                              shop
+                            )
+                              .slice(
+                                0,
+                                3
+                              )
+                              .map(
+                                (
+                                  category
+                                ) => (
+                                  <span
+                                    key={
+                                      category
+                                    }
+                                    className="rounded-full bg-slate-50 px-2 py-1 text-[7px] font-medium text-slate-500"
+                                  >
+                                    {
+                                      category
+                                    }
+                                  </span>
+                                )
+                              )}
+                          </div>
                         )}
-                      </span>
-                    </div>
 
-                    {/* Specialty tags */}
-                    <div className="mt-3 flex flex-wrap gap-1">
-                      {specialties.slice(0, 3).map((specialty, index) => (
-                        <span
-                          key={`${shop.id}-specialty-${index}`}
-                          className="rounded-full bg-slate-50 px-2 py-1 text-[7px] font-medium text-slate-500"
-                        >
-                          {specialty}
-                        </span>
-                      ))}
+                        {/* Footer */}
+                        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                          <span className="text-[8px] text-slate-400">
+                            View shop
+                            profile
+                          </span>
 
-                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-[7px] font-bold text-emerald-600">
-                        ✓ Verified
-                      </span>
-                    </div>
-
-                    {/* Location */}
-                    <div className="mt-3 flex items-center gap-1 text-[8px] text-slate-400">
-                      <MapPin size={9} />
-                      Brgy. {shop.barangay || currentBarangay}, Valenzuela City
-                    </div>
-                  </button>
-                );
-              })}
+                          <ChevronRight
+                            size={
+                              13
+                            }
+                            className="text-[#3285a1] transition group-hover:translate-x-1"
+                          />
+                        </div>
+                      </button>
+                    );
+                  }
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
 
-      {/* =========================================================
-        REPAIR SHOP PROFILE MODAL
-        KEEP YOUR EXISTING MODAL HERE
-    ========================================================= */}
+      {/* =====================================================
+          SHOP PROFILE MODAL
+      ===================================================== */}
 
-      {/* REPAIR SHOP PROFILE MODAL */}
       {selectedShop && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) {
+            if (
+              e.target ===
+              e.currentTarget
+            ) {
               setSelectedShop(null);
             }
           }}
         >
-          <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-[2rem] bg-white shadow-2xl">
+          <div className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[2rem] bg-white shadow-2xl">
             {/* Header */}
-            <div className="relative h-40 bg-gradient-to-r from-[#3285a1] to-[#14516d]">
+            <div className="relative h-36 bg-gradient-to-r from-[#3285a1] to-[#14516d]">
               <button
                 type="button"
-                onClick={() => setSelectedShop(null)}
-                className="absolute right-5 top-5 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition hover:bg-white/30"
+                onClick={() =>
+                  setSelectedShop(null)
+                }
+                className="absolute right-5 top-5 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm hover:bg-white/30"
               >
-                <X size={24} />
+                <X size={21} />
               </button>
 
-              <div className="absolute left-8 -bottom-12">
+              <div className="absolute -bottom-12 left-8">
                 <div className="flex h-28 w-28 items-center justify-center rounded-[1.5rem] border-[6px] border-white bg-gradient-to-br from-emerald-400 to-emerald-700 text-white shadow-xl">
-                  <Building2 size={52} />
+                  <Building2 size={48} />
                 </div>
               </div>
             </div>
 
             {/* Profile */}
             <div className="px-8 pb-8 pt-16">
-              {/* Name + badge */}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-3xl font-black text-slate-900">
-                      {selectedShop.business_name ||
-                        selectedShop.full_name ||
-                        "Repair Shop"}
+                    <h2 className="text-2xl font-black text-slate-900">
+                      {getShopName(
+                        selectedShop
+                      )}
                     </h2>
 
-                    <BadgeCheck
-                      size={27}
-                      className="text-emerald-600"
-                      fill="white"
-                    />
+                    {isVerified(
+                      selectedShop
+                    ) && (
+                      <BadgeCheck
+                        size={25}
+                        className="text-emerald-600"
+                        fill="white"
+                      />
+                    )}
                   </div>
 
                   {selectedShop.full_name &&
-                    selectedShop.full_name !== selectedShop.business_name && (
-                      <p className="mt-1 text-lg text-slate-500">
+                    selectedShop.full_name !==
+                      selectedShop.business_name && (
+                      <p className="mt-1 text-sm text-slate-500">
                         {selectedShop.full_name}
                       </p>
                     )}
 
                   {/* Rating */}
-                  <div className="mt-3 flex items-center gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={star}
-                          size={20}
-                          className="text-amber-400"
-                          fill={
-                            star <=
-                            Math.round(Number(selectedShop.average_rating || 0))
-                              ? "currentColor"
-                              : "none"
-                          }
-                        />
-                      ))}
+                      {[1, 2, 3, 4, 5].map(
+                        (star) => (
+                          <Star
+                            key={star}
+                            size={17}
+                            className="text-amber-400"
+                            fill={
+                              star <=
+                              Math.round(
+                                getShopRating(
+                                  selectedShop
+                                )
+                              )
+                                ? "currentColor"
+                                : "none"
+                            }
+                          />
+                        )
+                      )}
                     </div>
 
-                    <span className="text-xl font-black text-slate-800">
-                      {Number(selectedShop.average_rating || 0).toFixed(1)}
+                    <span className="text-lg font-black text-slate-800">
+                      {getShopRating(
+                        selectedShop
+                      ).toFixed(1)}
                     </span>
 
                     <span className="text-sm text-slate-400">
-                      ({selectedShop.total_reviews || 0} reviews)
+                      (
+                      {selectedShop.total_reviews ||
+                        0}{" "}
+                      reviews)
                     </span>
                   </div>
                 </div>
 
-                {/* Gold / Partner */}
                 <div
-                  className={`self-start rounded-full border px-5 py-2 text-sm font-black ${
-                    Number(selectedShop.average_rating || 0) >= 4.5
+                  className={`self-start rounded-full border px-4 py-2 text-xs font-black ${
+                    getShopRating(
+                      selectedShop
+                    ) >= 4.5
                       ? "border-amber-300 bg-amber-50 text-amber-700"
                       : "border-slate-200 bg-slate-50 text-slate-600"
                   }`}
                 >
-                  {Number(selectedShop.average_rating || 0) >= 4.5
-                    ? "🏅 Gold"
-                    : "Partner"}
+                  {getShopRating(
+                    selectedShop
+                  ) >= 4.5
+                    ? "🏅 Top Rated"
+                    : "Repair Shop"}
                 </div>
               </div>
 
-              {/* Information card */}
-              <div className="mt-8 rounded-[1.5rem] bg-slate-50 p-6">
-                <div className="space-y-5">
-                  {/* Address */}
-                  <div className="flex items-start gap-4">
+              {/* =================================================
+                  INFORMATION
+              ================================================= */}
+
+              <div className="mt-7 rounded-[1.5rem] bg-slate-50 p-5">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  {/* Barangay */}
+                  <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#3285a1] shadow-sm">
-                      <MapPin size={21} />
+                      <MapPin size={19} />
                     </div>
 
                     <div>
-                      <p className="text-sm font-medium text-slate-400">
-                        Address
-                      </p>
-                      <p className="mt-1 text-lg font-medium text-slate-700">
-                        {getShopAddress(selectedShop)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Hours */}
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#3285a1] shadow-sm">
-                      <Clock3 size={21} />
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium text-slate-400">
-                        Hours
+                      <p className="text-xs font-medium text-slate-400">
+                        Registered Barangay
                       </p>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="text-lg font-medium text-slate-700">
-                          {getShopHours(selectedShop)}
-                        </p>
-
-                        {(selectedShop.is_open === true ||
-                          selectedShop.open_now === true ||
-                          String(
-                            selectedShop.business_status || "",
-                          ).toLowerCase() === "open") && (
-                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-black text-emerald-700">
-                            Open Now
-                          </span>
+                      <p className="mt-1 text-sm font-bold text-slate-700">
+                        {getShopAddress(
+                          selectedShop
                         )}
-                      </div>
+                      </p>
                     </div>
                   </div>
 
                   {/* Contact */}
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#3285a1] shadow-sm">
-                      <Phone size={21} />
+                      <Phone size={19} />
                     </div>
 
                     <div>
-                      <p className="text-sm font-medium text-slate-400">
-                        Contact
+                      <p className="text-xs font-medium text-slate-400">
+                        Contact Number
                       </p>
 
-                      <p className="mt-1 text-lg font-medium text-slate-700">
-                        {getShopContact(selectedShop)}
+                      <p className="mt-1 text-sm font-bold text-slate-700">
+                        {getShopContact(
+                          selectedShop
+                        )}
                       </p>
                     </div>
                   </div>
 
-                  {/* Response time */}
-                  <div className="flex items-start gap-4">
+                  {/* Purchases */}
+                  <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#3285a1] shadow-sm">
-                      <Send size={21} />
+                      <ShoppingBag size={19} />
                     </div>
 
                     <div>
-                      <p className="text-sm font-medium text-slate-400">
-                        Response Time
+                      <p className="text-xs font-medium text-slate-400">
+                        Completed Purchases
                       </p>
 
-                      <p className="mt-1 text-lg font-medium text-slate-700">
-                        {selectedShop.response_time ||
-                          selectedShop.responseTime ||
-                          "< 1 hour"}
+                      <p className="mt-1 text-sm font-black text-[#3285a1]">
+                        {selectedShop.purchaseCount ||
+                          0}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Verification */}
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
+                      <BadgeCheck size={19} />
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">
+                        Verification
+                      </p>
+
+                      <p className="mt-1 text-sm font-black text-emerald-600">
+                        {isVerified(
+                          selectedShop
+                        )
+                          ? "Verified Repair Shop"
+                          : "Verification Pending"}
                       </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Accepted Devices */}
-              <div className="mt-8">
-                <h3 className="text-xl font-black text-slate-700">
-                  Accepted Devices
+              {/* =================================================
+                  DEVICES PURCHASED
+              ================================================= */}
+
+              <div className="mt-7">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-700">
+                      Devices Purchased
+                    </h3>
+
+                    <p className="text-[9px] text-slate-400">
+                      Categories from completed transactions
+                    </p>
+                  </div>
+
+                  <Package
+                    size={20}
+                    className="text-[#3285a1]"
+                  />
+                </div>
+
+                {getDeviceCategories(
+                  selectedShop
+                ).length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {getDeviceCategories(
+                      selectedShop
+                    ).map((category) => (
+                      <span
+                        key={category}
+                        className="rounded-full border border-[#3285a1]/20 bg-[#3285a1]/5 px-4 py-2 text-xs font-bold text-[#3285a1]"
+                      >
+                        {category}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-xl bg-slate-50 p-4 text-xs text-slate-400">
+                    No completed device purchases yet.
+                  </p>
+                )}
+              </div>
+
+              {/* =================================================
+                  RECENT PURCHASES
+              ================================================= */}
+
+              <div className="mt-7">
+                <h3 className="text-lg font-black text-slate-700">
+                  Recent Purchases
                 </h3>
 
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {getAcceptedDevices(selectedShop).map((device, index) => (
-                    <span
-                      key={`${selectedShop.id}-device-${index}`}
-                      className="rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2 text-sm font-bold text-emerald-700"
-                    >
-                      {device}
-                    </span>
-                  ))}
-                </div>
+                {loadingShopDetails ? (
+                  <div className="mt-3 flex items-center justify-center rounded-xl bg-slate-50 p-6">
+                    <Loader2
+                      size={20}
+                      className="animate-spin text-[#3285a1]"
+                    />
+                  </div>
+                ) : shopTransactions.length >
+                  0 ? (
+                  <div className="mt-3 space-y-2">
+                    {shopTransactions
+                      .slice(0, 5)
+                      .map(
+                        (
+                          transaction
+                        ) => (
+                          <div
+                            key={
+                              transaction.id
+                            }
+                            className="flex items-center justify-between rounded-xl border border-slate-100 bg-white p-3"
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                                <Package
+                                  size={
+                                    17
+                                  }
+                                />
+                              </div>
+
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-black text-slate-700">
+                                  {transaction
+                                    .listings
+                                    ?.device_model ||
+                                    "Device"}
+                                </p>
+
+                                <p className="text-[8px] text-slate-400">
+                                  {transaction
+                                    .listings
+                                    ?.category ||
+                                    "Unknown category"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="text-xs font-black text-[#3285a1]">
+                                ₱
+                                {Number(
+                                  transaction.amount ||
+                                    0
+                                ).toLocaleString()}
+                              </p>
+
+                              <p className="text-[8px] text-emerald-500">
+                                Completed
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      )}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-xl bg-slate-50 p-5 text-center">
+                    <ShoppingBag
+                      size={22}
+                      className="mx-auto text-slate-300"
+                    />
+
+                    <p className="mt-2 text-xs text-slate-400">
+                      No completed purchases yet.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              {/* Purchases / Pricing */}
-              <div className="mt-7 rounded-[1.25rem] border border-[#3285a1]/20 bg-[#3285a1]/5 p-5">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl text-[#3285a1]">
-                    <Wrench size={23} />
-                  </div>
+              {/* =================================================
+                  REVIEWS
+              ================================================= */}
 
+              <div className="mt-7">
+                <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-slate-400">
-                      Purchases · Pricing
-                    </p>
+                    <h3 className="text-lg font-black text-slate-700">
+                      Customer Reviews
+                    </h3>
 
-                    <p className="mt-1 text-xl font-black text-[#3285a1]">
-                      {selectedShop.purchaseCount || 0} completed
-                      {" · "}
-                      {selectedShop.price_range || "Price not provided"}
+                    <p className="text-[9px] text-slate-400">
+                      Reviews from completed transactions
                     </p>
                   </div>
+
+                  <div className="flex items-center gap-1">
+                    <Star
+                      size={15}
+                      className="text-amber-400"
+                      fill="currentColor"
+                    />
+
+                    <span className="text-sm font-black">
+                      {getShopRating(
+                        selectedShop
+                      ).toFixed(1)}
+                    </span>
+                  </div>
                 </div>
+
+                {shopReviews.length > 0 ? (
+                  <div className="mt-3 space-y-3">
+                    {shopReviews
+                      .slice(0, 5)
+                      .map((review) => (
+                        <div
+                          key={
+                            review.id
+                          }
+                          className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-400">
+                                <User
+                                  size={
+                                    15
+                                  }
+                                />
+                              </div>
+
+                              <div>
+                                <p className="text-xs font-bold text-slate-700">
+                                  Customer
+                                </p>
+
+                                <p className="text-[8px] text-slate-400">
+                                  {review.created_at
+                                    ? new Date(
+                                        review.created_at
+                                      ).toLocaleDateString()
+                                    : ""}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <Star
+                                size={
+                                  12
+                                }
+                                className="text-amber-400"
+                                fill="currentColor"
+                              />
+
+                              <span className="text-xs font-black">
+                                {review.overall_rating ||
+                                  0}
+                              </span>
+                            </div>
+                          </div>
+
+                          {review.comment && (
+                            <p className="mt-3 text-xs leading-relaxed text-slate-600">
+                              "{review.comment}"
+                            </p>
+                          )}
+
+                          {review.recommend && (
+                            <div className="mt-2 flex items-center gap-1 text-[8px] font-bold text-emerald-600">
+                              <CheckCircle2
+                                size={
+                                  11
+                                }
+                              />
+
+                              Recommended
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-xl bg-slate-50 p-5 text-center">
+                    <Star
+                      size={22}
+                      className="mx-auto text-slate-300"
+                    />
+
+                    <p className="mt-2 text-xs text-slate-400">
+                      No reviews yet.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              {/* Buttons */}
+              {/* =================================================
+                  ACTION BUTTONS
+              ================================================= */}
+
               <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedShop(null)}
-                  className="rounded-2xl bg-slate-100 py-4 text-base font-black text-slate-700 transition hover:bg-slate-200"
+                  onClick={() =>
+                    setSelectedShop(
+                      null
+                    )
+                  }
+                  className="rounded-2xl bg-slate-100 py-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
                 >
                   Close
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedShop(null);
-
-                    // If your parent component has messaging functionality,
-                    // connect it here.
-                    console.log("Message repair shop:", selectedShop.id);
-                  }}
-                  className="flex items-center justify-center gap-3 rounded-2xl bg-[#3285a1] py-4 text-base font-black text-white transition hover:bg-[#286f88]"
+                  onClick={() =>
+                    openMessageModal(
+                      selectedShop
+                    )
+                  }
+                  className="flex items-center justify-center gap-3 rounded-2xl bg-[#3285a1] py-4 text-sm font-black text-white transition hover:bg-[#286f88]"
                 >
-                  <MessageSquare size={21} />
+                  <MessageSquare
+                    size={19}
+                  />
+
                   Send Message
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          MESSAGE MODAL
+      ===================================================== */}
+
+      {messageShop && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (
+              e.target ===
+              e.currentTarget
+            ) {
+              setMessageShop(null);
+            }
+          }}
+        >
+          <div className="flex h-[600px] w-full max-w-lg flex-col overflow-hidden rounded-[1.75rem] bg-white shadow-2xl">
+            {/* Message header */}
+            <div className="flex items-center justify-between bg-gradient-to-r from-[#3285a1] to-[#14516d] p-5 text-white">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                  <Building2 size={22} />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black">
+                    {getShopName(
+                      messageShop
+                    )}
+                  </p>
+
+                  <p className="mt-0.5 text-[9px] text-white/60">
+                    Repair Shop
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setMessageShop(null)
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto bg-slate-50 p-4">
+              {loadingMessages ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2
+                    size={25}
+                    className="animate-spin text-[#3285a1]"
+                  />
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <MessageSquare
+                    size={35}
+                    className="text-slate-200"
+                  />
+
+                  <p className="mt-3 text-sm font-black text-slate-600">
+                    Start a conversation
+                  </p>
+
+                  <p className="mt-1 max-w-[250px] text-[9px] text-slate-400">
+                    Send a message to{" "}
+                    {getShopName(
+                      messageShop
+                    )}{" "}
+                    about your device or transaction.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {messages.map(
+                    (message) => {
+                      const isMine =
+                        message.sender_id ===
+                        session?.user?.id;
+
+                      return (
+                        <div
+                          key={
+                            message.id
+                          }
+                          className={`flex ${
+                            isMine
+                              ? "justify-end"
+                              : "justify-start"
+                          }`}
+                        >
+                          <div
+                            className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
+                              isMine
+                                ? "rounded-br-md bg-[#3285a1] text-white"
+                                : "rounded-bl-md bg-white text-slate-700 shadow-sm"
+                            }`}
+                          >
+                            <p className="break-words text-xs leading-relaxed">
+                              {
+                                message.content
+                              }
+                            </p>
+
+                            <p
+                              className={`mt-1 text-[7px] ${
+                                isMine
+                                  ? "text-white/60"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              {message.created_at
+                                ? new Date(
+                                    message.created_at
+                                  ).toLocaleTimeString(
+                                    [],
+                                    {
+                                      hour: "numeric",
+                                      minute:
+                                        "2-digit",
+                                    }
+                                  )
+                                : ""}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Composer */}
+            <div className="border-t border-slate-100 bg-white p-3">
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={messageText}
+                  onChange={(e) =>
+                    setMessageText(
+                      e.target.value
+                    )
+                  }
+                  onKeyDown={(e) => {
+                    if (
+                      e.key ===
+                        "Enter" &&
+                      !e.shiftKey
+                    ) {
+                      e.preventDefault();
+
+                      sendMessage();
+                    }
+                  }}
+                  rows={2}
+                  placeholder="Write a message..."
+                  className="flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-[#3285a1]"
+                />
+
+                <button
+                  type="button"
+                  onClick={
+                    sendMessage
+                  }
+                  disabled={
+                    sendingMessage ||
+                    !messageText.trim()
+                  }
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#3285a1] text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {sendingMessage ? (
+                    <Loader2
+                      size={16}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Send size={16} />
+                  )}
+                </button>
+              </div>
+
+              <p className="mt-1.5 px-1 text-[7px] text-slate-400">
+                Press Enter to send · Shift + Enter
+                for a new line
+              </p>
             </div>
           </div>
         </div>
