@@ -54,7 +54,6 @@ const SignUp = ({ onLoginClick }) => {
     businessName: "",
     businessPermit: null,
     techCert: null,
-    buyerType: "",
   });
 
   const [errors, setErrors] = useState({});
@@ -101,59 +100,70 @@ const SignUp = ({ onLoginClick }) => {
   const handleContinue = () => {
     if (step === 1 && accountType) {
       setStep(2);
-    } else if (step === 2) {
+      return;
+    }
+
+    if (step === 2) {
       if (validateStep2()) {
         setStep(3);
       }
-    } else if (step === 3) {
-      // HARVESTER ACCOUNT
-      if (accountType === "harvester") {
-        // REPAIR SHOP
-        if (formData.buyerType === "repair_shop") {
-          const pFile = permitRef.current?.files?.[0];
-          const tFile = techRef.current?.files?.[0];
+      return;
+    }
 
-          if (!formData.businessName) {
-            alert("Please enter your Shop/Business Name");
-            return;
-          }
+    if (step === 3) {
+      // =========================
+      // REPAIR SHOP
+      // =========================
+      if (accountType === "repair_shop") {
+        const pFile = permitRef.current?.files?.[0];
+        const tFile = techRef.current?.files?.[0];
 
-          if (!pFile || !tFile) {
-            alert("Please ensure BOTH files are selected!");
-            return;
-          }
-
-          setFormData((prev) => ({
-            ...prev,
-            businessPermit: pFile,
-            techCert: tFile,
-          }));
-
-          setIsSubmitted(true);
+        if (!formData.businessName) {
+          alert("Please enter your Shop/Business Name");
           return;
         }
 
-        // NORMAL HARVESTER
-        if (formData.buyerType === "harvester") {
-          const idFile = permitRef.current?.files?.[0];
-
-          if (!idFile) {
-            alert("Please upload a Valid Government ID");
-            return;
-          }
-
-          setFormData((prev) => ({
-            ...prev,
-            businessPermit: idFile,
-          }));
-
-          setIsSubmitted(true);
+        if (!pFile || !tFile) {
+          alert(
+            "Please upload both the Business Permit/DTI Registration and Technical Certification.",
+          );
           return;
         }
+
+        setFormData((prev) => ({
+          ...prev,
+          businessPermit: pFile,
+          techCert: tFile,
+        }));
+
+        setIsSubmitted(true);
+        return;
       }
 
-      // SELLER ACCOUNT
-      else if (accountType === "seller") {
+      // =========================
+      // COMMUNITY USER / HARVESTER
+      // =========================
+      if (accountType === "harvester") {
+        const idFile = permitRef.current?.files?.[0];
+
+        if (!idFile) {
+          alert("Please upload a Valid Government ID");
+          return;
+        }
+
+        setFormData((prev) => ({
+          ...prev,
+          businessPermit: idFile,
+        }));
+
+        setIsSubmitted(true);
+        return;
+      }
+
+      // =========================
+      // SELLER
+      // =========================
+      if (accountType === "seller") {
         const idFile = permitRef.current?.files?.[0];
 
         if (!idFile) {
@@ -180,12 +190,7 @@ const SignUp = ({ onLoginClick }) => {
       // =========================
       // DETERMINE FINAL ROLE
       // =========================
-      let finalRole = accountType;
-
-      if (accountType === "harvester") {
-        finalRole =
-          formData.buyerType === "repair_shop" ? "repair_shop" : "harvester";
-      }
+      const finalRole = accountType;
 
       // =========================
       // CREATE AUTH ACCOUNT
@@ -201,7 +206,7 @@ const SignUp = ({ onLoginClick }) => {
             // SAVE CORRECT ROLE
             role: finalRole,
 
-            buyer_type: accountType === "harvester" ? formData.buyerType : null,
+            buyer_type: finalRole,
 
             barangay: formData.barangay,
             contact_number: formData.contactNumber,
@@ -390,17 +395,33 @@ const SignUp = ({ onLoginClick }) => {
               <h3 className="text-sm font-bold text-gray-700 mb-2">
                 Select Account Type
               </h3>
-              <button
-                onClick={() => setAccountType("seller")}
-                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${accountType === "seller" ? "border-teal-500 bg-teal-50 text-teal-700 font-bold" : "border-gray-100 text-gray-600 hover:border-gray-300"}`}
-              >
-                E-waste Seller
-              </button>
+
               <button
                 onClick={() => setAccountType("harvester")}
-                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${accountType === "harvester" ? "border-teal-500 bg-teal-50 text-teal-700 font-bold" : "border-gray-100 text-gray-600 hover:border-gray-300"}`}
+                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${
+                  accountType === "harvester"
+                    ? "border-teal-500 bg-teal-50 text-teal-700 font-bold"
+                    : "border-gray-100 text-gray-600 hover:border-gray-300"
+                }`}
               >
-                Repair Shop / Tech-Harvester
+                Community User / Tech-Harvester
+                <span className="block text-[10px] font-normal text-gray-400 mt-1">
+                  Buy working items or sell unused/non-working electronics
+                </span>
+              </button>
+
+              <button
+                onClick={() => setAccountType("repair_shop")}
+                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${
+                  accountType === "repair_shop"
+                    ? "border-teal-500 bg-teal-50 text-teal-700 font-bold"
+                    : "border-gray-100 text-gray-600 hover:border-gray-300"
+                }`}
+              >
+                Repair Shop
+                <span className="block text-[10px] font-normal text-gray-400 mt-1">
+                  Buy items for parts or request repair services
+                </span>
               </button>
               <button
                 disabled={!accountType}
@@ -566,50 +587,27 @@ const SignUp = ({ onLoginClick }) => {
                 </p>
               </div>
 
-              {/* BUYER TYPE DROPDOWN */}
-              {accountType === "harvester" && (
+              {/* REPAIR SHOP ONLY */}
+              {accountType === "repair_shop" && (
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
-                    Buyer Type <span className="text-red-500">*</span>
+                    Business/Shop Name <span className="text-red-500">*</span>
                   </label>
 
-                  <select
-                    name="buyerType"
-                    value={formData.buyerType}
-                    onChange={handleChange}
+                  <input
+                    name="businessName"
+                    type="text"
+                    placeholder="Enter your business name"
                     className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                  >
-                    <option value="">Select buyer type...</option>
-                    <option value="harvester">Harvester</option>
-                    <option value="repair_shop">Repair Shop</option>
-                  </select>
+                    onChange={handleChange}
+                    value={formData.businessName || ""}
+                  />
                 </div>
               )}
 
-              {/* REPAIR SHOP ONLY */}
-              {accountType === "harvester" &&
-                formData.buyerType === "repair_shop" && (
-                  <div>
-                    <label className="text-xs font-semibold text-gray-700 mb-1 block">
-                      Business/Shop Name <span className="text-red-500">*</span>
-                    </label>
-
-                    <input
-                      name="businessName"
-                      type="text"
-                      placeholder="Enter your business name"
-                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                      onChange={handleChange}
-                      value={formData.businessName || ""}
-                    />
-                  </div>
-                )}
-
               <div className="space-y-6 mt-6">
                 {/* SELLER OR HARVESTER */}
-                {(accountType === "seller" ||
-                  (accountType === "harvester" &&
-                    formData.buyerType === "harvester")) && (
+                {(accountType === "seller" || accountType === "harvester") && (
                   <div>
                     <label className="text-[11px] font-bold text-gray-700 block mb-2">
                       Valid Government ID{" "}
@@ -657,102 +655,101 @@ const SignUp = ({ onLoginClick }) => {
                 )}
 
                 {/* REPAIR SHOP */}
-                {accountType === "harvester" &&
-                  formData.buyerType === "repair_shop" && (
-                    <>
-                      <div>
-                        <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                          Business Permit / DTI Registration{" "}
-                          <span className="text-red-500">*</span>
-                        </label>
+                {accountType === "repair_shop" && (
+                  <>
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                        Business Permit / DTI Registration{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
 
-                        <div
-                          onClick={() => permitRef.current?.click()}
-                          className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
+                      <div
+                        onClick={() => permitRef.current?.click()}
+                        className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
+                          formData.businessPermit
+                            ? "border-emerald-400 bg-emerald-50/10"
+                            : "border-gray-200"
+                        }`}
+                      >
+                        <input
+                          type="file"
+                          ref={permitRef}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleFileChange(e, "businessPermit")
+                          }
+                        />
+
+                        <Upload
+                          className={
                             formData.businessPermit
-                              ? "border-emerald-400 bg-emerald-50/10"
-                              : "border-gray-200"
-                          }`}
-                        >
-                          <input
-                            type="file"
-                            ref={permitRef}
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) =>
-                              handleFileChange(e, "businessPermit")
-                            }
-                          />
+                              ? "text-emerald-500 mb-2"
+                              : "text-gray-400 mb-2"
+                          }
+                          size={24}
+                        />
 
-                          <Upload
-                            className={
-                              formData.businessPermit
-                                ? "text-emerald-500 mb-2"
-                                : "text-gray-400 mb-2"
-                            }
-                            size={24}
-                          />
+                        <span className="text-teal-600 font-semibold text-sm">
+                          {formData.businessPermit
+                            ? "Permit uploaded!"
+                            : "Click to upload"}
+                        </span>
 
-                          <span className="text-teal-600 font-semibold text-sm">
-                            {formData.businessPermit
-                              ? "Permit uploaded!"
-                              : "Click to upload"}
-                          </span>
-
-                          <span className="text-gray-400 text-[10px] mt-1">
-                            {formData.businessPermit
-                              ? formData.businessPermit.name
-                              : "PDF or JPEG (max 5MB)"}
-                          </span>
-                        </div>
+                        <span className="text-gray-400 text-[10px] mt-1">
+                          {formData.businessPermit
+                            ? formData.businessPermit.name
+                            : "PDF or JPEG (max 5MB)"}
+                        </span>
                       </div>
+                    </div>
 
-                      <div>
-                        <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                          Technical Certification{" "}
-                          <span className="text-red-500">*</span>
-                        </label>
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                        Technical Certification{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
 
-                        <div
-                          onClick={() => techRef.current?.click()}
-                          className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
+                      <div
+                        onClick={() => techRef.current?.click()}
+                        className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
+                          formData.techCert
+                            ? "border-emerald-400 bg-emerald-50/10"
+                            : "border-gray-200"
+                        }`}
+                      >
+                        <input
+                          type="file"
+                          ref={techRef}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleFileChange(e, "techCert")}
+                        />
+
+                        <Upload
+                          className={
                             formData.techCert
-                              ? "border-emerald-400 bg-emerald-50/10"
-                              : "border-gray-200"
-                          }`}
-                        >
-                          <input
-                            type="file"
-                            ref={techRef}
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => handleFileChange(e, "techCert")}
-                          />
+                              ? "text-emerald-500 mb-2"
+                              : "text-gray-400 mb-2"
+                          }
+                          size={24}
+                        />
 
-                          <Upload
-                            className={
-                              formData.techCert
-                                ? "text-emerald-500 mb-2"
-                                : "text-gray-400 mb-2"
-                            }
-                            size={24}
-                          />
+                        <span className="text-teal-600 font-semibold text-sm">
+                          {formData.techCert
+                            ? "Certification uploaded!"
+                            : "Click to upload"}
+                        </span>
 
-                          <span className="text-teal-600 font-semibold text-sm">
-                            {formData.techCert
-                              ? "Certification uploaded!"
-                              : "Click to upload"}
-                          </span>
-
-                          <span className="text-gray-400 text-[10px] mt-1">
-                            {formData.techCert
-                              ? formData.techCert.name
-                              : "PDF or JPEG (max 5MB)"}
-                          </span>
-                        </div>
+                        <span className="text-gray-400 text-[10px] mt-1">
+                          {formData.techCert
+                            ? formData.techCert.name
+                            : "PDF or JPEG (max 5MB)"}
+                        </span>
                       </div>
-                    </>
-                  )}
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="flex gap-3 pt-4">

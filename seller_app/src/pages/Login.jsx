@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 
 const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
-  const [role, setRole] = useState("seller");
+  const [role, setRole] = useState("");
   const [isAdminView, setIsAdminView] = useState(false);
   const [isOfficerView, setIsOfficerView] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -71,8 +71,7 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
 
       console.log("Selected role:", role);
       console.log("Database role:", profile?.role);
-      const allowedRoles =
-        role === "harvester" ? ["harvester", "repair_shop"] : [role];
+      const allowedRoles = [role];
 
       if (!profile || !allowedRoles.includes(profile.role)) {
         setErrorMsg(
@@ -158,29 +157,17 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
           <div className="grid grid-cols-2 gap-3 mb-6">
             {[
               {
-                id: "seller",
-                title: "E-waste Seller",
-                desc: "List and sell electronic devices",
+                id: "harvester",
+                title: "Tech-Harvester",
+                desc: "Buy and sell electronic items",
                 icon: <Recycle size={18} />,
               },
               {
-                id: "harvester",
-                title: "Repair Shop / Tech-Harvester",
-                desc: "Browse and bid on components",
+                id: "repair_shop",
+                title: "Repair Shop",
+                desc: "Buy items for parts or repair services",
                 icon: <Shield size={18} />,
               },
-              // {
-              //   id: "admin",
-              //   title: "Administrator",
-              //   desc: "Manage platform operations",
-              //   icon: <BarChart3 size={18} />,
-              // },
-              // {
-              //   id: "environmental",
-              //   title: "Environmental Officer",
-              //   desc: "Monitor city metrics",
-              //   icon: <MapPin size={18} />,
-              // },
             ].map((item) => (
               <button
                 key={item.id}
@@ -196,13 +183,17 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
                 }`}
               >
                 <div
-                  className={`mb-2 ${role === item.id ? "text-blue-600" : "text-gray-400"}`}
+                  className={`mb-2 ${
+                    role === item.id ? "text-blue-600" : "text-gray-400"
+                  }`}
                 >
                   {item.icon}
                 </div>
+
                 <p className="text-[11px] font-bold text-gray-800 leading-tight">
                   {item.title}
                 </p>
+
                 <p className="text-[9px] text-gray-400 leading-tight mt-1">
                   {item.desc}
                 </p>

@@ -28,15 +28,15 @@ function App() {
   const [isAdminDemo, setIsAdminDemo] = useState(false);
 
   const handleLogout = async () => {
-  await supabase.auth.signOut();
+    await supabase.auth.signOut();
 
-  setSession(null);
-  setRole(null);
-  setIsAdminDemo(false);
+    setSession(null);
+    setRole(null);
+    setIsAdminDemo(false);
 
-  setIsSuspended(false);      // reset suspended state
-  setCurrentPage("login");    // go back to login page
-};
+    setIsSuspended(false); // reset suspended state
+    setCurrentPage("login"); // go back to login page
+  };
 
   // 🔥 SINGLE SOURCE OF TRUTH
   const loadUser = async (session) => {
@@ -67,14 +67,14 @@ function App() {
       const accountStatus = (data.status || "").toLowerCase();
 
       if (accountStatus === "suspended") {
-  setIsSuspended(true);
-  setSession(session);
-  setRole(data.role);
+        setIsSuspended(true);
+        setSession(session);
+        setRole(data.role);
 
-  setLoading(false);
-  setIsChecked(true);
-  return;
-}
+        setLoading(false);
+        setIsChecked(true);
+        return;
+      }
 
       setSession(session);
       setRole(data.role);
@@ -120,29 +120,29 @@ function App() {
     );
   }
   if (isSuspended) {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white rounded-3xl shadow-xl p-10 max-w-md text-center">
-        <h1 className="text-3xl font-bold text-red-600 mb-4">
-          Account Suspended
-        </h1>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="bg-white rounded-3xl shadow-xl p-10 max-w-md text-center">
+          <h1 className="text-3xl font-bold text-red-600 mb-4">
+            Account Suspended
+          </h1>
 
-        <p className="text-gray-600 mb-6">
-          Your account has been suspended by the administrator.
-          <br />
-          You cannot use the application while your account is suspended.
-        </p>
+          <p className="text-gray-600 mb-6">
+            Your account has been suspended by the administrator.
+            <br />
+            You cannot use the application while your account is suspended.
+          </p>
 
-        <button
-          onClick={handleLogout}
-          className="px-6 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700"
-        >
-          Logout
-        </button>
+          <button
+            onClick={handleLogout}
+            className="px-6 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700"
+          >
+            Logout
+          </button>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   // --- ADDED ENV OFFICER DASHBOARD VIEW ---
   // This shows if the role is officially 'env_officer' OR if the demo bypass is clicked
@@ -190,13 +190,10 @@ function App() {
       return <AdminPanel session={session} onLogout={handleLogout} />;
     }
 
-    if (role === "seller") {
-      return <SellerDashboard session={session} />;
+    if (role === "harvester") {
+      return <SellerDashboard session={session} onLogout={handleLogout} />;
     }
 
-    if (role === "harvester") {
-      return <HarvesterDashboard session={session} onLogout={handleLogout} />;
-    }
     if (role === "repair_shop") {
       return <HarvesterDashboard session={session} onLogout={handleLogout} />;
     }
