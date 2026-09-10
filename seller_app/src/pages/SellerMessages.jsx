@@ -32,20 +32,38 @@ const SellerMessages = ({ userId, onTabChange }) => {
   });
 
   const [dropOffPoints, setDropOffPoints] = useState([]);
+  const [activeTransaction, setActiveTransaction] = useState(null);
 
-  const fetchAcceptedBidAmount = async () => {
-    if (!activeChat) return;
+  const fetchActiveTransaction = async () => {
+    if (!activeChat || !userId) {
+      setActiveTransaction(null);
+      return null;
+    }
 
     const { data, error } = await supabase
       .from("transactions")
-      .select("amount")
+      .select("*")
       .eq("listing_id", activeChat.listing_id)
-      .eq("harvester_id", activeChat.other_party_id)
-      .single();
+      .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
+      .in("status", ["pending", "meetup_scheduled"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (!error && data) {
-      setAcceptedBidAmount(data.amount);
+    if (error) {
+      console.error("Error fetching active transaction:", error.message);
+      setActiveTransaction(null);
+      return null;
     }
+
+    setActiveTransaction(data || null);
+    if (data) setAcceptedBidAmount(Number(data.amount || 0));
+    return data || null;
+  };
+
+  const fetchAcceptedBidAmount = async () => {
+    const tx = await fetchActiveTransaction();
+    if (tx) setAcceptedBidAmount(Number(tx.amount || 0));
   };
 
   const handleScheduleMeetup = async () => {
@@ -55,17 +73,18 @@ const SellerMessages = ({ userId, onTabChange }) => {
     }
 
     try {
-      // 🔥 1. GET THE EXISTING PENDING TRANSACTION FIRST
+      // Only the owner of the listing may schedule the meetup.
       const { data: existingTx, error: fetchError } = await supabase
         .from("transactions")
         .select("*")
         .eq("listing_id", activeChat.listing_id)
+        .eq("seller_id", userId)
         .eq("harvester_id", activeChat.other_party_id)
         .eq("status", "pending")
-        .single(); // ensures ONLY ONE
+        .maybeSingle();
 
       if (fetchError || !existingTx) {
-        throw new Error("Pending transaction not found.");
+        throw new Error("Pending seller transaction not found. Only the listing owner can schedule the meetup.");
       }
 
       // 🔥 2. UPDATE THAT EXACT ROW
@@ -106,6 +125,8 @@ Date: ${meetupData.date} at ${meetupData.time}`,
 
       alert(`Meetup Scheduled for ₱${finalPrice.toLocaleString()}`);
       setIsModalOpen(false);
+      setMeetupData({ date: "", time: "", location: "", drop_off_point_id: "", notes: "" });
+      await fetchActiveTransaction();
       if (onTabChange) onTabChange("transactions");
     } catch (err) {
       console.error("Error:", err.message);
@@ -239,6 +260,15 @@ Date: ${meetupData.date} at ${meetupData.time}`,
 
     fetchDropOffPoints();
   }, []);
+
+  useEffect(() => {
+    if (!activeChat) {
+      setActiveTransaction(null);
+      return;
+    }
+
+    fetchActiveTransaction();
+  }, [activeChat, userId]);
 
   useEffect(() => {
     if (!activeChat) return;
@@ -427,15 +457,25 @@ Date: ${meetupData.date} at ${meetupData.time}`,
                   </div>
                 </div>
               </div>
-              <button
-                onClick={async () => {
-                  await fetchAcceptedBidAmount();
-                  setIsModalOpen(true);
-                }} // Open modal on click
-                className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-[10px] font-bold"
-              >
-                <Calendar size={14} /> Schedule Meetup
-              </button>
+              {activeTransaction?.seller_id === userId &&
+                activeTransaction?.status === "pending" && (
+                  <button
+                    onClick={async () => {
+                      await fetchAcceptedBidAmount();
+                      setIsModalOpen(true);
+                    }}
+                    className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-[10px] font-bold"
+                  >
+                    <Calendar size={14} /> Schedule Meetup
+                  </button>
+                )}
+
+              {activeTransaction?.harvester_id === userId &&
+                activeTransaction?.status === "meetup_scheduled" && (
+                  <span className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl text-[10px] font-bold border border-emerald-100">
+                    <CheckCheck size={14} /> Meetup Scheduled
+                  </span>
+                )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/30">

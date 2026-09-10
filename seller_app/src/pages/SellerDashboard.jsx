@@ -477,19 +477,38 @@ const SellerDashboard = ({ session }) => {
   );
   const handleCompleteTransaction = async (txId) => {
     try {
-      const { error } = await supabase
+      const txToComplete = transactions.find((t) => t.id === txId);
+
+      if (!txToComplete) throw new Error("Transaction not found.");
+
+      // Only the buyer/harvester may confirm that the handover is complete.
+      if (txToComplete.harvester_id !== session.user.id) {
+        alert("Only the buyer can confirm the handover.");
+        return;
+      }
+
+      if (txToComplete.status !== "meetup_scheduled") {
+        alert("The meetup must be scheduled before the handover can be completed.");
+        return;
+      }
+
+      const { data: updatedTx, error } = await supabase
         .from("transactions")
         .update({ status: "completed" })
-        .eq("id", txId);
+        .eq("id", txId)
+        .eq("harvester_id", session.user.id)
+        .select("*")
+        .single();
 
       if (error) throw error;
 
       setTransactions((prev) =>
-        prev.map((t) => (t.id === txId ? { ...t, status: "completed" } : t)),
+        prev.map((t) => (t.id === txId ? { ...t, ...updatedTx } : t)),
       );
-      alert("Transaction marked as completed!");
+      alert("Handover confirmed. Transaction completed!");
     } catch (err) {
-      alert("Failed to update database: " + err.message);
+      console.error("Error completing transaction:", err);
+      alert("Failed to complete transaction: " + err.message);
     }
   };
 
@@ -750,15 +769,20 @@ const SellerDashboard = ({ session }) => {
           .select(
             `
           *,
+          seller:seller_id (
+            full_name,
+            business_name,
+            role
+          ),
           harvester:harvester_id (
-  full_name,
-  business_name,
-  role
-),
+            full_name,
+            business_name,
+            role
+          ),
           listing:listing_id (device_model, asking_price)
         `,
           )
-          .eq("seller_id", session.user.id)
+          .or(`seller_id.eq.${session.user.id},harvester_id.eq.${session.user.id}`)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -2091,218 +2115,390 @@ const SellerDashboard = ({ session }) => {
           {/* --- TRANSACTIONS TAB --- */}
           {activeTab === "transactions" && (
             <div className="animate-in fade-in duration-500 max-w-6xl mx-auto">
-              <h3 className="text-sm font-bold text-slate-700 mb-4">
-                Active Transactions
-              </h3>
-
-              <div className="grid grid-cols-12 gap-6">
-                {/* 1. LEFT SIDEBAR SELECTION */}
-                <div className="col-span-4 space-y-3 overflow-y-auto max-h-[600px] pr-2 no-scrollbar">
-                  {transactions.map((tx) => (
-                    <button
-                      key={tx.id}
-                      onClick={() => setSelectedTxId(tx.id)}
-                      className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${selectedTxId === tx.id
-                        ? "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
-                        : "border-slate-100 bg-white hover:border-slate-200"
-                        }`}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-bold text-sm text-slate-800">
-                          {tx.listing?.device_model}
-                        </h4>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${tx.status === "completed"
-                            ? "bg-green-50 text-green-600 border-green-200"
-                            : tx.status === "cancelled"
-                              ? "bg-red-50 text-red-600 border-red-200"
-                              : "bg-emerald-50 text-emerald-600 border-emerald-200"
-                            }`}
-                        >
-                          {tx.status.charAt(0).toUpperCase() +
-                            tx.status.slice(1)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mb-2">
-                        Buyer: {tx.harvester?.full_name}
-                      </p>
-                      <p className="text-sm font-black text-[#2d7a7f]">
-                        ₱{tx.amount?.toLocaleString()}
-                      </p>
-                      <div className="flex items-center gap-1 mt-2 text-[10px] text-slate-400">
-                        <MessageSquare size={12} />
-                        <span>{tx.messages?.length || 0} messages</span>
-                      </div>
-                    </button>
-                  ))}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-700">
+                    Active Transactions
+                  </h3>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Transactions where you are either the seller or the buyer.
+                  </p>
                 </div>
+              </div>
 
-                {/* 2. RIGHT DETAILED VIEW */}
-                <div className="col-span-8">
-                  {transactions.find((t) => t.id === selectedTxId) ? (
-                    (() => {
-                      const tx = transactions.find(
-                        (t) => t.id === selectedTxId,
-                      );
+              {transactions.length === 0 ? (
+                <div className="bg-white rounded-xl border-2 border-dashed border-slate-100 p-12 text-center">
+                  <ArrowLeftRight size={30} className="mx-auto text-slate-300" />
+                  <p className="text-sm font-bold text-slate-500 mt-3">
+                    No active transactions
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Accepted bids and purchases will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-12 gap-6">
+                  {/* LEFT: TRANSACTION LIST */}
+                  <div className="col-span-4 space-y-3 overflow-y-auto max-h-[600px] pr-2 no-scrollbar">
+                    {transactions.map((tx) => {
+                      const isSeller = tx.seller_id === session.user.id;
+                      const isBuyer = tx.harvester_id === session.user.id;
                       const isCompleted = tx.status === "completed";
 
+                      const otherParty = isSeller ? tx.harvester : tx.seller;
+                      const otherPartyName =
+                        otherParty?.business_name ||
+                        otherParty?.full_name ||
+                        "Unknown User";
+
                       return (
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-full">
-                          {/* Header Section */}
-                          <div className="bg-[#2d7a7f] p-6 text-white flex justify-between items-start">
-                            <div>
-                              <h2 className="text-xl font-bold">
-                                {tx.listing?.device_model}
-                              </h2>
-                              <p className="text-xs opacity-80 uppercase tracking-wider mt-1">
-                                ID: {tx.id.slice(0, 8)}
-                              </p>
-                            </div>
-                            <span className="bg-white/20 px-4 py-1 rounded-full text-xs font-medium backdrop-blur-sm">
-                              {isCompleted ? "Completed" : "Matched"}
+                        <button
+                          key={tx.id}
+                          onClick={() => setSelectedTxId(tx.id)}
+                          className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${
+                            selectedTxId === tx.id
+                              ? "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
+                              : "border-slate-100 bg-white hover:border-slate-200"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-1 gap-2">
+                            <h4 className="font-bold text-sm text-slate-800 truncate">
+                              {tx.listing?.device_model || "Electronic Item"}
+                            </h4>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${
+                                isCompleted
+                                  ? "bg-green-50 text-green-600 border-green-200"
+                                  : tx.status === "cancelled"
+                                    ? "bg-red-50 text-red-600 border-red-200"
+                                    : tx.status === "meetup_scheduled"
+                                      ? "bg-blue-50 text-blue-600 border-blue-200"
+                                      : "bg-amber-50 text-amber-600 border-amber-200"
+                              }`}
+                            >
+                              {isCompleted
+                                ? "Completed"
+                                : tx.status === "meetup_scheduled"
+                                  ? "Meetup Scheduled"
+                                  : tx.status === "cancelled"
+                                    ? "Cancelled"
+                                    : "Pending"}
                             </span>
                           </div>
 
-                          {/* Horizontal Progress Tracker */}
-                          <div className="p-10 border-b border-slate-50">
-                            <div className="relative flex justify-between items-center max-w-lg mx-auto">
-                              {/* Background Line */}
-                              <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2"></div>
-                              {/* Active Line */}
-                              <div
-                                className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${isCompleted
-                                  ? "bg-green-500 w-full"
-                                  : "bg-blue-500 w-1/2"
-                                  }`}
-                              ></div>
+                          <p className="text-xs text-slate-500 mb-2">
+                            {isSeller ? "Buyer" : "Seller"}: {otherPartyName}
+                          </p>
 
-                              {/* Step 1 */}
-                              <div className="relative z-10 flex flex-col items-center">
-                                <div
-                                  className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : "border-blue-500 text-blue-500"}`}
-                                >
-                                  <Check size={14} strokeWidth={3} />
-                                </div>
-                                <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500">
-                                  Matched
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-black text-[#2d7a7f]">
+                              ₱{Number(tx.amount || 0).toLocaleString()}
+                            </p>
+                            <span
+                              className={`text-[9px] font-black px-2 py-1 rounded-full ${
+                                isSeller
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-blue-50 text-blue-700"
+                              }`}
+                            >
+                              {isSeller ? "SELLING" : "BUYING"}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* RIGHT: DETAILS */}
+                  <div className="col-span-8">
+                    {transactions.find((t) => t.id === selectedTxId) ? (
+                      (() => {
+                        const tx = transactions.find((t) => t.id === selectedTxId);
+                        const isSeller = tx.seller_id === session.user.id;
+                        const isBuyer = tx.harvester_id === session.user.id;
+                        const isCompleted = tx.status === "completed";
+                        const isMeetupScheduled = tx.status === "meetup_scheduled";
+
+                        const sellerName =
+                          tx.seller?.business_name ||
+                          tx.seller?.full_name ||
+                          "Unknown Seller";
+                        const buyerName =
+                          tx.harvester?.business_name ||
+                          tx.harvester?.full_name ||
+                          "Unknown Buyer";
+
+                        return (
+                          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-full">
+                            <div className="bg-[#2d7a7f] p-6 text-white flex justify-between items-start">
+                              <div>
+                                <h2 className="text-xl font-bold">
+                                  {tx.listing?.device_model || "Electronic Item"}
+                                </h2>
+                                <p className="text-xs opacity-80 uppercase tracking-wider mt-1">
+                                  Transaction ID: {tx.id.slice(0, 8)}
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end gap-2">
+                                <span className="bg-white/20 px-4 py-1 rounded-full text-xs font-medium backdrop-blur-sm">
+                                  {isCompleted
+                                    ? "Completed"
+                                    : isMeetupScheduled
+                                      ? "Meetup Scheduled"
+                                      : "Matched"}
+                                </span>
+                                <span className="bg-white/10 px-3 py-1 rounded-full text-[9px] font-black uppercase">
+                                  {isSeller ? "You are selling" : "You are buying"}
                                 </span>
                               </div>
+                            </div>
 
-                              {/* Step 2 */}
-                              <div className="relative z-10 flex flex-col items-center">
+                            {/* PROGRESS */}
+                            <div className="p-10 border-b border-slate-50">
+                              <div className="relative flex justify-between items-center max-w-lg mx-auto">
+                                <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2" />
                                 <div
-                                  className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : tx.status !== "pending" ? "border-blue-500 text-blue-500" : "border-slate-200 text-slate-300"}`}
-                                >
-                                  {isCompleted ? (
+                                  className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${
+                                    isCompleted
+                                      ? "bg-green-500 w-full"
+                                      : isMeetupScheduled
+                                        ? "bg-blue-500 w-1/2"
+                                        : "bg-blue-500 w-0"
+                                  }`}
+                                />
+
+                                <div className="relative z-10 flex flex-col items-center">
+                                  <div className="bg-white p-1 rounded-full border-2 border-green-500 text-green-500">
                                     <Check size={14} strokeWidth={3} />
-                                  ) : (
-                                    <Clock size={14} />
+                                  </div>
+                                  <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                                    Matched
+                                  </span>
+                                </div>
+
+                                <div className="relative z-10 flex flex-col items-center">
+                                  <div
+                                    className={`bg-white p-1 rounded-full border-2 ${
+                                      isMeetupScheduled || isCompleted
+                                        ? "border-blue-500 text-blue-500"
+                                        : "border-slate-200 text-slate-300"
+                                    }`}
+                                  >
+                                    {isMeetupScheduled || isCompleted ? (
+                                      <Check size={14} strokeWidth={3} />
+                                    ) : (
+                                      <Clock size={14} />
+                                    )}
+                                  </div>
+                                  <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                                    Meetup Scheduled
+                                  </span>
+                                </div>
+
+                                <div className="relative z-10 flex flex-col items-center">
+                                  <div
+                                    className={`bg-white p-1 rounded-full border-2 ${
+                                      isCompleted
+                                        ? "border-green-500 text-green-500"
+                                        : "border-slate-200 text-slate-300"
+                                    }`}
+                                  >
+                                    <Check
+                                      size={14}
+                                      strokeWidth={3}
+                                      className={isCompleted ? "opacity-100" : "opacity-0"}
+                                    />
+                                  </div>
+                                  <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                                    Handover Complete
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="p-8">
+                              <div className="grid grid-cols-3 gap-6 mb-8">
+                                <div>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                                    Seller
+                                  </p>
+                                  <p className="text-sm font-bold text-slate-700">
+                                    {sellerName}
+                                  </p>
+                                  {isSeller && (
+                                    <span className="text-[9px] text-emerald-600 font-bold">
+                                      You
+                                    </span>
                                   )}
                                 </div>
-                                <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500">
-                                  Meetup Scheduled
-                                </span>
-                              </div>
-
-                              {/* Step 3 */}
-                              <div className="relative z-10 flex flex-col items-center">
-                                <div
-                                  className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : "border-slate-200 text-slate-300"}`}
-                                >
-                                  <Check
-                                    size={14}
-                                    strokeWidth={3}
-                                    className={
-                                      isCompleted ? "opacity-100" : "opacity-0"
-                                    }
-                                  />
+                                <div>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                                    Buyer
+                                  </p>
+                                  <p className="text-sm font-bold text-slate-700">
+                                    {buyerName}
+                                  </p>
+                                  {isBuyer && (
+                                    <span className="text-[9px] text-blue-600 font-bold">
+                                      You
+                                    </span>
+                                  )}
                                 </div>
-                                <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500">
-                                  Handover Complete
-                                </span>
+                                <div>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                                    Amount
+                                  </p>
+                                  <p className="text-xl font-black text-[#2d7a7f]">
+                                    ₱{Number(tx.amount || 0).toLocaleString()}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                          </div>
 
-                          {/* Details Section */}
-                          <div className="p-8">
-                            <div className="grid grid-cols-2 gap-8 mb-8">
-                              <div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
-                                  Buyer
-                                </p>
-                                <p className="text-sm font-bold text-slate-700">
-                                  {tx.harvester?.full_name}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
-                                  Amount
-                                </p>
-                                <p className="text-xl font-black text-[#2d7a7f]">
-                                  ₱{tx.amount?.toLocaleString()}
-                                </p>
-                              </div>
-                            </div>
-
-                            {isCompleted ? (
-                              <div className="space-y-4">
-                                {/* Completed Status Banner */}
-                                <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center gap-4 relative">
-                                  <div className="bg-white p-2 rounded-full shadow-sm text-green-500 border border-green-100">
-                                    <Check size={20} strokeWidth={3} />
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-green-800">
-                                      Transaction Completed
-                                    </p>
-                                    <p className="text-xs text-green-600">
-                                      Completed on{" "}
-                                      {new Date(
-                                        tx.updated_at,
-                                      ).toLocaleDateString("en-US", {
-                                        month: "long",
-                                        day: "numeric",
-                                        year: "numeric",
-                                      })}
+                              {/* MEETUP INFORMATION */}
+                              {isMeetupScheduled || isCompleted ? (
+                                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6">
+                                  <div className="flex items-center gap-2 mb-4">
+                                    <Calendar size={17} className="text-blue-600" />
+                                    <p className="text-sm font-bold text-blue-800">
+                                      Meetup Details
                                     </p>
                                   </div>
-                                  {/* Mock Avatar Bubble */}
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <p className="text-[9px] uppercase font-bold text-blue-400">
+                                        Date
+                                      </p>
+                                      <p className="text-sm font-bold text-slate-700 mt-1">
+                                        {tx.meetup_date
+                                          ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", {
+                                              month: "long",
+                                              day: "numeric",
+                                              year: "numeric",
+                                            })
+                                          : "Not set"}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[9px] uppercase font-bold text-blue-400">
+                                        Time
+                                      </p>
+                                      <p className="text-sm font-bold text-slate-700 mt-1">
+                                        {tx.meetup_time || "Not set"}
+                                      </p>
+                                    </div>
+                                    <div className="col-span-2">
+                                      <p className="text-[9px] uppercase font-bold text-blue-400">
+                                        Location
+                                      </p>
+                                      <p className="text-sm font-bold text-slate-700 mt-1 flex items-center gap-1">
+                                        <MapPin size={14} className="text-blue-500" />
+                                        {tx.barangay || "Not set"}
+                                      </p>
+                                    </div>
+                                    {tx.notes && (
+                                      <div className="col-span-2">
+                                        <p className="text-[9px] uppercase font-bold text-blue-400">
+                                          Notes
+                                        </p>
+                                        <p className="text-xs text-slate-600 mt-1">
+                                          {tx.notes}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
+                              ) : null}
 
-                                {/* Rate Button */}
-                                <button
-                                  onClick={() => setShowRateModal(true)}
-                                  className="w-full bg-[#FF4D2D] hover:bg-[#e64528] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"
-                                >
-                                  <Star size={18} fill="currentColor" /> Rate
-                                  Buyer
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                <button className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors">
-                                  <Calendar size={18} /> Schedule Meetup
-                                </button>
-                                <button
-                                  onClick={() => setShowCancelModal(true)}
-                                  className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"
-                                >
-                                  <XCircle size={18} /> Cancel Transaction
-                                </button>
-                              </div>
-                            )}
+                              {/* COMPLETED */}
+                              {isCompleted ? (
+                                <div className="space-y-4">
+                                  <div className="bg-green-50 border border-green-100 rounded-xl p-5 flex items-center gap-4">
+                                    <div className="bg-white p-2 rounded-full shadow-sm text-green-500 border border-green-100">
+                                      <Check size={20} strokeWidth={3} />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-green-800">
+                                        Transaction Completed
+                                      </p>
+                                      <p className="text-xs text-green-600">
+                                        The handover has been confirmed by the buyer.
+                                        {tx.updated_at && (
+                                          <> Completed on {new Date(tx.updated_at).toLocaleDateString("en-US", {
+                                            month: "long",
+                                            day: "numeric",
+                                            year: "numeric",
+                                          })}.</>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {isSeller && (
+                                    <button
+                                      onClick={() => setShowRateModal(true)}
+                                      className="w-full bg-[#FF4D2D] hover:bg-[#e64528] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"
+                                    >
+                                      <Star size={18} fill="currentColor" /> Rate Buyer
+                                    </button>
+                                  )}
+                                </div>
+                              ) : isBuyer && isMeetupScheduled ? (
+                                <div className="space-y-3">
+                                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                                    <p className="text-sm font-bold text-amber-800">
+                                      Handover Pending
+                                    </p>
+                                    <p className="text-xs text-amber-600 mt-1">
+                                      After you receive the item at the scheduled meetup, confirm the handover below.
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleCompleteTransaction(tx.id)}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                                  >
+                                    <CheckCheck size={18} /> Confirm Handover Complete
+                                  </button>
+                                </div>
+                              ) : isSeller ? (
+                                <div className="space-y-3">
+                                  <button
+                                    onClick={() => {
+                                      setShowMessages(true);
+                                      setActiveTab("listings");
+                                    }}
+                                    className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"
+                                  >
+                                    <Calendar size={18} /> Schedule Meetup via Messages
+                                  </button>
+                                  <button
+                                    onClick={() => setShowCancelModal(true)}
+                                    className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"
+                                  >
+                                    <XCircle size={18} /> Cancel Transaction
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                                  <p className="text-sm font-bold text-slate-600">
+                                    Waiting for seller to schedule the meetup.
+                                  </p>
+                                  <p className="text-xs text-slate-400 mt-1">
+                                    You will see the meetup details here once the seller schedules it.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <div className="h-full flex items-center justify-center bg-white rounded-xl border-2 border-dashed border-slate-100 text-slate-400">
-                      Select a transaction to view details
-                    </div>
-                  )}
+                        );
+                      })()
+                    ) : (
+                      <div className="h-full min-h-[400px] flex items-center justify-center bg-white rounded-xl border-2 border-dashed border-slate-100 text-slate-400">
+                        Select a transaction to view details
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
           {activeTab === "donation" && (
