@@ -3,18 +3,14 @@ import { supabase } from "../supabaseClient";
 import AdminLogin from "./AdminLogin";
 import EnvOfficerLogin from "./EnvOfficerLogin";
 import AdminSignup from "./AdminSignup";
+import wastelessLogo from "./assets/wasteless-logo.png";
 
 import {
   Recycle,
   Shield,
-  BarChart3,
-  MapPin,
-  Building2,
   Mail,
   Lock,
   ArrowRight,
-  Leaf,
-  Zap,
 } from "lucide-react";
 
 const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
@@ -27,83 +23,145 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // =========================
+  // ADMIN SIGNUP VIEW
+  // =========================
   if (isSignupView) {
-    return <AdminSignup onBackToLogin={() => setIsSignupView(false)} />;
-  }
-  if (isOfficerView) {
     return (
-      <EnvOfficerLogin onBackToUserLogin={() => setIsOfficerView(false)} />
-    );
-  }
-  if (isAdminView) {
-    return (
-      <AdminLogin
-        onBackToUserLogin={() => setIsAdminView(false)}
-        onSignUpClick={() => setIsSignupView(true)} // This function is what was missing
+      <AdminSignup
+        onBackToLogin={() => setIsSignupView(false)}
       />
     );
   }
 
-  // 2. ADD THIS LOGIN FUNCTION
+  // =========================
+  // OFFICER LOGIN VIEW
+  // =========================
+  if (isOfficerView) {
+    return (
+      <EnvOfficerLogin
+        onBackToUserLogin={() => setIsOfficerView(false)}
+      />
+    );
+  }
+
+  // =========================
+  // ADMIN LOGIN VIEW
+  // =========================
+  if (isAdminView) {
+    return (
+      <AdminLogin
+        onBackToUserLogin={() => setIsAdminView(false)}
+        onSignUpClick={() => setIsSignupView(true)}
+      />
+    );
+  }
+
+  // =========================
+  // EMAIL LOGIN
+  // =========================
   const handleEmailLogin = async (e) => {
     e.preventDefault();
-    setLoading(true);
+
     setErrorMsg("");
+
+    if (!role) {
+      setErrorMsg("Please select your role before signing in.");
+      return;
+    }
+
+    if (!email || !password) {
+      setErrorMsg("Please enter your email and password.");
+      return;
+    }
+
+    setLoading(true);
+
     try {
+      // Authenticate user
       const {
         data: { user },
         error: authError,
       } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password,
+        email,
+        password,
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        throw authError;
+      }
 
-      // 2. Fetch the user's role from your database (e.g., 'profiles' or 'users' table)
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles") // Ensure this table exists in your Supabase DB
+      if (!user) {
+        throw new Error("Unable to retrieve your account.");
+      }
+
+      // Fetch role from profiles table
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
         .select("role")
         .eq("id", user.id)
         .single();
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        throw profileError;
+      }
 
       console.log("Selected role:", role);
       console.log("Database role:", profile?.role);
+
+      // Check whether selected role matches database role
       const allowedRoles = [role];
 
       if (!profile || !allowedRoles.includes(profile.role)) {
         setErrorMsg(
-          `Access Denied: This account is registered as a ${profile?.role}. Please select the correct role above.`,
+          `Access Denied: This account is registered as a ${profile?.role || "another role"}. Please select the correct role above.`
         );
 
         await supabase.auth.signOut();
 
         setLoading(false);
-
         return;
       }
 
       console.log("Auth and Role match success!");
+
+      if (setIsRoleChecking) {
+        setIsRoleChecking(false);
+      }
+
       window.location.reload();
     } catch (error) {
-      // 💡 TRANSLATION LAYER: Check if Supabase sent the credential error
+      console.error("Login error:", error);
+
       if (error.message === "Invalid login credentials") {
         setErrorMsg(
-          "Authentication failed. Please check your email or password.",
+          "Authentication failed. Please check your email or password."
         );
       } else {
-        // Fallback for other errors (like network issues)
-        setErrorMsg(error.message || "An unexpected error occurred.");
+        setErrorMsg(
+          error.message || "An unexpected error occurred."
+        );
       }
     } finally {
       setLoading(false);
     }
   };
 
+  // =========================
+  // GOOGLE / FACEBOOK LOGIN
+  // =========================
   const handleSocialLogin = async (provider) => {
     try {
+      if (!role) {
+        setErrorMsg("Please select your role before continuing.");
+        return;
+      }
+
+      setErrorMsg("");
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
@@ -115,60 +173,116 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
     } catch (error) {
-      alert("Authentication failed. Please try again.");
       console.error(error);
+      setErrorMsg("Authentication failed. Please try again.");
     }
   };
 
-  return (
-    <div className="flex h-screen w-full bg-white font-sans overflow-hidden">
-      {/* LEFT SIDE: Gradient */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] p-12 flex-col justify-between text-white relative"></div>
+  // =========================
+  // ROLE OPTIONS
+  // =========================
+  const roles = [
+    {
+      id: "harvester",
+      title: "Harvester",
+      desc: "Buy and sell electronic items.",
+      icon: <Recycle size={20} />,
+    },
+    {
+      id: "repair_shop",
+      title: "Repair Shop",
+      desc: "Browse and bid on components",
+      icon: <Shield size={20} />,
+    },
+  ];
 
-      {/* RIGHT SIDE: Form */}
-      <div className="w-full md:w-1/2 flex flex-col justify-center px-12 lg:px-24">
-        <div className="max-w-md w-full mx-auto">
-          <h2 className="text-2xl font-bold text-gray-800">Welcome Back</h2>
-          <p className="text-gray-400 text-sm mb-6">
-            Sign in to access your dashboard
-          </p>
-          {/* 🔥 DYNAMIC AUTHENTICATION ERROR BANNER */}
+  return (
+    <div className="flex min-h-screen w-full bg-white font-sans overflow-hidden">
+
+      {/* =====================================================
+          LEFT SIDE
+      ===================================================== */}
+      <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-gradient-to-br from-[#1c6280] via-[#17627a] to-[#4f9630] relative overflow-hidden">
+
+        {/* Decorative gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#207e9c]/40 via-transparent to-[#69a832]/30" />
+
+        <div className="relative z-10 w-full h-full flex flex-col items-center justify-between py-24 px-16">
+
+          {/* LOGO / ILLUSTRATION */}
+          <div className="flex flex-col items-center justify-center flex-1">
+
+            <img
+              src={wastelessLogo}
+              alt="Wasteless Logo"
+              className="w-64 h-64 object-contain mb-8"
+            />
+
+            <h1 className="text-white text-5xl font-bold tracking-tight">
+              Wasteless
+            </h1>
+
+          </div>
+
+          {/* TAGLINE */}
+          <div className="w-full">
+            <h2 className="text-white text-4xl xl:text-5xl font-extrabold tracking-tight text-center">
+              Recover More. Waste Less.
+            </h2>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================
+          RIGHT SIDE
+      ===================================================== */}
+      <div className="w-full lg:w-1/2 min-h-screen flex items-center justify-center px-8 sm:px-12 lg:px-20 xl:px-28">
+
+        <div className="w-full max-w-[500px]">
+
+          {/* HEADER */}
+          <div className="mb-8">
+            <h2 className="text-[28px] font-bold text-[#182033] tracking-tight">
+              Welcome Back
+            </h2>
+
+            <p className="text-[#7c8494] text-sm mt-1">
+              Sign in to access your dashboard
+            </p>
+          </div>
+
+          {/* ERROR MESSAGE */}
           {errorMsg && (
-            <div className="mb-4 flex items-center justify-between bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 text-xs animate-in fade-in slide-in-from-top-1 duration-200">
-              <div className="flex items-center gap-2">
+            <div className="mb-5 flex items-start justify-between bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 text-xs">
+
+              <div className="flex items-start gap-2">
                 <span className="font-bold">✕</span>
                 <span>{errorMsg}</span>
               </div>
+
               <button
                 type="button"
                 onClick={() => setErrorMsg("")}
-                className="text-red-400 hover:text-red-600 font-bold ml-2 transition-colors"
+                className="text-red-400 hover:text-red-600 font-bold ml-3"
               >
                 ✕
               </button>
             </div>
           )}
 
-          <label className="text-xs font-semibold text-gray-600 mb-2 block">
+          {/* ROLE LABEL */}
+          <label className="text-[11px] font-bold text-[#4d5667] mb-3 block">
             Select Your Role
           </label>
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            {[
-              {
-                id: "harvester",
-                title: "Tech-Harvester",
-                desc: "Buy and sell electronic items",
-                icon: <Recycle size={18} />,
-              },
-              {
-                id: "repair_shop",
-                title: "Repair Shop",
-                desc: "Buy items for parts or repair services",
-                icon: <Shield size={18} />,
-              },
-            ].map((item) => (
+
+          {/* ROLE CARDS */}
+          <div className="grid grid-cols-2 gap-3 mb-7">
+
+            {roles.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -176,145 +290,270 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
                   setRole(item.id);
                   setErrorMsg("");
                 }}
-                className={`p-3 border rounded-xl text-left transition-all ${
-                  role === item.id
-                    ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
+                className={`
+                  min-h-[104px]
+                  p-4
+                  rounded-xl
+                  border
+                  text-left
+                  transition-all
+                  duration-200
+                  ${role === item.id
+                    ? "border-[#238ba5] bg-[#f4fbfc] ring-1 ring-[#238ba5]"
+                    : "border-[#dfe3e8] bg-white hover:border-[#bfc6cf]"
+                  }
+                `}
               >
+
                 <div
-                  className={`mb-2 ${
-                    role === item.id ? "text-blue-600" : "text-gray-400"
-                  }`}
+                  className={`
+                    mb-3
+                    ${role === item.id
+                      ? "text-[#238ba5]"
+                      : "text-[#9ca3af]"
+                    }
+                  `}
                 >
                   {item.icon}
                 </div>
 
-                <p className="text-[11px] font-bold text-gray-800 leading-tight">
+                <p className="text-[12px] font-bold text-[#182033] leading-tight">
                   {item.title}
                 </p>
 
-                <p className="text-[9px] text-gray-400 leading-tight mt-1">
+                <p className="text-[9px] text-[#7c8494] leading-tight mt-1">
                   {item.desc}
                 </p>
               </button>
             ))}
           </div>
 
-          <form onSubmit={handleEmailLogin} className="space-y-4">
-            <div className="relative">
-              <Mail
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                size={16}
-              />
-              <input
-                type="email"
-                placeholder="your@email.com"
-                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-teal-500"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+          {/* LOGIN FORM */}
+          <form onSubmit={handleEmailLogin} className="space-y-5">
+
+            {/* EMAIL */}
             <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">
-                Password
+              <label className="text-[11px] font-semibold text-[#4d5667] block mb-2">
+                Email Address
               </label>
 
               <div className="relative">
-                {" "}
-                {/* Added relative wrapper here */}
-                <Lock
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  size={16}
+
+                <Mail
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9da5b2]"
+                  size={17}
                 />
+
                 <input
-                  type="password"
-                  placeholder="Enter your password"
-                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  value={password} // Link to state
-                  onChange={(e) => setPassword(e.target.value)} // Update state
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="
+                    w-full
+                    pl-11
+                    pr-4
+                    py-3
+                    bg-[#f9fafb]
+                    border
+                    border-[#dce1e7]
+                    rounded-xl
+                    text-sm
+                    text-[#182033]
+                    placeholder:text-[#a4aab4]
+                    focus:outline-none
+                    focus:border-[#3295aa]
+                    focus:ring-2
+                    focus:ring-[#3295aa]/20
+                    transition
+                  "
                 />
               </div>
             </div>
 
+            {/* PASSWORD */}
+            <div>
+
+              <div className="flex items-center justify-between mb-2">
+
+                <label className="text-[11px] font-semibold text-[#4d5667]">
+                  Password
+                </label>
+
+                <button
+                  type="button"
+                  className="text-[10px] font-medium text-[#2587a2] hover:underline"
+                  onClick={() => {
+                    // Add your forgot-password functionality here
+                  }}
+                >
+                  Forgot Password?
+                </button>
+
+              </div>
+
+              <div className="relative">
+
+                <Lock
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9da5b2]"
+                  size={17}
+                />
+
+                <input
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="
+                    w-full
+                    pl-11
+                    pr-4
+                    py-3
+                    bg-[#f9fafb]
+                    border
+                    border-[#dce1e7]
+                    rounded-xl
+                    text-sm
+                    text-[#182033]
+                    placeholder:text-[#a4aab4]
+                    focus:outline-none
+                    focus:border-[#3295aa]
+                    focus:ring-2
+                    focus:ring-[#3295aa]/20
+                    transition
+                  "
+                />
+
+              </div>
+            </div>
+
+            {/* SIGN IN */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-6 py-3 bg-gradient-to-r from-[#3e8ca3] to-[#689d38] text-white font-semibold rounded-lg text-sm flex items-center justify-center gap-2 hover:opacity-90 transition disabled:opacity-50"
+              className="
+                w-full
+                mt-2
+                py-3
+                bg-gradient-to-r
+                from-[#2d91a8]
+                to-[#619d2d]
+                text-white
+                font-semibold
+                rounded-xl
+                text-sm
+                flex
+                items-center
+                justify-center
+                gap-2
+                hover:opacity-90
+                active:scale-[0.99]
+                transition
+                disabled:opacity-50
+                disabled:cursor-not-allowed
+              "
             >
-              {loading ? "Signing In..." : "Sign In"} <span>→</span>
+              {loading ? "Signing In..." : "Sign In"}
+
+              {!loading && (
+                <ArrowRight size={17} />
+              )}
             </button>
+
           </form>
 
-          <div className="relative flex py-5 items-center">
-            <div className="flex-grow border-t border-gray-200"></div>
-            <span className="flex-shrink mx-4 text-gray-300 text-[10px] uppercase">
+          {/* DIVIDER */}
+          <div className="relative flex py-6 items-center">
+
+            <div className="flex-grow border-t border-[#e1e4e8]" />
+
+            <span className="flex-shrink mx-4 text-[#a4aab4] text-[10px]">
               Or continue with
             </span>
-            <div className="flex-grow border-t border-gray-200"></div>
+
+            <div className="flex-grow border-t border-[#e1e4e8]" />
+
           </div>
 
-          <div className="flex gap-4">
+          {/* SOCIAL LOGIN */}
+          <div className="flex gap-3">
+
+            {/* GOOGLE */}
             <button
               type="button"
               onClick={() => handleSocialLogin("google")}
-              className="flex-1 flex items-center justify-center gap-2 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
+              className="
+                flex-1
+                flex
+                items-center
+                justify-center
+                gap-2
+                py-3
+                border
+                border-[#dce1e7]
+                rounded-xl
+                text-[11px]
+                font-semibold
+                text-[#4d5667]
+                hover:bg-gray-50
+                transition
+              "
             >
               <img
                 src="https://www.svgrepo.com/show/355037/google.svg"
                 className="w-4 h-4"
                 alt="Google"
-              />{" "}
+              />
+
               Google
             </button>
+
+            {/* FACEBOOK */}
             <button
               type="button"
               onClick={() => handleSocialLogin("facebook")}
-              className="flex-1 flex items-center justify-center gap-2 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
+              className="
+                flex-1
+                flex
+                items-center
+                justify-center
+                gap-2
+                py-3
+                border
+                border-[#dce1e7]
+                rounded-xl
+                text-[11px]
+                font-semibold
+                text-[#4d5667]
+                hover:bg-gray-50
+                transition
+              "
             >
               <img
                 src="https://www.svgrepo.com/show/475647/facebook-color.svg"
                 className="w-4 h-4"
                 alt="Facebook"
-              />{" "}
+              />
+
               Facebook
             </button>
+
           </div>
 
-          <p className="text-center text-xs text-gray-400 mt-6">
+          {/* CREATE ACCOUNT */}
+          <p className="text-center text-[11px] text-[#8b93a0] mt-6">
+
             Don't have an account?{" "}
+
             <span
               onClick={onSignUpClick}
-              className="text-teal-600 font-bold cursor-pointer hover:underline"
+              className="text-[#2587a2] font-bold cursor-pointer hover:underline"
             >
               Create Account
             </span>
+
           </p>
-          <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center">
-            {/* <button
-              onClick={() => setIsAdminView(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-full transition-all group"
-            >
-              <div className="w-6 h-6 bg-slate-200 group-hover:bg-purple-100 rounded-lg flex items-center justify-center transition-colors">
-                <Shield
-                  size={12}
-                  className="text-slate-500 group-hover:text-purple-600"
-                />
-              </div>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                Admin Portal
-              </span>
-            </button>
-            <button
-              onClick={onEnvClick} // Change from () => setIsOfficerView(true)
-              className="flex items-center gap-2 px-4 py-2 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-full transition-all group w-max"
-            >
-              <Leaf size={12} className="text-teal-600" />
-              <span className="text-[9px] font-bold text-teal-600 uppercase tracking-widest">
-                Officer Portal
-              </span>
-            </button> */}
-          </div>
+
         </div>
       </div>
     </div>

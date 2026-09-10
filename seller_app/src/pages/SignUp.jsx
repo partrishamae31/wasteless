@@ -51,10 +51,45 @@ const SignUp = ({ onLoginClick }) => {
     barangay: "",
     password: "",
     confirmPassword: "",
+
+    // Repair Shop
     businessName: "",
     businessPermit: null,
+    certificationType: "",
+    otherCertification: "",
     techCert: null,
   });
+
+  const certificationOptions = [
+    {
+      value: "NC I",
+      label: "NC I — Electronics Products Assembly and Servicing",
+    },
+    {
+      value: "NC II",
+      label: "NC II — Consumer Electronics Servicing",
+    },
+    {
+      value: "NC III",
+      label: "NC III — Industrial Electronics Servicing",
+    },
+    {
+      value: "TESDA COC",
+      label: "TESDA Certificate of Competency (COC)",
+    },
+    {
+      value: "DTI Accreditation",
+      label: "DTI Accreditation",
+    },
+    {
+      value: "DepEd Tech-Voc Completion",
+      label: "DepEd Tech-Voc Completion",
+    },
+    {
+      value: "Other Certification",
+      label: "Other Certification",
+    },
+  ];
 
   const [errors, setErrors] = useState({});
 
@@ -66,19 +101,38 @@ const SignUp = ({ onLoginClick }) => {
   };
 
   const handleFileChange = (e, field) => {
-    const file = e.target.files[0]; // Grab the first file index
+    const file = e.target.files?.[0];
 
-    if (file) {
-      console.log(`File selected for ${field}:`, file.name);
+    if (!file) return;
 
-      setFormData((prev) => ({
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/jpg",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      alert("Please upload a PDF or JPEG file.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File size must not exceed 5MB.");
+      e.target.value = "";
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      [field]: file,
+    }));
+
+    if (errors[field]) {
+      setErrors((prev) => ({
         ...prev,
-        [field]: file,
+        [field]: "",
       }));
-
-      if (errors[field]) {
-        setErrors((prev) => ({ ...prev, [field]: "" }));
-      }
     }
   };
 
@@ -97,7 +151,7 @@ const SignUp = ({ onLoginClick }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (step === 1 && accountType) {
       setStep(2);
       return;
@@ -115,33 +169,40 @@ const SignUp = ({ onLoginClick }) => {
       // REPAIR SHOP
       // =========================
       if (accountType === "repair_shop") {
-        const pFile = permitRef.current?.files?.[0];
-        const tFile = techRef.current?.files?.[0];
-
-        if (!formData.businessName) {
-          alert("Please enter your Shop/Business Name");
+        if (!formData.businessName.trim()) {
+          alert("Please enter your Shop / Business Name.");
           return;
         }
 
-        if (!pFile || !tFile) {
-          alert(
-            "Please upload both the Business Permit/DTI Registration and Technical Certification.",
-          );
+        if (!formData.businessPermit) {
+          alert("Please upload your Business Permit / DTI Registration.");
           return;
         }
 
-        setFormData((prev) => ({
-          ...prev,
-          businessPermit: pFile,
-          techCert: tFile,
-        }));
+        if (!formData.certificationType) {
+          alert("Please select a Certification Type.");
+          return;
+        }
 
-        setIsSubmitted(true);
+        if (
+          formData.certificationType === "Other Certification" &&
+          !formData.otherCertification.trim()
+        ) {
+          alert("Please specify your certification.");
+          return;
+        }
+
+        if (!formData.techCert) {
+          alert("Please upload your Certification Document.");
+          return;
+        }
+
+        await handleFinalSubmit();
         return;
       }
 
       // =========================
-      // COMMUNITY USER / HARVESTER
+      // HARVESTER
       // =========================
       if (accountType === "harvester") {
         const idFile = permitRef.current?.files?.[0];
@@ -246,6 +307,17 @@ const SignUp = ({ onLoginClick }) => {
 
         average_rating: 0,
         total_reviews: 0,
+
+        certification_type:
+          finalRole === "repair_shop"
+            ? formData.certificationType
+            : null,
+
+        other_certification:
+          finalRole === "repair_shop" &&
+            formData.certificationType === "Other Certification"
+            ? formData.otherCertification
+            : null,
       };
 
       // =========================
@@ -378,11 +450,10 @@ const SignUp = ({ onLoginClick }) => {
               {steps.map((num) => (
                 <div
                   key={num}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
-                    step >= num
-                      ? "bg-[#2d7a7f] text-white"
-                      : "bg-gray-100 text-gray-400 border border-gray-200"
-                  }`}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${step >= num
+                    ? "bg-[#2d7a7f] text-white"
+                    : "bg-gray-100 text-gray-400 border border-gray-200"
+                    }`}
                 >
                   {step > num || isSubmitted ? "✓" : num}
                 </div>
@@ -398,11 +469,10 @@ const SignUp = ({ onLoginClick }) => {
 
               <button
                 onClick={() => setAccountType("harvester")}
-                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${
-                  accountType === "harvester"
-                    ? "border-teal-500 bg-teal-50 text-teal-700 font-bold"
-                    : "border-gray-100 text-gray-600 hover:border-gray-300"
-                }`}
+                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${accountType === "harvester"
+                  ? "border-teal-500 bg-teal-50 text-teal-700 font-bold"
+                  : "border-gray-100 text-gray-600 hover:border-gray-300"
+                  }`}
               >
                 Community User / Tech-Harvester
                 <span className="block text-[10px] font-normal text-gray-400 mt-1">
@@ -412,11 +482,10 @@ const SignUp = ({ onLoginClick }) => {
 
               <button
                 onClick={() => setAccountType("repair_shop")}
-                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${
-                  accountType === "repair_shop"
-                    ? "border-teal-500 bg-teal-50 text-teal-700 font-bold"
-                    : "border-gray-100 text-gray-600 hover:border-gray-300"
-                }`}
+                className={`w-full py-4 px-6 border rounded-xl text-sm transition-all text-center ${accountType === "repair_shop"
+                  ? "border-teal-500 bg-teal-50 text-teal-700 font-bold"
+                  : "border-gray-100 text-gray-600 hover:border-gray-300"
+                  }`}
               >
                 Repair Shop
                 <span className="block text-[10px] font-normal text-gray-400 mt-1">
@@ -531,6 +600,7 @@ const SignUp = ({ onLoginClick }) => {
                     placeholder="........"
                     className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.password ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
                     onChange={handleChange}
+                    value={formData.password}
                   />
                   <p className="text-[9px] text-gray-400 mt-1.5">
                     Minimum 8 characters with uppercase, lowercase, and digit
@@ -547,6 +617,7 @@ const SignUp = ({ onLoginClick }) => {
                     placeholder="........"
                     className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.confirmPassword ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
                     onChange={handleChange}
+                      value={formData.confirmPassword}
                   />
                   {errors.confirmPassword && (
                     <p className="text-[10px] text-red-500 mt-1">
@@ -572,203 +643,278 @@ const SignUp = ({ onLoginClick }) => {
               </div>
             </div>
           )}
+{!isSubmitted && step === 3 && (
+  <div className="space-y-4 animate-fadeIn text-left">
+    <h3 className="text-xs font-bold text-emerald-900 mb-1">
+      Professional Verification
+    </h3>
 
-          {!isSubmitted && step === 3 && (
-            <div className="space-y-4 animate-fadeIn text-left">
-              <h3 className="text-xs font-bold text-emerald-900 mb-1">
-                Professional Verification
-              </h3>
+    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
+      <p className="text-[11px] text-blue-800 leading-relaxed">
+        {accountType === "seller"
+          ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts."
+          : accountType === "harvester"
+          ? "To verify your Tech-Harvester account, please upload a valid government ID."
+          : "Please provide your business and technical credentials for verification."}
+      </p>
+    </div>
 
-              <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
-                <p className="text-[11px] text-blue-800 leading-relaxed">
-                  {accountType === "seller"
-                    ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts."
-                    : "Please select your buyer type and upload the required credentials."}
-                </p>
-              </div>
+    {/* =========================
+        SELLER / HARVESTER
+    ========================= */}
+    {(accountType === "seller" || accountType === "harvester") && (
+      <div className="space-y-6">
 
-              {/* REPAIR SHOP ONLY */}
-              {accountType === "repair_shop" && (
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
-                    Business/Shop Name <span className="text-red-500">*</span>
-                  </label>
+        <div>
+          <label className="text-[11px] font-bold text-gray-700 block mb-2">
+            Valid Government ID{" "}
+            <span className="text-red-500">*</span>
+          </label>
 
-                  <input
-                    name="businessName"
-                    type="text"
-                    placeholder="Enter your business name"
-                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    onChange={handleChange}
-                    value={formData.businessName || ""}
-                  />
-                </div>
-              )}
+          <div
+            onClick={() => permitRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
+              formData.businessPermit
+                ? "border-emerald-400 bg-emerald-50/10"
+                : "border-gray-200"
+            }`}
+          >
+            <input
+              type="file"
+              ref={permitRef}
+              accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+              className="hidden"
+              onChange={(e) =>
+                handleFileChange(e, "businessPermit")
+              }
+            />
 
-              <div className="space-y-6 mt-6">
-                {/* SELLER OR HARVESTER */}
-                {(accountType === "seller" || accountType === "harvester") && (
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                      Valid Government ID{" "}
-                      <span className="text-red-500">*</span>
-                    </label>
+            <Upload
+              className={
+                formData.businessPermit
+                  ? "text-emerald-500 mb-2"
+                  : "text-gray-400 mb-2"
+              }
+              size={24}
+            />
 
-                    <div
-                      onClick={() => permitRef.current?.click()}
-                      className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
-                        formData.businessPermit
-                          ? "border-emerald-400 bg-emerald-50/10"
-                          : "border-gray-200"
-                      }`}
-                    >
-                      <input
-                        type="file"
-                        ref={permitRef}
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleFileChange(e, "businessPermit")}
-                      />
+            <span className="text-teal-600 font-semibold text-sm">
+              {formData.businessPermit
+                ? "File uploaded successfully!"
+                : "Click to upload"}
+            </span>
 
-                      <Upload
-                        className={
-                          formData.businessPermit
-                            ? "text-emerald-500 mb-2"
-                            : "text-gray-400 mb-2"
-                        }
-                        size={24}
-                      />
+            <span className="text-gray-400 text-[10px] mt-1">
+              {formData.businessPermit
+                ? formData.businessPermit.name
+                : "PDF or JPEG (max 5MB)"}
+            </span>
+          </div>
+        </div>
 
-                      <span className="text-teal-600 font-semibold text-sm">
-                        {formData.businessPermit
-                          ? "File uploaded successfully!"
-                          : "Click to upload"}
-                      </span>
+        {/* ROLE DESCRIPTION */}
+        <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+          <p className="text-[10px] text-gray-500 leading-relaxed">
+            {accountType === "harvester"
+              ? "As a Tech-Harvester, you can buy working second-hand electronics and sell unused or non-working electronics on Wasteless."
+              : "As a Seller, you can create listings and sell eligible electronics on Wasteless."}
+          </p>
+        </div>
+      </div>
+    )}
 
-                      <span className="text-gray-400 text-[10px] mt-1">
-                        {formData.businessPermit
-                          ? formData.businessPermit.name
-                          : "PDF or JPEG (max 5MB)"}
-                      </span>
-                    </div>
-                  </div>
-                )}
+    {/* =========================
+        REPAIR SHOP
+    ========================= */}
+    {accountType === "repair_shop" && (
+      <div className="space-y-6">
 
-                {/* REPAIR SHOP */}
-                {accountType === "repair_shop" && (
-                  <>
-                    <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                        Business Permit / DTI Registration{" "}
-                        <span className="text-red-500">*</span>
-                      </label>
+        {/* BUSINESS NAME */}
+        <div>
+          <label className="text-[11px] font-bold text-gray-700 block mb-2">
+            Business/Shop Name{" "}
+            <span className="text-red-500">*</span>
+          </label>
 
-                      <div
-                        onClick={() => permitRef.current?.click()}
-                        className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
-                          formData.businessPermit
-                            ? "border-emerald-400 bg-emerald-50/10"
-                            : "border-gray-200"
-                        }`}
-                      >
-                        <input
-                          type="file"
-                          ref={permitRef}
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            handleFileChange(e, "businessPermit")
-                          }
-                        />
+          <input
+            name="businessName"
+            type="text"
+            placeholder="Enter your business name"
+            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            onChange={handleChange}
+            value={formData.businessName || ""}
+          />
+        </div>
 
-                        <Upload
-                          className={
-                            formData.businessPermit
-                              ? "text-emerald-500 mb-2"
-                              : "text-gray-400 mb-2"
-                          }
-                          size={24}
-                        />
+        {/* BUSINESS PERMIT */}
+        <div>
+          <label className="text-[11px] font-bold text-gray-700 block mb-2">
+            Business Permit / DTI Registration{" "}
+            <span className="text-red-500">*</span>
+          </label>
 
-                        <span className="text-teal-600 font-semibold text-sm">
-                          {formData.businessPermit
-                            ? "Permit uploaded!"
-                            : "Click to upload"}
-                        </span>
+          <div
+            onClick={() => permitRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
+              formData.businessPermit
+                ? "border-emerald-400 bg-emerald-50/10"
+                : "border-gray-200"
+            }`}
+          >
+            <input
+              type="file"
+              ref={permitRef}
+              accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+              className="hidden"
+              onChange={(e) =>
+                handleFileChange(e, "businessPermit")
+              }
+            />
 
-                        <span className="text-gray-400 text-[10px] mt-1">
-                          {formData.businessPermit
-                            ? formData.businessPermit.name
-                            : "PDF or JPEG (max 5MB)"}
-                        </span>
-                      </div>
-                    </div>
+            <Upload
+              className={
+                formData.businessPermit
+                  ? "text-emerald-500 mb-2"
+                  : "text-gray-400 mb-2"
+              }
+              size={24}
+            />
 
-                    <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                        Technical Certification{" "}
-                        <span className="text-red-500">*</span>
-                      </label>
+            <span className="text-teal-600 font-semibold text-sm">
+              {formData.businessPermit
+                ? "Permit uploaded!"
+                : "Click to upload"}
+            </span>
 
-                      <div
-                        onClick={() => techRef.current?.click()}
-                        className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
-                          formData.techCert
-                            ? "border-emerald-400 bg-emerald-50/10"
-                            : "border-gray-200"
-                        }`}
-                      >
-                        <input
-                          type="file"
-                          ref={techRef}
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleFileChange(e, "techCert")}
-                        />
+            <span className="text-gray-400 text-[10px] mt-1">
+              {formData.businessPermit
+                ? formData.businessPermit.name
+                : "PDF or JPEG (max 5MB)"}
+            </span>
+          </div>
+        </div>
 
-                        <Upload
-                          className={
-                            formData.techCert
-                              ? "text-emerald-500 mb-2"
-                              : "text-gray-400 mb-2"
-                          }
-                          size={24}
-                        />
+        {/* CERTIFICATION TYPE */}
+        <div>
+          <label className="text-[11px] font-bold text-gray-700 block mb-2">
+            Certification Type{" "}
+            <span className="text-red-500">*</span>
+          </label>
 
-                        <span className="text-teal-600 font-semibold text-sm">
-                          {formData.techCert
-                            ? "Certification uploaded!"
-                            : "Click to upload"}
-                        </span>
+          <select
+            name="certificationType"
+            value={formData.certificationType}
+            onChange={handleChange}
+            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          >
+            <option value="">
+              Select certification type...
+            </option>
 
-                        <span className="text-gray-400 text-[10px] mt-1">
-                          {formData.techCert
-                            ? formData.techCert.name
-                            : "PDF or JPEG (max 5MB)"}
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+            {certificationOptions.map((option) => (
+              <option
+                key={option.value}
+                value={option.value}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setStep(2)}
-                  className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50"
-                >
-                  Back
-                </button>
+        {/* OTHER CERTIFICATION */}
+        {formData.certificationType === "Other Certification" && (
+          <div>
+            <label className="text-[11px] font-bold text-gray-700 block mb-2">
+              Specify Certification{" "}
+              <span className="text-red-500">*</span>
+            </label>
 
-                <button
-                  onClick={handleContinue}
-                  className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90"
-                >
-                  Continue
-                </button>
-              </div>
-            </div>
-          )}
+            <input
+              name="otherCertification"
+              type="text"
+              placeholder="Enter certification name"
+              value={formData.otherCertification}
+              onChange={handleChange}
+              className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            />
+          </div>
+        )}
+
+        {/* TECHNICAL CERTIFICATION */}
+        <div>
+          <label className="text-[11px] font-bold text-gray-700 block mb-2">
+            Technical Certification{" "}
+            <span className="text-red-500">*</span>
+          </label>
+
+          <div
+            onClick={() => techRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
+              formData.techCert
+                ? "border-emerald-400 bg-emerald-50/10"
+                : "border-gray-200"
+            }`}
+          >
+            <input
+              type="file"
+              ref={techRef}
+              accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+              className="hidden"
+              onChange={(e) =>
+                handleFileChange(e, "techCert")
+              }
+            />
+
+            <Upload
+              className={
+                formData.techCert
+                  ? "text-emerald-500 mb-2"
+                  : "text-gray-400 mb-2"
+              }
+              size={24}
+            />
+
+            <span className="text-teal-600 font-semibold text-sm">
+              {formData.techCert
+                ? "Certification uploaded!"
+                : "Click to upload"}
+            </span>
+
+            <span className="text-gray-400 text-[10px] mt-1">
+              {formData.techCert
+                ? formData.techCert.name
+                : "PDF or JPEG (max 5MB)"}
+            </span>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* =========================
+        BUTTONS
+    ========================= */}
+    <div className="flex gap-3 pt-4">
+      <button
+        type="button"
+        onClick={() => setStep(2)}
+        className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50"
+      >
+        Back
+      </button>
+
+      <button
+        type="button"
+        onClick={handleContinue}
+        disabled={loading}
+        className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90 disabled:opacity-50"
+      >
+        {loading ? "Submitting..." : "Continue"}
+      </button>
+    </div>
+  </div>
+)}
+
 
           {isSubmitted && (
             <div className="space-y-6 animate-fadeIn text-left">

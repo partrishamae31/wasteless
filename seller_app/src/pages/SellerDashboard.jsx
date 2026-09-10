@@ -7,6 +7,7 @@ import RateBuyerModal from "./RateBuyerModal";
 import SellerDonationTab from "./SellerDonationTab";
 import SellerRepairShopsTab from "./SellerRepairShopsTab";
 import banner from "./assets/banner.png";
+import PlaceBidModal from "./PlaceBidModal";
 
 import {
   X,
@@ -42,6 +43,8 @@ import {
   Leaf,
   Gift,
   Wrench,
+  Link2,
+  Gavel,
 } from "lucide-react";
 
 const SellerDashboard = ({ session }) => {
@@ -54,12 +57,14 @@ const SellerDashboard = ({ session }) => {
   const [profileData, setProfileData] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [user, setUser] = useState(null); // Assuming you have user data for the ID
   const [bids, setBids] = useState([]);
   const [bidAmount, setBidAmount] = useState("");
   const [placingBid, setPlacingBid] = useState(false);
   const [selectedListing, setSelectedListing] = useState(null);
+  const [bidMessage, setBidMessage] = useState("");
   const [listingBids, setListingBids] = useState([]);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [checkingRole, setCheckingRole] = useState(true);
@@ -78,6 +83,7 @@ const SellerDashboard = ({ session }) => {
   const [listingToDonate, setListingToDonate] = useState(null);
   const [showRateModal, setShowRateModal] = useState(false);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [selectedBidder, setSelectedBidder] = useState(null);
   const isRepairShop = user?.role === "repair_shop";
   const isHarvester = user?.role === "harvester";
 
@@ -203,9 +209,9 @@ const SellerDashboard = ({ session }) => {
       const averageRating =
         totalReviews > 0
           ? allReviews.reduce(
-              (sum, review) => sum + Number(review.overall_rating),
-              0,
-            ) / totalReviews
+            (sum, review) => sum + Number(review.overall_rating),
+            0,
+          ) / totalReviews
           : 0;
 
       const { error: profileError } = await supabase
@@ -259,10 +265,10 @@ const SellerDashboard = ({ session }) => {
         prev.map((listing) =>
           listing.id === listingId
             ? {
-                ...listing,
-                status: "donated",
-                drop_off_point_id: null,
-              }
+              ...listing,
+              status: "donated",
+              drop_off_point_id: null,
+            }
             : listing,
         ),
       );
@@ -297,81 +303,169 @@ const SellerDashboard = ({ session }) => {
       }
 
       if (!bidAmount || Number(bidAmount) <= 0) {
-        alert("Please enter a valid bid amount.");
+        alert("Please enter a valid offer amount.");
+        return;
+      }
+
+      const offerAmount = Number(bidAmount);
+      const askingPrice = Number(
+        selectedListing.asking_price || 0
+      );
+
+      if (offerAmount > askingPrice) {
+        alert("Your offer cannot be higher than the asking price.");
         return;
       }
 
       if (selectedListing.seller_id === session.user.id) {
-        alert("You cannot place a bid on your own listing.");
+        alert("You cannot place an offer on your own listing.");
         return;
       }
 
-      if (selectedListing.status?.toLowerCase() !== "active") {
+      if (
+        selectedListing.status?.toLowerCase() !== "active"
+      ) {
         alert("This listing is no longer active.");
         return;
       }
 
       setPlacingBid(true);
 
-      // Check if the user already placed a bid
-      const { data: existingBid, error: existingBidError } = await supabase
+      // ==========================================
+      // CHECK EXISTING BID
+      // ==========================================
+
+      const {
+        data: existingBid,
+        error: existingBidError,
+      } = await supabase
         .from("bids")
         .select("id, status")
         .eq("listing_id", selectedListing.id)
         .eq("bidder_id", session.user.id)
         .maybeSingle();
 
-      if (existingBidError) throw existingBidError;
+      if (existingBidError) {
+        throw existingBidError;
+      }
 
       if (existingBid) {
-        alert("You already placed a bid on this listing.");
+        alert("You already placed an offer on this listing.");
         return;
       }
 
-      // Place the bid
-      const { data: newBid, error: bidError } = await supabase
+      // ==========================================
+      // INSERT BID
+      // ==========================================
+
+      const {
+        data: newBid,
+        error: bidError,
+      } = await supabase
         .from("bids")
         .insert([
           {
             listing_id: selectedListing.id,
             bidder_id: session.user.id,
-            amount: Number(bidAmount),
+            amount: offerAmount,
             status: "pending",
           },
         ])
         .select()
         .single();
 
-      if (bidError) throw bidError;
+      if (bidError) {
+        throw bidError;
+      }
 
-      // Notify the LISTING OWNER
-      const { error: notificationError } = await supabase
+      // ==========================================
+      // NOTIFY SELLER
+      // ==========================================
+
+      const {
+        error: notificationError,
+      } = await supabase
         .from("notifications")
         .insert([
           {
             user_id: selectedListing.seller_id,
-            title: "New Bid Received",
-            description: `Someone placed a bid of ₱${Number(
-              bidAmount,
-            ).toLocaleString()} on your ${selectedListing.device_model} listing.`,
+            title: "New Offer Received",
+            description: `Someone offered ₱${offerAmount.toLocaleString()} for your ${selectedListing.device_model} listing.`,
             type: "bid",
             is_read: false,
           },
         ]);
 
       if (notificationError) {
-        console.error("Bid notification failed:", notificationError.message);
+        console.error(
+          "Offer notification failed:",
+          notificationError.message
+        );
       }
 
-      // Update the selected listing locally with the logged-in user's bid
+      // ==========================================
+      // OPTIONAL MESSAGE TO SELLER
+      // ==========================================
+
+      if (bidMessage.trim()) {
+        const { error: messageError } = await supabase
+          .from("messages")
+          .insert([
+            {
+              listing_id: selectedListing.id,
+              sender_id: session.user.id,
+              receiver_id: selectedListing.seller_id,
+              content: bidMessage.trim(),
+              is_read: false,
+            },
+          ]);
+
+        if (messageError) {
+          console.error(
+            "Message failed:",
+            messageError.message
+          );
+        }
+      }
+
+      // ==========================================
+      // UPDATE LOCAL STATE
+      // ==========================================
+
       setListingBids([newBid]);
 
-      setBidAmount("");
+      // IMPORTANT:
+      // Add the newly placed bid to the listing in local state.
+      // This makes the "My Bids" panel update immediately.
+      setListings((prev) =>
+        prev.map((listing) =>
+          listing.id === selectedListing.id
+            ? {
+              ...listing,
+              bids: [
+                ...(listing.bids || []).filter(
+                  (bid) => bid.bidder_id !== session.user.id
+                ),
+                newBid,
+              ],
+            }
+            : listing
+        )
+      );
 
-      alert("Bid placed successfully!");
+      setBidAmount("");
+      setBidMessage("");
+
+      alert("Offer sent successfully!");
+
+      // Close modal
+      setSelectedListing(null);
     } catch (error) {
-      console.error("Error placing bid:", error);
-      alert(`Failed to place bid: ${error.message}`);
+      console.error("Error placing offer:", error);
+
+      alert(
+        `Failed to send offer: ${error.message}`
+      );
     } finally {
       setPlacingBid(false);
     }
@@ -595,17 +689,18 @@ const SellerDashboard = ({ session }) => {
         prev.map((item) =>
           item.id === listing.id
             ? {
-                ...item,
-                status: "inactive",
-                bids: (item.bids || []).map((b) =>
-                  b.id === bid.id ? { ...b, status: "accepted" } : b,
-                ),
-              }
+              ...item,
+              status: "inactive",
+              bids: (item.bids || []).map((b) =>
+                b.id === bid.id ? { ...b, status: "accepted" } : b,
+              ),
+            }
             : item,
         ),
       );
 
       alert("Bid accepted! The listing is now closed.");
+      await fetchActiveListings();
     } catch (error) {
       console.error("Error in bid acceptance:", error);
       alert(`Error: ${error.message}`);
@@ -632,11 +727,11 @@ const SellerDashboard = ({ session }) => {
         prev.map((item) =>
           item.id === listing.id
             ? {
-                ...item,
-                bids: (item.bids || []).map((b) =>
-                  b.id === bid.id ? { ...b, status: "declined" } : b,
-                ),
-              }
+              ...item,
+              bids: (item.bids || []).map((b) =>
+                b.id === bid.id ? { ...b, status: "declined" } : b,
+              ),
+            }
             : item,
         ),
       );
@@ -865,6 +960,7 @@ const SellerDashboard = ({ session }) => {
           .select(`*, bids (*)`)
           .neq("seller_id", session.user.id)
           .eq("status", "active")
+          .eq("condition", "Working")
           .order("created_at", { ascending: false });
 
         if (otherError) throw otherError;
@@ -914,6 +1010,81 @@ const SellerDashboard = ({ session }) => {
     fetchListings();
   }, [session?.user?.id, isAuthorized]);
 
+  // Keep the dashboard automatically synchronized with listing changes.
+  // This makes newly-created listings appear without a browser refresh.
+  useEffect(() => {
+    const userId = session?.user?.id;
+
+    if (!userId || !isAuthorized) return;
+
+    const refreshListings = async () => {
+      try {
+        const { data: ownListings, error: ownError } = await supabase
+          .from("listings")
+          .select(
+            `
+            *,
+            bids (
+              *,
+              profiles:bidder_id (
+                full_name,
+                business_name,
+                role
+              )
+            )
+          `
+          )
+          .eq("seller_id", userId)
+          .order("created_at", { ascending: false });
+
+        if (ownError) throw ownError;
+
+        setMyListings(ownListings || []);
+
+        const donations = (ownListings || []).filter(
+          (listing) => listing.status?.toLowerCase() === "donated"
+        );
+        setMyDonations(donations);
+
+        const { data: otherListings, error: otherError } = await supabase
+          .from("listings")
+          .select(`*, bids (*)`)
+          .neq("seller_id", userId)
+          .eq("status", "active")
+          .eq("condition", "Working")
+          .order("created_at", { ascending: false });
+
+        if (otherError) throw otherError;
+
+        setListings(otherListings || []);
+      } catch (err) {
+        console.error("Realtime listing refresh error:", err.message);
+      }
+    };
+
+    const channel = supabase
+      .channel(`seller-dashboard-listings-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "listings",
+          filter: `seller_id=eq.${userId}`,
+        },
+        () => {
+          refreshListings();
+        }
+      )
+      .subscribe((status) => {
+        console.log("Seller listings realtime:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, isAuthorized]);
+
   if (checkingRole || !isAuthorized) {
     return (
       <div className="h-screen w-full bg-white flex items-center justify-center">
@@ -924,6 +1095,7 @@ const SellerDashboard = ({ session }) => {
   const handleSelectListing = async (listing) => {
     setSelectedListing(listing);
     setBidAmount("");
+    setBidMessage("");
     setLoading(true);
 
     const { data, error } = await supabase
@@ -937,7 +1109,10 @@ const SellerDashboard = ({ session }) => {
     if (!error) {
       setListingBids(data || []);
     } else {
-      console.error("Error checking existing bid:", error.message);
+      console.error(
+        "Error checking existing bid:",
+        error.message
+      );
       setListingBids([]);
     }
 
@@ -1184,6 +1359,27 @@ const SellerDashboard = ({ session }) => {
             )}
           </div>
 
+          {/* Message Icon */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Open messages"
+              onClick={() => {
+                setShowMessages(true);
+                setShowNotifications(false);
+                setShowProfileMenu(false);
+              }}
+              className="relative flex items-center justify-center text-slate-400 hover:text-[#3285a1] transition-colors"
+            >
+              <MessageSquare size={24} />
+              {messageUserCount > 0 && (
+                <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[10px] rounded-full min-w-4 h-4 px-1 flex items-center justify-center border-2 border-white">
+                  {messageUserCount > 99 ? "99+" : messageUserCount}
+                </span>
+              )}
+            </button>
+          </div>
+
           {/* Profile Trigger */}
           <div
             className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition"
@@ -1194,15 +1390,14 @@ const SellerDashboard = ({ session }) => {
                 {session.user.user_metadata?.full_name || "User Name"}
               </div>
               <div
-                className={`text-[10px] flex items-center gap-1 justify-end font-semibold ${
-                  profileData?.verification_status === "verified"
-                    ? "text-emerald-500"
-                    : profileData?.verification_status === "pending"
-                      ? "text-amber-500"
-                      : profileData?.verification_status === "rejected"
-                        ? "text-red-500"
-                        : "text-slate-400"
-                }`}
+                className={`text-[10px] flex items-center gap-1 justify-end font-semibold ${profileData?.verification_status === "verified"
+                  ? "text-emerald-500"
+                  : profileData?.verification_status === "pending"
+                    ? "text-amber-500"
+                    : profileData?.verification_status === "rejected"
+                      ? "text-red-500"
+                      : "text-slate-400"
+                  }`}
               >
                 <CheckCircle size={10} />
 
@@ -1368,7 +1563,6 @@ const SellerDashboard = ({ session }) => {
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex mb-8">
           {[
             "listings",
-            "messages",
             "transactions",
             "donation",
             "repair-shops",
@@ -1376,14 +1570,12 @@ const SellerDashboard = ({ session }) => {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-medium transition capitalize ${
-                activeTab === tab
-                  ? "bg-[#3285a1] text-white"
-                  : "text-slate-500 hover:bg-slate-50"
-              }`}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-medium transition capitalize ${activeTab === tab
+                ? "bg-[#3285a1] text-white"
+                : "text-slate-500 hover:bg-slate-50"
+                }`}
             >
               {tab === "listings" && <Package size={18} />}
-              {tab === "messages" && <MessageSquare size={18} />}
               {tab === "transactions" && <ArrowLeftRight size={18} />}
               {tab === "donation" && <Gift size={18} />}
               {tab === "repair-shops" && <Wrench size={18} />}
@@ -1391,298 +1583,508 @@ const SellerDashboard = ({ session }) => {
               {tab === "listings"
                 ? "Listings"
                 : tab === "repair-shops"
-                  ? "Repair Shops"
+                  ? "Repair Shop"
                   : tab === "donation"
                     ? "Donation"
-                    : tab}
+                    : "Transactions"}
             </button>
           ))}
         </div>
+
+        {/* --- MESSAGES OVERLAY --- */}
+        {showMessages && (
+          <div className="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-6xl h-[85vh] rounded-3xl shadow-2xl overflow-hidden relative animate-in fade-in zoom-in duration-200">
+              <button
+                type="button"
+                aria-label="Close messages"
+                onClick={() => setShowMessages(false)}
+                className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-white/90 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-50 hover:text-slate-800 transition shadow-sm"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="h-full overflow-y-auto">
+                <SellerMessages
+                  userId={session.user.id}
+                  onTabChange={(tab) => {
+                    setShowMessages(false);
+                    if (tab && tab !== "messages") setActiveTab(tab);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* --- MAIN CONTENT AREA --- */}
         <div className="min-h-[600px]">
           {activeTab === "listings" && (
             <div className="grid grid-cols-3 gap-6">
-              {/* Listings Section */}
+
+              {/* ==========================================
+      LEFT SIDE — AVAILABLE LISTINGS
+  =========================================== */}
               <div className="col-span-2">
+
+                {/* Browse Banner */}
                 <div className="bg-white border border-slate-100 rounded-2xl p-5 mb-8 shadow-sm">
                   <div className="flex items-start gap-3">
+
                     <div className="bg-[#3285a1]/10 p-2 rounded-xl text-[#3285a1]">
                       <Package size={20} />
                     </div>
+
                     <div>
                       <h3 className="font-bold text-sm text-slate-800">
                         Browse Available E-Waste Listings
                       </h3>
+
                       <p className="text-xs text-slate-500 mt-1">
-                        These are active listings from other users. Select an
-                        item to view its details and place your bid.
+                        These are active listings from other users. Select an item
+                        to view its details and place your bid.
                       </p>
                     </div>
+
                   </div>
                 </div>
+
+
+                {/* HEADER */}
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="font-bold text-lg">Available Listings</h2>
+
+                  <h2 className="font-bold text-lg text-slate-800">
+                    Available Listings
+                  </h2>
+
                   <button
                     onClick={() => {
                       if (profileData?.verification_status !== "verified") {
                         alert(
-                          "Your account is still pending admin verification. You cannot create listings yet.",
+                          "Your account is still pending admin verification. You cannot create listings yet."
                         );
                         return;
                       }
 
                       setIsModalOpen(true);
                     }}
-                    disabled={profileData?.verification_status !== "verified"}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${
-                      profileData?.verification_status === "verified"
-                        ? "bg-[#3285a1] text-white hover:opacity-90"
-                        : "bg-slate-200 text-slate-500 cursor-not-allowed"
-                    }`}
+                    className="bg-[#3285a1] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-90 transition"
                   >
                     <Plus size={18} />
-
-                    {profileData?.verification_status === "verified"
-                      ? "Create Listing"
-                      : "Verification Required"}
+                    Create Listing
                   </button>
+
                 </div>
-                {/* <div className="mt-8">
-                  <h2 className="font-bold text-lg mb-4">My Donations</h2>
 
-                  {listings
-                    .filter((listing) => listing.status === "donated")
-                    .map((listing) => (
-                      <div
-                        key={listing.id}
-                        className="bg-green-50 border border-green-200 rounded-2xl p-5 mb-3"
-                      >
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <h3 className="font-semibold">
-                              {listing.device_model}
-                            </h3>
 
-                            <p className="text-sm text-slate-500">
-                              {listing.category}
-                            </p>
-                          </div>
-
-                          <span className="bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full font-bold">
-                            DONATED
-                          </span>
-                        </div>
-
-                        <div className="mt-3 text-sm text-slate-600">
-                          <p>
-                            Status: Waiting for admin to assign a drop-off
-                            point.
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                </div> */}
-
+                {/* LISTINGS */}
                 <div className="space-y-4">
+
                   {loading ? (
+
                     <p className="text-center text-slate-400 py-10">
                       Syncing with Wasteless database...
                     </p>
+
                   ) : listings.length > 0 ? (
-                    listings.map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() => handleSelectListing(item)}
-                        className={`cursor-pointer transition-all duration-200 ${
-                          selectedListing?.id === item.id
-                            ? "border-[#3285a1] ring-2 ring-[#3285a1]/10 bg-slate-50/30"
-                            : "border-slate-100 bg-white hover:border-[#3285a1]/50"
-                        } p-6 rounded-2xl border shadow-sm relative overflow-hidden`}
-                      >
-                        {/* ... listing card content ... */}
-                        <div className="flex justify-between items-start">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-slate-800 text-lg">
-                                {item.device_model}
-                              </h3>
-                              <span className="bg-emerald-100 text-emerald-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">
-                                {item.status}
-                              </span>
+
+                    listings.map((item) => {
+
+                      // Find the currently logged-in user's bid
+                      const myBid = (item.bids || []).find(
+                        (bid) =>
+                          bid.bidder_id === session.user.id &&
+                          bid.status !== "declined"
+                      );
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-[#3285a1]/50 transition"
+                        >
+
+                          {/* LISTING HEADER */}
+                          <div className="flex justify-between items-start">
+
+                            <div className="space-y-1">
+
+                              <div className="flex items-center gap-2">
+
+                                <h3 className="font-bold text-slate-800 text-lg">
+                                  {item.device_model}
+                                </h3>
+
+                                <span className="bg-emerald-100 text-emerald-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">
+                                  {item.status}
+                                </span>
+
+                              </div>
+
+                              <p className="text-xs text-slate-400 font-medium">
+                                {item.device_id || "A2111"} • {item.condition}
+                              </p>
+
+                              <p className="text-xs text-slate-500 mt-2">
+                                {item.description ||
+                                  "Screen not working, battery still good"}
+                              </p>
+
                             </div>
-                            <p className="text-xs text-slate-400 font-medium">
-                              {item.device_id || "A2111"} • {item.condition}
-                            </p>
-                            <p className="text-xs text-slate-500 mt-2">
-                              {item.description ||
-                                "Screen not working, battery still good"}
-                            </p>
+
+
+                            <div className="bg-slate-50 p-3 rounded-xl">
+                              <Package
+                                className="text-slate-300"
+                                size={24}
+                              />
+                            </div>
+
                           </div>
-                          <div className="bg-slate-50 p-3 rounded-xl">
-                            <Package className="text-slate-300" size={24} />
+
+
+                          {/* FOOTER */}
+                          <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-50">
+
+                            <div className="flex gap-8">
+
+                              {/* ASKING PRICE */}
+                              <div className="flex items-center gap-2">
+
+                                <span className="text-[#3285a1] font-bold text-sm">
+                                  ₱
+                                  {Number(
+                                    item.asking_price || 0
+                                  ).toLocaleString()}
+                                </span>
+
+                              </div>
+
+
+                              {/* TOTAL BIDS */}
+                              <div className="flex items-center gap-2 text-slate-400">
+
+                                <MessageSquare size={14} />
+
+                                <span className="text-xs font-bold">
+                                  {
+                                    (item.bids || []).filter(
+                                      (bid) =>
+                                        bid.status !== "declined"
+                                    ).length
+                                  }{" "}
+                                  bids
+                                </span>
+
+                              </div>
+
+                            </div>
+
+
+                            {/* MAKE OFFER */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+
+                                if (myBid) {
+                                  alert(
+                                    "You already placed an offer on this listing."
+                                  );
+                                  return;
+                                }
+
+                                handleSelectListing(item);
+                              }}
+                              className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition ${myBid
+                                ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                                : "bg-[#5b9e29] text-white hover:bg-[#4e8924]"
+                                }`}
+                            >
+
+                              <Link2 size={15} />
+
+                              {myBid
+                                ? "Offer Placed"
+                                : "Make Offer"}
+
+                            </button>
+
                           </div>
+
+
+                          {/* SHOW USER'S BID ON THIS LISTING */}
+                          {myBid && (
+                            <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-4">
+
+                              <div className="flex justify-between items-center">
+
+                                <div>
+
+                                  <p className="text-[9px] uppercase tracking-wider font-black text-blue-400">
+                                    Your Offer
+                                  </p>
+
+                                  <p className="text-xl font-black text-[#3285a1]">
+                                    ₱
+                                    {Number(
+                                      myBid.amount || 0
+                                    ).toLocaleString()}
+                                  </p>
+
+                                </div>
+
+
+                                <span
+                                  className={`px-3 py-1 rounded-full text-[10px] font-black ${myBid.status === "accepted"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-amber-100 text-amber-700"
+                                    }`}
+                                >
+                                  {myBid.status === "accepted"
+                                    ? "Accepted"
+                                    : "Pending"}
+                                </span>
+
+                              </div>
+
+                            </div>
+                          )}
+
                         </div>
-                        {/* ... inside listings.map((item) => ( ... */}
-                        <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-50">
-                          <div className="flex gap-8">
-                            {/* Asking Price Section */}
-                            <div className="flex items-center gap-2">
-                              <span className="text-[#3285a1] font-bold text-sm">
-                                ₱{item.asking_price?.toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 text-slate-400">
-                              <MessageSquare size={14} />
-                              <span className="text-xs font-bold">
-                                {item.bids?.filter(
-                                  (bid) => bid.status !== "declined",
-                                ).length || 0}{" "}
-                                bids
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1 text-[10px] text-emerald-500 font-bold">
-                            <CheckCircle2 size={12} /> Data cleared
-                          </div>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
+
                   ) : (
+
                     <div className="bg-white p-10 rounded-2xl text-center border-2 border-dashed border-slate-200">
+
                       <p className="text-slate-400">
                         No active listings found.
                       </p>
+
                     </div>
+
                   )}
+
                 </div>
+
               </div>
 
-              {/* Right Panel: Place Bid */}
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[600px] sticky top-6 z-10">
-                {selectedListing ? (
-                  <>
-                    <div className="p-4 border-b border-slate-50 flex justify-between items-center">
+
+              {/* ==========================================
+      RIGHT SIDE — MY BIDS
+  =========================================== */}
+              <div className="col-span-1">
+
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm sticky top-6">
+
+                  {/* HEADER */}
+                  <div className="p-5 border-b border-slate-100">
+
+                    <div className="flex items-center justify-between">
+
                       <div>
-                        <h3 className="font-bold text-slate-800 text-sm">
-                          Place a Bid
+
+                        <h3 className="font-bold text-sm text-slate-800">
+                          My Bids
                         </h3>
-                        <p className="text-[10px] text-slate-400">
-                          {selectedListing.device_model}
+
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Offers you have placed
                         </p>
+
                       </div>
-                      <button
-                        onClick={() => {
-                          setSelectedListing(null);
-                          setBidAmount("");
-                          setListingBids([]);
-                        }}
-                        className="text-slate-300 hover:text-slate-500"
-                      >
-                        <X size={18} />
-                      </button>
+
+                      <div className="bg-[#3285a1]/10 p-2.5 rounded-xl">
+
+                        <TrendingUp
+                          size={17}
+                          className="text-[#3285a1]"
+                        />
+
+                      </div>
+
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-5">
-                      <div className="bg-slate-50 rounded-2xl p-4 mb-5">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                          Asking Price
-                        </p>
-                        <p className="text-2xl font-black text-[#3285a1] mt-1">
-                          ₱
-                          {Number(
-                            selectedListing.asking_price || 0,
-                          ).toLocaleString()}
-                        </p>
-                        <p className="text-[11px] text-slate-500 mt-2">
-                          {selectedListing.condition ||
-                            "Condition not specified"}
-                        </p>
-                      </div>
-
-                      <div className="space-y-2 mb-5">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                          Listing Details
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {selectedListing.description ||
-                            "No description provided."}
-                        </p>
-                      </div>
-
-                      {listingBids.length > 0 ? (
-                        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-5">
-                          <div className="flex items-center gap-2 text-blue-700">
-                            <CheckCircle2 size={16} />
-                            <p className="text-xs font-bold">
-                              You already placed a bid
-                            </p>
-                          </div>
-                          <p className="text-lg font-black text-blue-800 mt-2">
-                            ₱{Number(listingBids[0].amount).toLocaleString()}
-                          </p>
-                          <p className="text-[10px] text-blue-600 mt-1 uppercase font-bold">
-                            Status: {listingBids[0].status || "pending"}
-                          </p>
-                        </div>
-                      ) : (
-                        <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                            Your Offer
-                          </label>
-                          <div className="flex gap-2 mt-2">
-                            <div className="relative flex-1">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">
-                                ₱
-                              </span>
-                              <input
-                                type="number"
-                                min="1"
-                                value={bidAmount}
-                                onChange={(e) => setBidAmount(e.target.value)}
-                                placeholder="Enter amount"
-                                className="w-full border border-slate-200 rounded-xl pl-8 pr-3 py-3 text-sm outline-none focus:border-[#3285a1] focus:ring-2 focus:ring-[#3285a1]/10"
-                              />
-                            </div>
-                            <button
-                              onClick={handlePlaceBid}
-                              disabled={placingBid}
-                              className="bg-[#3285a1] text-white px-4 py-3 rounded-xl text-xs font-bold hover:bg-[#2a6f87] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                            >
-                              <Send size={14} />
-                              {placingBid ? "Sending..." : "Place Bid"}
-                            </button>
-                          </div>
-                          <p className="text-[10px] text-slate-400 mt-2">
-                            Your bid will be sent to the listing owner for
-                            review.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center justify-center text-center h-full py-20 px-6">
-                    <Send className="text-slate-200 mb-4" size={32} />
-                    <h3 className="font-bold text-slate-800 mb-2">
-                      Place a Bid
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      Select another user's active listing to make an offer.
-                    </p>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* --- MESSAGES TAB (Section 9) --- */}
-          {activeTab === "messages" && (
-            <div className="animate-in fade-in duration-500">
-              <SellerMessages
-                userId={session.user.id}
-                onTabChange={setActiveTab}
-              />
+
+                  {/* MY BIDS */}
+                  <div className="p-4 space-y-3 max-h-[650px] overflow-y-auto">
+
+                    {(() => {
+
+                      /*
+                       * IMPORTANT:
+                       * Only show bids where bidder_id is the
+                       * currently logged-in user.
+                       */
+                      const myBids = listings.flatMap((listing) =>
+                        (listing.bids || [])
+                          .filter(
+                            (bid) =>
+                              bid.bidder_id === session.user.id &&
+                              bid.status !== "declined"
+                          )
+                          .map((bid) => ({
+                            ...bid,
+                            listing,
+                          }))
+                      );
+
+
+                      if (myBids.length === 0) {
+
+                        return (
+                          <div className="py-10 text-center">
+
+                            <div className="w-12 h-12 mx-auto bg-slate-50 rounded-2xl flex items-center justify-center">
+
+                              <Package
+                                size={22}
+                                className="text-slate-300"
+                              />
+
+                            </div>
+
+                            <p className="text-xs font-bold text-slate-500 mt-3">
+                              No bids placed yet
+                            </p>
+
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Your offers will appear here.
+                            </p>
+
+                          </div>
+                        );
+
+                      }
+
+
+                      return myBids.map((bid) => {
+
+                        const listing = bid.listing;
+
+                        const askingPrice = Number(
+                          listing.asking_price || 0
+                        );
+
+                        const bidAmount = Number(
+                          bid.amount || 0
+                        );
+
+                        const percentage =
+                          askingPrice > 0
+                            ? Math.round(
+                              (bidAmount / askingPrice) * 100
+                            )
+                            : 0;
+
+
+                        return (
+                          <div
+                            key={bid.id}
+                            className="border border-slate-200 rounded-2xl p-4 hover:border-[#3285a1]/40 transition"
+                          >
+
+                            {/* DEVICE */}
+                            <div className="flex justify-between items-start gap-3">
+
+                              <div className="min-w-0">
+
+                                <p className="text-sm font-black text-slate-800">
+                                  {listing.device_model}
+                                </p>
+
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                  Asking Price: ₱
+                                  {askingPrice.toLocaleString()}
+                                </p>
+
+                              </div>
+
+                              <Package
+                                size={17}
+                                className="text-slate-300"
+                              />
+
+                            </div>
+
+
+                            {/* YOUR BID */}
+                            <div className="bg-blue-50 rounded-xl p-3 mt-3">
+
+                              <p className="text-[9px] uppercase tracking-wider font-black text-blue-400">
+                                Your Offer
+                              </p>
+
+                              <p className="text-xl font-black text-[#3285a1] mt-1">
+                                ₱{bidAmount.toLocaleString()}
+                              </p>
+
+                              <p className="text-[9px] text-slate-400 mt-1">
+                                {percentage}% of asking price
+                              </p>
+
+                            </div>
+
+
+                            {/* STATUS */}
+                            <div className="flex items-center justify-between mt-3">
+
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-[9px] font-black ${bid.status === "accepted"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-amber-100 text-amber-700"
+                                  }`}
+                              >
+                                {bid.status === "accepted"
+                                  ? "Accepted"
+                                  : "Pending"}
+                              </span>
+
+
+                              {bid.created_at && (
+                                <span className="text-[9px] text-slate-400">
+
+                                  {new Date(
+                                    bid.created_at
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })}
+
+                                </span>
+                              )}
+
+                            </div>
+
+
+                            {/* VIEW LISTING */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleSelectListing(listing)
+                              }
+                              className="w-full mt-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-[10px] font-black hover:bg-slate-50 transition"
+                            >
+                              View Listing
+                            </button>
+
+                          </div>
+                        );
+
+                      });
+
+                    })()}
+
+                  </div>
+
+                </div>
+
+              </div>
+
             </div>
           )}
 
@@ -1700,24 +2102,22 @@ const SellerDashboard = ({ session }) => {
                     <button
                       key={tx.id}
                       onClick={() => setSelectedTxId(tx.id)}
-                      className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${
-                        selectedTxId === tx.id
-                          ? "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
-                          : "border-slate-100 bg-white hover:border-slate-200"
-                      }`}
+                      className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${selectedTxId === tx.id
+                        ? "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
+                        : "border-slate-100 bg-white hover:border-slate-200"
+                        }`}
                     >
                       <div className="flex justify-between items-start mb-1">
                         <h4 className="font-bold text-sm text-slate-800">
                           {tx.listing?.device_model}
                         </h4>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
-                            tx.status === "completed"
-                              ? "bg-green-50 text-green-600 border-green-200"
-                              : tx.status === "cancelled"
-                                ? "bg-red-50 text-red-600 border-red-200"
-                                : "bg-emerald-50 text-emerald-600 border-emerald-200"
-                          }`}
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${tx.status === "completed"
+                            ? "bg-green-50 text-green-600 border-green-200"
+                            : tx.status === "cancelled"
+                              ? "bg-red-50 text-red-600 border-red-200"
+                              : "bg-emerald-50 text-emerald-600 border-emerald-200"
+                            }`}
                         >
                           {tx.status.charAt(0).toUpperCase() +
                             tx.status.slice(1)}
@@ -1770,11 +2170,10 @@ const SellerDashboard = ({ session }) => {
                               <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2"></div>
                               {/* Active Line */}
                               <div
-                                className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${
-                                  isCompleted
-                                    ? "bg-green-500 w-full"
-                                    : "bg-blue-500 w-1/2"
-                                }`}
+                                className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${isCompleted
+                                  ? "bg-green-500 w-full"
+                                  : "bg-blue-500 w-1/2"
+                                  }`}
                               ></div>
 
                               {/* Step 1 */}
@@ -1955,15 +2354,14 @@ const SellerDashboard = ({ session }) => {
                     </h2>
                     <div className="flex items-center gap-2 mt-1">
                       <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                          profileData?.verification_status === "approved"
-                            ? "bg-emerald-500/20 text-white"
-                            : profileData?.verification_status === "pending"
-                              ? "bg-amber-500/20 text-white"
-                              : profileData?.verification_status === "rejected"
-                                ? "bg-red-500/20 text-white"
-                                : "bg-slate-500/20 text-white"
-                        }`}
+                        className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${profileData?.verification_status === "approved"
+                          ? "bg-emerald-500/20 text-white"
+                          : profileData?.verification_status === "pending"
+                            ? "bg-amber-500/20 text-white"
+                            : profileData?.verification_status === "rejected"
+                              ? "bg-red-500/20 text-white"
+                              : "bg-slate-500/20 text-white"
+                          }`}
                       >
                         <CheckCircle size={10} />
 
@@ -2159,97 +2557,281 @@ const SellerDashboard = ({ session }) => {
                   </div>
 
                   {myListings.length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="space-y-5">
                       {myListings.map((item) => {
                         const activeBids = (item.bids || []).filter(
                           (bid) => bid.status !== "declined",
                         );
 
+                        const askingPrice = Number(item.asking_price || 0);
+
                         return (
                           <div
                             key={item.id}
-                            className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50"
+                            className="bg-white border border-slate-200 rounded-[1.75rem] p-5 sm:p-6 shadow-sm"
                           >
-                            <div className="flex justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-bold text-slate-800">
-                                  {item.device_model}
-                                </p>
-                                <p className="text-[10px] text-slate-400 mt-1">
-                                  ₱
-                                  {Number(
-                                    item.asking_price || 0,
-                                  ).toLocaleString()}{" "}
-                                  · {item.status}
-                                </p>
-                              </div>
-                              <span className="text-[10px] font-bold text-[#3285a1] bg-[#3285a1]/10 px-2 py-1 rounded-full h-fit">
-                                {activeBids.length} bid
-                                {activeBids.length === 1 ? "" : "s"}
-                              </span>
-                            </div>
+                            <div className="flex flex-col lg:flex-row gap-6">
 
-                            {activeBids.length > 0 ? (
-                              <div className="mt-3 space-y-2">
-                                {activeBids.map((bid) => (
-                                  <div
-                                    key={bid.id}
-                                    className="bg-white border border-slate-100 rounded-xl p-3 flex items-center justify-between gap-3"
-                                  >
-                                    <div>
-                                      <p className="text-xs font-bold text-slate-700">
-                                        {getBuyerDisplayName(bid.profiles)}
-                                      </p>
-                                      <p className="text-[10px] text-slate-400">
-                                        {getBuyerRoleLabel(bid.profiles?.role)}{" "}
-                                        · {bid.status}
-                                      </p>
+                              {/* =========================
+          LEFT — LISTING INFORMATION
+      ========================== */}
+                              <div className="flex-1 min-w-0">
+
+                                <div className="flex items-start justify-between gap-4">
+                                  <div>
+                                    <p className="text-lg font-black text-slate-800">
+                                      {item.device_model}
+                                    </p>
+
+                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                      <span className="text-xs font-bold text-slate-500">
+                                        Asking Price:
+                                      </span>
+
+                                      <span className="text-xs font-black text-[#3285a1]">
+                                        ₱{askingPrice.toLocaleString()}
+                                      </span>
+
+                                      <span className="text-slate-300">•</span>
+
+                                      <span className="text-xs text-slate-400">
+                                        {item.status}
+                                      </span>
                                     </div>
-                                    <p className="text-sm font-black text-[#3285a1]">
-                                      ₱
-                                      {Number(bid.amount || 0).toLocaleString()}
+                                  </div>
+
+                                  <div className="bg-[#3285a1]/10 text-[#3285a1] px-3 py-2 rounded-full shrink-0">
+                                    <span className="text-[10px] font-black">
+                                      {activeBids.length}{" "}
+                                      {activeBids.length === 1 ? "BID" : "BIDS"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* LISTING DETAILS */}
+                                <div className="grid grid-cols-2 gap-3 mt-5">
+
+                                  <div className="bg-slate-50 rounded-xl p-3">
+                                    <p className="text-[9px] uppercase font-bold text-slate-400">
+                                      Condition
+                                    </p>
+
+                                    <p className="text-sm font-black text-slate-700 mt-1">
+                                      {item.condition || "Not specified"}
                                     </p>
                                   </div>
-                                ))}
-                                <div className="flex gap-2 pt-1">
-                                  {activeBids.map((bid) => (
-                                    <div
-                                      key={`actions-${bid.id}`}
-                                      className="flex-1 flex gap-2"
-                                    >
-                                      {bid.status === "accepted" ? (
-                                        <span className="flex-1 text-center text-xs font-bold text-emerald-600 py-2">
-                                          Bid Accepted
-                                        </span>
-                                      ) : (
-                                        <>
-                                          <button
-                                            onClick={() =>
-                                              handleAcceptBid(bid, item)
-                                            }
-                                            className="flex-1 bg-[#3285a1] text-white py-2 rounded-lg text-[10px] font-bold hover:bg-[#2a6f87]"
-                                          >
-                                            Accept
-                                          </button>
-                                          <button
-                                            onClick={() =>
-                                              handleDeclineBid(bid, item)
-                                            }
-                                            className="flex-1 border border-red-200 text-red-500 py-2 rounded-lg text-[10px] font-bold hover:bg-red-50"
-                                          >
-                                            Decline
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
-                                  ))}
+
+                                  <div className="bg-slate-50 rounded-xl p-3">
+                                    <p className="text-[9px] uppercase font-bold text-slate-400">
+                                      Asking Price
+                                    </p>
+
+                                    <p className="text-sm font-black text-[#3285a1] mt-1">
+                                      ₱{askingPrice.toLocaleString()}
+                                    </p>
+                                  </div>
+
                                 </div>
+
                               </div>
-                            ) : (
-                              <p className="text-[10px] text-slate-400 mt-3">
-                                No bids received yet.
-                              </p>
-                            )}
+
+
+                              {/* =========================
+          RIGHT — BIDS RECEIVED
+      ========================== */}
+                              <div className="w-full lg:w-[390px] lg:border-l lg:border-slate-100 lg:pl-6">
+
+                                <div className="flex items-center justify-between mb-3">
+                                  <div>
+                                    <p className="text-[10px] uppercase tracking-wider font-black text-slate-400">
+                                      Bids Received
+                                    </p>
+
+                                    <p className="text-xs text-slate-500 mt-1">
+                                      Offers from harvesters
+                                    </p>
+                                  </div>
+
+                                  <div className="w-9 h-9 rounded-xl bg-[#3285a1]/10 flex items-center justify-center">
+                                    <Gavel
+                                      size={17}
+                                      className="text-[#3285a1]"
+                                    />
+                                  </div>
+                                </div>
+
+
+                                {/* BIDS */}
+                                {activeBids.length > 0 ? (
+                                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+
+                                    {activeBids.map((bid) => {
+
+                                      const bidAmount = Number(bid.amount || 0);
+
+                                      const bidderName =
+                                        getBuyerDisplayName(bid.profiles);
+
+                                      const bidderRole =
+                                        getBuyerRoleLabel(
+                                          bid.profiles?.role
+                                        );
+
+                                      const initials =
+                                        bidderName
+                                          ?.split(" ")
+                                          .map((n) => n[0])
+                                          .join("")
+                                          .slice(0, 2)
+                                          .toUpperCase() || "TH";
+
+                                      return (
+                                        <div
+                                          key={bid.id}
+                                          className="border border-slate-200 rounded-2xl p-4 bg-slate-50"
+                                        >
+
+                                          {/* BIDDER */}
+                                          <div className="flex items-center justify-between gap-3">
+
+                                            <div className="flex items-center gap-3 min-w-0">
+
+                                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3285a1] to-[#6da43a] text-white flex items-center justify-center text-xs font-black shrink-0">
+                                                {initials}
+                                              </div>
+
+                                              <div className="min-w-0">
+
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setSelectedBidder({
+                                                      ...bid.profiles,
+                                                      id: bid.bidder_id,
+                                                    })
+                                                  }
+                                                  className="text-xs font-black text-slate-800 hover:text-[#3285a1] transition truncate block text-left"
+                                                >
+                                                  {bidderName}
+                                                </button>
+
+                                                <span className="text-[9px] font-bold text-[#3285a1]">
+                                                  {bidderRole}
+                                                </span>
+
+                                              </div>
+
+                                            </div>
+
+
+                                            {/* OFFER AMOUNT */}
+                                            <div className="text-right shrink-0">
+
+                                              <p className="text-[9px] uppercase font-bold text-slate-400">
+                                                Offer
+                                              </p>
+
+                                              <p className="text-lg font-black text-[#3285a1]">
+                                                ₱{bidAmount.toLocaleString()}
+                                              </p>
+
+                                            </div>
+
+                                          </div>
+
+
+                                          {/* STATUS */}
+                                          <div className="flex items-center justify-between mt-3">
+
+                                            <span
+                                              className={`px-2.5 py-1 rounded-full text-[9px] font-black ${bid.status === "accepted"
+                                                ? "bg-emerald-100 text-emerald-700"
+                                                : bid.status === "declined"
+                                                  ? "bg-red-100 text-red-600"
+                                                  : "bg-amber-100 text-amber-700"
+                                                }`}
+                                            >
+                                              {bid.status === "accepted"
+                                                ? "Accepted"
+                                                : bid.status === "declined"
+                                                  ? "Declined"
+                                                  : "Pending"}
+                                            </span>
+
+                                            {bid.created_at && (
+                                              <span className="text-[9px] text-slate-400">
+                                                {new Date(
+                                                  bid.created_at
+                                                ).toLocaleDateString("en-US", {
+                                                  month: "short",
+                                                  day: "numeric",
+                                                  year: "numeric",
+                                                })}
+                                              </span>
+                                            )}
+
+                                          </div>
+
+
+                                          {/* ACTIONS */}
+                                          {bid.status === "pending" && (
+                                            <div className="flex gap-2 mt-3">
+
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleAcceptBid(bid, item)
+                                                }
+                                                className="flex-1 bg-[#3285a1] text-white py-2.5 rounded-xl text-[10px] font-black hover:bg-[#2a7089] transition flex items-center justify-center gap-1.5"
+                                              >
+                                                <Check size={13} />
+                                                Accept
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleDeclineBid(bid, item)
+                                                }
+                                                className="flex-1 bg-white border border-red-200 text-red-500 py-2.5 rounded-xl text-[10px] font-black hover:bg-red-50 transition flex items-center justify-center gap-1.5"
+                                              >
+                                                <X size={13} />
+                                                Decline
+                                              </button>
+
+                                            </div>
+                                          )}
+
+                                        </div>
+                                      );
+                                    })}
+
+                                  </div>
+
+                                ) : (
+
+                                  /* NO BIDS */
+                                  <div className="border border-dashed border-slate-200 rounded-2xl p-6 text-center">
+
+                                    <Gavel
+                                      size={25}
+                                      className="mx-auto text-slate-300"
+                                    />
+
+                                    <p className="text-xs font-bold text-slate-500 mt-2">
+                                      No bids received yet
+                                    </p>
+
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                      Offers from verified harvesters will appear here.
+                                    </p>
+
+                                  </div>
+                                )}
+
+                              </div>
+
+                            </div>
                           </div>
                         );
                       })}
@@ -2383,6 +2965,277 @@ const SellerDashboard = ({ session }) => {
             </div>
           )} */}
         </div>
+
+        {
+          selectedListing && (
+            <PlaceBidModal
+              listing={selectedListing}
+              existingBid={listingBids[0] || null}
+              placingBid={placingBid}
+              bidAmount={bidAmount}
+              setBidAmount={setBidAmount}
+              bidMessage={bidMessage}
+              setBidMessage={setBidMessage}
+              onClose={() => {
+                setSelectedListing(null);
+                setBidAmount("");
+                setBidMessage("");
+                setListingBids([]);
+              }}
+              onSubmit={handlePlaceBid}
+            />
+          )
+        }
+        {selectedBidder && (
+          <div className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+
+            <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+
+              {/* HEADER */}
+              <div className="bg-gradient-to-br from-[#3285a1] to-[#6da43a] px-6 py-7 text-white relative">
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedBidder(null)}
+                  className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition"
+                >
+                  <X size={18} />
+                </button>
+
+                <div className="flex items-center gap-4">
+
+                  <div className="w-20 h-20 rounded-full bg-white/20 border-2 border-white/40 flex items-center justify-center text-2xl font-black">
+                    {(selectedBidder.full_name || "TH")
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </div>
+
+                  <div>
+                    <h2 className="text-xl font-black">
+                      {selectedBidder.full_name || "Tech Harvester"}
+                    </h2>
+
+                    <div className="flex flex-wrap gap-2 mt-2">
+
+                      <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-bold">
+                        Tech Harvester
+                      </span>
+
+                      {selectedBidder.verification_status === "approved" && (
+                        <span className="bg-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                          <CheckCircle2 size={11} />
+                          Verified
+                        </span>
+                      )}
+
+                    </div>
+
+                    {selectedBidder.barangay && (
+                      <div className="flex items-center gap-1 mt-3 text-xs text-white/80">
+                        <MapPin size={12} />
+                        {selectedBidder.barangay}, Valenzuela City
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              </div>
+
+              {/* PROFILE CONTENT */}
+              <div className="p-6 space-y-5">
+
+                {/* REPUTATION */}
+                <div className="grid grid-cols-2 gap-3">
+
+                  <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+                    <div className="flex items-center gap-2 text-amber-500">
+                      <Star size={18} fill="currentColor" />
+
+                      <span className="text-[10px] uppercase font-black">
+                        Rating
+                      </span>
+                    </div>
+
+                    <p className="text-2xl font-black text-slate-800 mt-2">
+                      {Number(
+                        selectedBidder.average_rating || 0,
+                      ).toFixed(1)}
+                    </p>
+
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      {selectedBidder.total_reviews || 0} reviews
+                    </p>
+                  </div>
+
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                    <div className="flex items-center gap-2 text-emerald-600">
+                      <Leaf size={18} />
+
+                      <span className="text-[10px] uppercase font-black">
+                        Eco Points
+                      </span>
+                    </div>
+
+                    <p className="text-2xl font-black text-slate-800 mt-2">
+                      {Number(
+                        selectedBidder.eco_points || 0,
+                      ).toLocaleString()}
+                    </p>
+
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Environmental contribution
+                    </p>
+                  </div>
+
+                </div>
+
+                {/* ACTIVITY */}
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 mb-3">
+                    Harvester Activity
+                  </h3>
+
+                  <div className="grid grid-cols-2 gap-3">
+
+                    <div className="border border-slate-100 rounded-2xl p-4">
+                      <p className="text-[10px] uppercase font-bold text-slate-400">
+                        Recovered Devices
+                      </p>
+
+                      <p className="text-xl font-black text-[#3285a1] mt-1">
+                        {Number(
+                          selectedBidder.recovered_devices || 0,
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="border border-slate-100 rounded-2xl p-4">
+                      <p className="text-[10px] uppercase font-bold text-slate-400">
+                        Completed Pickups
+                      </p>
+
+                      <p className="text-xl font-black text-[#6da43a] mt-1">
+                        {Number(
+                          selectedBidder.completed_pickups || 0,
+                        )}
+                      </p>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* INFORMATION */}
+                <div className="border border-slate-100 rounded-2xl p-5">
+
+                  <h3 className="text-sm font-black text-slate-800 mb-4">
+                    Profile Information
+                  </h3>
+
+                  <div className="space-y-4">
+
+                    {selectedBidder.full_name && (
+                      <div className="flex gap-3">
+                        <User
+                          size={17}
+                          className="text-slate-400 mt-0.5"
+                        />
+
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-400">
+                            Full Name
+                          </p>
+
+                          <p className="text-sm font-semibold text-slate-700">
+                            {selectedBidder.full_name}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedBidder.barangay && (
+                      <div className="flex gap-3">
+                        <MapPin
+                          size={17}
+                          className="text-slate-400 mt-0.5"
+                        />
+
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-400">
+                            Location
+                          </p>
+
+                          <p className="text-sm font-semibold text-slate-700">
+                            {selectedBidder.barangay}, Valenzuela City
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedBidder.contact_number && (
+                      <div className="flex gap-3">
+                        <Phone
+                          size={17}
+                          className="text-slate-400 mt-0.5"
+                        />
+
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-400">
+                            Contact Number
+                          </p>
+
+                          <p className="text-sm font-semibold text-slate-700">
+                            {selectedBidder.contact_number}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+
+                {/* VERIFICATION */}
+                <div className="bg-[#3285a1]/5 border border-[#3285a1]/10 rounded-2xl p-4 flex gap-3">
+
+                  <Shield
+                    size={20}
+                    className="text-[#3285a1] shrink-0"
+                  />
+
+                  <div>
+                    <p className="text-xs font-black text-slate-700">
+                      Harvester Verification
+                    </p>
+
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {selectedBidder.verification_status === "approved"
+                        ? "This harvester has completed account verification."
+                        : "This harvester has not completed verification."}
+                    </p>
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* FOOTER */}
+              <div className="px-6 py-5 bg-slate-50 border-t border-slate-100">
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedBidder(null)}
+                  className="w-full py-3 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Close Profile
+                </button>
+
+              </div>
+
+            </div>
+          </div>
+        )}
         {isVerificationModalOpen && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden">
@@ -2408,11 +3261,10 @@ const SellerDashboard = ({ session }) => {
 
                     <div
                       onClick={() => permitRef.current?.click()}
-                      className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition ${
-                        verificationFiles.businessPermit
-                          ? "border-emerald-400 bg-emerald-50"
-                          : "border-slate-200 hover:border-red-300"
-                      }`}
+                      className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition ${verificationFiles.businessPermit
+                        ? "border-emerald-400 bg-emerald-50"
+                        : "border-slate-200 hover:border-red-300"
+                        }`}
                     >
                       <input
                         type="file"
@@ -2778,6 +3630,9 @@ const CancelTransactionModal = ({
     </div>
   );
 };
+
+
+
 const InfoItem = ({ icon, label, val }) => (
   <div className="flex items-start gap-3">
     <div className="text-slate-300 mt-1">{icon}</div>
@@ -2799,9 +3654,8 @@ const NotificationItem = ({
   onDelete,
 }) => (
   <div
-    className={`p-4 flex gap-4 hover:bg-slate-50 transition cursor-pointer relative group border-b border-slate-50 last:border-0 ${
-      unread ? "bg-blue-50/10" : "bg-transparent"
-    }`}
+    className={`p-4 flex gap-4 hover:bg-slate-50 transition cursor-pointer relative group border-b border-slate-50 last:border-0 ${unread ? "bg-blue-50/10" : "bg-transparent"
+      }`}
   >
     <div
       className={`w-10 h-10 ${bg} rounded-xl flex items-center justify-center shrink-0 shadow-sm shadow-black/5`}
@@ -2812,9 +3666,8 @@ const NotificationItem = ({
     <div className="flex-1 min-w-0">
       <div className="flex justify-between items-start mb-0.5">
         <h4
-          className={`text-[11px] font-black uppercase tracking-tight truncate pr-2 ${
-            unread ? "text-slate-900" : "text-slate-500"
-          }`}
+          className={`text-[11px] font-black uppercase tracking-tight truncate pr-2 ${unread ? "text-slate-900" : "text-slate-500"
+            }`}
         >
           {title}
         </h4>
@@ -2843,6 +3696,7 @@ const NotificationItem = ({
         <X size={14} />
       </button>
     </div>
+
   </div>
 );
 export default SellerDashboard;

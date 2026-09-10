@@ -25,6 +25,37 @@ import {
   Film,
 } from "lucide-react";
 
+// Keep all "new listing" defaults in one place so the modal
+// can be completely cleared whenever it is closed.
+const INITIAL_FORM_DATA = {
+  category: "",
+  model: "",
+  condition: "Defective",
+  last_working_date: "",
+  description: "",
+  attachments: [],
+  price: "",
+  base_part_value: 0,
+  base_scrap_value: 0,
+};
+
+const INITIAL_ISSUES = {
+  physical: [],
+  functional: [],
+  cosmetic: [],
+  noDamage: false,
+};
+
+const INITIAL_CHECKLIST = {
+  factoryReset: false,
+  accountsRemoved: false,
+  simRemoved: false,
+  filesDeleted: false,
+  hazardAcknowledged: false,
+  valuationAcknowledged: false,
+};
+
+
 const DiagnosisSection = ({ title, count, items, selected, onToggle }) => {
   return (
     <div className="space-y-3">
@@ -43,18 +74,16 @@ const DiagnosisSection = ({ title, count, items, selected, onToggle }) => {
             <button
               key={item}
               onClick={() => onToggle(item)}
-              className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                isSelected
-                  ? "border-[#2d7a7f] bg-teal-50/30"
-                  : "border-gray-100 hover:border-gray-200"
-              }`}
+              className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${isSelected
+                ? "border-[#2d7a7f] bg-teal-50/30"
+                : "border-gray-100 hover:border-gray-200"
+                }`}
             >
               <div
-                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                  isSelected
-                    ? "bg-[#2d7a7f] border-[#2d7a7f]"
-                    : "border-gray-200 bg-white"
-                }`}
+                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected
+                  ? "bg-[#2d7a7f] border-[#2d7a7f]"
+                  : "border-gray-200 bg-white"
+                  }`}
               >
                 {isSelected && (
                   <CheckCircle2 size={14} className="text-white" />
@@ -104,19 +133,18 @@ const ConditionSection = ({ selected, onChange }) => {
               key={opt.id}
               type="button"
               onClick={() => onChange(opt.id)}
-              className={`w-full p-4 rounded-xl border transition-all text-left flex flex-col justify-center gap-1 ${
-                isSelected
+              className={`w-full p-4 rounded-xl border transition-all text-left flex flex-col justify-center gap-1 ${isSelected
                   ? `${opt.activeStyles} ring-1 ring-inset ring-opacity-50`
                   : "border-slate-200 bg-white hover:border-slate-300"
-              }`}
+                }`}
             >
               <span
-                className={`text-[15px] font-bold ${
-                  isSelected ? "" : "text-slate-700"
-                }`}
+                className={`text-[15px] font-bold ${isSelected ? "" : "text-slate-700"
+                  }`}
               >
                 {opt.label}
               </span>
+
               <span className="text-xs text-slate-500 font-medium">
                 {opt.sub}
               </span>
@@ -139,14 +167,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const [showHazardGuidelines, setShowHazardGuidelines] = useState(false);
   const [showSanitizationGuide, setShowSanitizationGuide] = useState(false);
   const [hasMarketHistory, setHasMarketHistory] = useState(true);
-  const [checklist, setChecklist] = useState({
-    factoryReset: false,
-    accountsRemoved: false,
-    simRemoved: false,
-    filesDeleted: false,
-    hazardAcknowledged: false,
-    valuationAcknowledged: false,
-  });
+  const [checklist, setChecklist] = useState(INITIAL_CHECKLIST);
 
   // Add this helper object inside your file to handle dynamic breakdown mapping
   const CATEGORY_COMPONENTS_MAP = {
@@ -467,18 +488,13 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       },
     },
   };
-  const [formData, setFormData] = useState({
-    category: "",
-    model: "",
-    condition: "Defective",
-    description: "",
-    attachments: [],
-    price: "",
+  const handleClose = () => {
+    // Closing without saving must discard everything entered.
+    resetCreateListingForm();
+    onClose();
+  };
 
-    // ADD THESE
-    base_part_value: 0,
-    base_scrap_value: 0,
-  });
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const normalizeModelName = (model) => {
     return model
       ?.toLowerCase()
@@ -488,12 +504,36 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   };
 
   const fileInputRef = useRef(null);
-  const [issues, setIssues] = useState({
-    physical: [],
-    functional: [],
-    cosmetic: [],
-    noDamage: false,
-  });
+  const [issues, setIssues] = useState(INITIAL_ISSUES);
+
+  const resetCreateListingForm = () => {
+    // Release temporary object URLs created for previews.
+    formData.attachments.forEach((item) => {
+      if (item?.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+    });
+
+    setStep(1);
+    setLoading(false);
+    setIsSanitized(false);
+    setEstimatedValue(5000);
+    setReusableValue(0);
+    setScrapValue(0);
+    setComponentBreakdown([]);
+    setShowHazardGuidelines(false);
+    setShowSanitizationGuide(false);
+    setHasMarketHistory(true);
+    setChecklist({ ...INITIAL_CHECKLIST });
+    setIssues({ ...INITIAL_ISSUES });
+    setFormData({ ...INITIAL_FORM_DATA });
+
+    // Clear the browser file input as well.
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
 
   const isLargeApplianceDetected = () => {
     if (
@@ -545,10 +585,13 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     });
   };
   useEffect(() => {
-    setFormData((prev) => ({
-      ...prev,
-      condition: issues.noDamage ? "Working" : "Defective",
-    }));
+    if (issues.noDamage) {
+      setFormData((prev) => ({
+        ...prev,
+        condition: "Working",
+        last_working_date: "",
+      }));
+    }
   }, [issues.noDamage]);
   const handleHazardDetection = async (listingId, selectedIssues) => {
     // Define which issues trigger specific hazards
@@ -591,6 +634,9 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const showHazardWarning = !issues.noDamage && isHighRisk;
   useEffect(() => {
     if (isOpen) {
+      // Always start a newly opened Create Listing modal from a blank state.
+      resetCreateListingForm();
+
       // Prevent scrolling on the body when modal is open
       document.body.style.overflow = "hidden";
     } else {
@@ -643,7 +689,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           return normalizedDbModel === normalizedCurrentModel;
         });
         console.log("Current Model:", formData.model);
-console.log("Matches Found:", matchedListings.length);
+        console.log("Matches Found:", matchedListings.length);
 
         console.log("Matched Listings:", matchedListings);
 
@@ -883,7 +929,19 @@ console.log("Matches Found:", matchedListings.length);
 
   const hasAttachments = formData.attachments.length > 0;
 
-  const canProceedToStep3 = isAssessmentComplete && hasAttachments;
+  const canProceedToStep3 =
+    isAssessmentComplete &&
+    hasAttachments &&
+    (formData.condition === "Working" || !!formData.last_working_date);
+
+  {
+    formData.condition === "Defective" && !formData.last_working_date && (
+      <p className="text-[10px] text-red-500 font-medium">
+        Please specify when the device was last working.
+      </p>
+    )
+  }
+
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
@@ -1035,6 +1093,7 @@ console.log("Matches Found:", matchedListings.length);
       if (insertedData) await checkAndNotifyHarvesters(insertedData);
 
       alert("Listing Created Successfully!");
+      resetCreateListingForm();
       onClose();
     } catch (err) {
       alert("Error: " + err.message);
@@ -1053,7 +1112,7 @@ console.log("Matches Found:", matchedListings.length);
             Create E-waste Listing
           </h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
             <X size={20} />
@@ -1072,11 +1131,10 @@ console.log("Matches Found:", matchedListings.length);
             {[1, 2, 3].map((num) => (
               <div
                 key={num}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-500 ${
-                  step >= num
-                    ? "bg-[#2d7a7f] border-[#2d7a7f] text-white"
-                    : "bg-white border-gray-200 text-gray-400"
-                }`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-500 ${step >= num
+                  ? "bg-[#2d7a7f] border-[#2d7a7f] text-white"
+                  : "bg-white border-gray-200 text-gray-400"
+                  }`}
               >
                 {num}
               </div>
@@ -1103,11 +1161,10 @@ console.log("Matches Found:", matchedListings.length);
                           model: "",
                         }) // Reset model when category changes
                     }
-                    className={`flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all duration-200 ${
-                      formData.category === cat.id
-                        ? "border-teal-500 bg-teal-50/30 text-teal-600"
-                        : "border-slate-100 text-slate-400 hover:border-slate-200"
-                    } ${cat.id === "Others" ? "col-span-1" : ""}`}
+                    className={`flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all duration-200 ${formData.category === cat.id
+                      ? "border-teal-500 bg-teal-50/30 text-teal-600"
+                      : "border-slate-100 text-slate-400 hover:border-slate-200"
+                      } ${cat.id === "Others" ? "col-span-1" : ""}`}
                   >
                     <div className="mb-3">{cat.icon}</div>
                     <span className="text-xs font-medium">{cat.label}</span>
@@ -1155,11 +1212,10 @@ console.log("Matches Found:", matchedListings.length);
               <button
                 disabled={!formData.category || !formData.model || hasFormError}
                 onClick={() => setStep(2)}
-                className={`w-full py-4 mt-4 rounded-xl font-bold text-sm transition-all ${
-                  formData.category && formData.model && !hasFormError
-                    ? "bg-[#2d7a7f] text-white shadow-lg shadow-teal-900/10"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                }`}
+                className={`w-full py-4 mt-4 rounded-xl font-bold text-sm transition-all ${formData.category && formData.model && !hasFormError
+                  ? "bg-[#2d7a7f] text-white shadow-lg shadow-teal-900/10"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
               >
                 Continue
               </button>
@@ -1301,8 +1357,50 @@ console.log("Matches Found:", matchedListings.length);
 
               <ConditionSection
                 selected={formData.condition}
-                onChange={(val) => setFormData({ ...formData, condition: val })}
+                onChange={(val) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    condition: val,
+                    last_working_date:
+                      val === "Working" ? "" : prev.last_working_date,
+                  }))
+                }
               />
+
+              {formData.condition === "Defective" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700 block text-left">
+                    When was this device last working?
+                  </label>
+
+                  <p className="text-[11px] text-slate-400">
+                    This helps Repair Shops determine the possible condition of the
+                    reusable parts.
+                  </p>
+
+                  <input
+                    type="date"
+                    value={formData.last_working_date}
+                    max={new Date().toISOString().split("T")[0]}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        last_working_date: e.target.value,
+                      }))
+                    }
+                    className="w-full p-4 bg-white border border-slate-200 rounded-xl
+                 text-sm text-slate-700 outline-none
+                 focus:ring-2 focus:ring-teal-500/10
+                 focus:border-[#2d7a7f]"
+                  />
+
+                  {!formData.last_working_date && (
+                    <p className="text-[10px] text-red-500 font-medium">
+                      Please specify when the device was last working.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* ISSUE SECTIONS */}
               {!issues.noDamage && (
@@ -1529,11 +1627,10 @@ console.log("Matches Found:", matchedListings.length);
                     Component Breakdown
                   </p>
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                      hasMarketHistory
-                        ? "bg-teal-50 text-[#2d7a7f]"
-                        : "bg-amber-50 text-amber-700"
-                    }`}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${hasMarketHistory
+                      ? "bg-teal-50 text-[#2d7a7f]"
+                      : "bg-amber-50 text-amber-700"
+                      }`}
                   >
                     {hasMarketHistory
                       ? "Value Deducted Pricing"
@@ -1566,11 +1663,10 @@ console.log("Matches Found:", matchedListings.length);
 
                         <div className="flex items-center gap-3">
                           <span
-                            className={`text-[9px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
-                              comp.status === "Intact"
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-red-50 text-red-600 line-through"
-                            }`}
+                            className={`text-[9px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${comp.status === "Intact"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-red-50 text-red-600 line-through"
+                              }`}
                           >
                             {comp.status}
                           </span>
@@ -1864,13 +1960,12 @@ console.log("Matches Found:", matchedListings.length);
                     >
                       <div
                         className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center transition-all 
-    ${
-      checklist[item.id]
-        ? item.id === "hazardAcknowledged"
-          ? "bg-amber-500 border-amber-500"
-          : "bg-[#2d7a7f] border-[#2d7a7f]"
-        : "border-gray-200"
-    }`}
+    ${checklist[item.id]
+                            ? item.id === "hazardAcknowledged"
+                              ? "bg-amber-500 border-amber-500"
+                              : "bg-[#2d7a7f] border-[#2d7a7f]"
+                            : "border-gray-200"
+                          }`}
                       >
                         {checklist[item.id] && (
                           <CheckCircle2 size={14} className="text-white" />

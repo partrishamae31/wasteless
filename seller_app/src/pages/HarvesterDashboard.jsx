@@ -43,6 +43,21 @@ import {
   CalendarDays,
 } from "lucide-react";
 
+const HAZARDOUS_DIAGNOSIS_KEYWORDS = [
+  "Dead/Degraded Battery",
+  "Won\'t Power On",
+  "Water Damage/ Liquid Exposure",
+];
+
+const isHazardousListing = (listing) => {
+  if (listing?.condition?.toLowerCase() !== "defective") return false;
+
+  const description = String(listing?.description || "").toLowerCase();
+  return HAZARDOUS_DIAGNOSIS_KEYWORDS.some((issue) =>
+    description.includes(issue.toLowerCase()),
+  );
+};
+
 const HarvesterDashboard = ({ session, onLogout }) => {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +104,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [rejectionReason, setRejectionReason] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  // Unread message badge for the top-right message icon
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+
   const [transactions, setTransactions] = useState([]);
 
   const [selectedTransaction, setSelectedTransaction] = useState(null);
@@ -216,9 +235,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
           joined_date: profile?.created_at
             ? new Date(profile.created_at).toLocaleDateString("en-US", {
-                month: "long",
-                year: "numeric",
-              })
+              month: "long",
+              year: "numeric",
+            })
             : "Recent Partner",
 
           // STATS
@@ -281,6 +300,78 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         setSelectedTransaction(data[0]);
       }
     }
+  };
+
+  // Keep the top-right message badge synced with Supabase.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const fetchUnreadMessageCount = async () => {
+      const { count, error } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("receiver_id", session.user.id)
+        .eq("is_read", false);
+
+      if (error) {
+        console.error("Error fetching unread messages:", error.message);
+        return;
+      }
+
+      setUnreadMessageCount(count || 0);
+    };
+
+    fetchUnreadMessageCount();
+
+    const messagesChannel = supabase
+      .channel("harvester-message-badge")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `receiver_id=eq.${session.user.id}`,
+        },
+        () => {
+          setUnreadMessageCount((prev) => prev + 1);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `receiver_id=eq.${session.user.id}`,
+        },
+        () => {
+          fetchUnreadMessageCount();
+        },
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(messagesChannel);
+  }, [session?.user?.id]);
+
+  // Open Messages from the top-right icon and clear the unread badge.
+  const handleOpenMessages = async () => {
+    setActiveTab("messages");
+
+    if (!session?.user?.id) return;
+
+    const { error } = await supabase
+      .from("messages")
+      .update({ is_read: true })
+      .eq("receiver_id", session.user.id)
+      .eq("is_read", false);
+
+    if (error) {
+      console.error("Error marking messages as read:", error.message);
+      return;
+    }
+
+    setUnreadMessageCount(0);
   };
 
   useEffect(() => {
@@ -499,8 +590,20 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         { event: "INSERT", schema: "public", table: "listings" },
         (payload) => {
           console.log("Change received!", payload);
-          setListings((prev) => [payload.new, ...prev]);
-        },
+
+          // Repair Shops can see active Working listings and
+          // active, non-hazardous Defective listings.
+          if (
+            payload.new?.status === "active" &&
+            ["working", "defective"].includes(
+              payload.new?.condition?.toLowerCase(),
+            ) &&
+            !isHazardousListing(payload.new)
+          ) {
+            // Re-fetch so seller profile data and bid information stay complete.
+            fetchActiveListings();
+          }
+        }
       )
       .subscribe((status) => {
         console.log("Realtime status:", status); // Should say 'SUBSCRIBED'
@@ -575,37 +678,46 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         .from("listings")
         .select(
           `
-        *,
-        bids(
-          amount,
-          bidder_id,
-          status,
-          created_at,
-          profiles:bidder_id (
-            full_name
-          )
-        ),
-        profiles:seller_id (
-          id,
-          full_name,
-          barangay,
-          average_rating
-        )
-      `,
+    *,
+    bids(
+      amount,
+      bidder_id,
+      status,
+      created_at,
+      profiles:bidder_id (
+        full_name
+      )
+    ),
+    profiles:seller_id (
+      id,
+      full_name,
+      barangay,
+      average_rating
+    )
+  `
         )
         .eq("status", "active")
+        .in("condition", ["Working", "Defective"])
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      const formattedData = (data || []).map((listing) => {
+      // Final routing rule:
+      // - Working -> visible to Repair Shops
+      // - Defective + safe/reusable -> visible to Repair Shops
+      // - Defective + hazardous -> NOT sellable and must never appear here
+      const sellableListings = (data || []).filter(
+        (listing) => !isHazardousListing(listing),
+      );
+
+      const formattedData = sellableListings.map((listing) => {
         const bids = Array.isArray(listing.bids) ? listing.bids : [];
 
         const highestBid =
           bids.length > 0
             ? bids.reduce((max, bid) =>
-                Number(bid.amount || 0) > Number(max.amount || 0) ? bid : max,
-              )
+              Number(bid.amount || 0) > Number(max.amount || 0) ? bid : max,
+            )
             : null;
 
         /*
@@ -649,15 +761,26 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       // 1. Fetch current status & listing info in one go to save a database call
       const { data: currentListing, error: statusError } = await supabase
         .from("listings")
-        .select("status, seller_id, device_model")
+        .select("status, condition, description, seller_id, device_model")
         .eq("id", listingId)
         .single();
 
-      // Check if the listing is locked (not active)
-      if (statusError || currentListing.status !== "active") {
-        alert("This listing is no longer accepting bids (Closed or Expired).");
+      // Check if the listing is locked, unsupported, or hazardous.
+      if (
+        statusError ||
+        currentListing.status !== "active" ||
+        !["working", "defective"].includes(
+          currentListing.condition?.toLowerCase(),
+        ) ||
+        isHazardousListing(currentListing)
+      ) {
+        alert(
+          isHazardousListing(currentListing)
+            ? "This item is hazardous and is not available for sale."
+            : "This listing is no longer accepting bids (Closed or Expired).",
+        );
         setSelectedListing(null);
-        fetchActiveListings(); // Refresh the UI to reflect the change
+        fetchActiveListings();
         return;
       }
 
@@ -807,7 +930,29 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         {/* CONTENT */}
         <div className="relative z-10">
           {/* --- TOP HEADER SECTION --- */}
-          <div className="flex justify-end items-center mb-10 gap-4">
+          <div className="flex justify-end items-center mb-10 gap-3">
+            {/* Message Icon Container */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={handleOpenMessages}
+                aria-label="Messages"
+                title="Messages"
+                className={`relative bg-white/90 backdrop-blur-md p-2.5 rounded-full shadow-sm border border-white/50 cursor-pointer hover:bg-white transition-all ${activeTab === "messages"
+                  ? "text-[#769c2d] ring-2 ring-[#769c2d]/20"
+                  : "text-slate-600"
+                  }`}
+              >
+                <MessageSquare size={20} />
+              </button>
+
+              {unreadMessageCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold border-2 border-white">
+                  {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+                </span>
+              )}
+            </div>
+
             {/* Notification Bell Container */}
             <div className="relative">
               <div
@@ -859,9 +1004,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         return (
                           <div
                             key={n.id}
-                            className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${
-                              !n.is_read ? "bg-lime-50/30" : ""
-                            }`}
+                            className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!n.is_read ? "bg-lime-50/30" : ""
+                              }`}
                           >
                             <div className="flex gap-3">
                               <div
@@ -1565,7 +1709,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           </div>
 
           {/* --- NAVIGATION --- */}
-          <div className="bg-white/90 backdrop-blur-md rounded-[2rem] border border-white/50 shadow-lg px-6 py-5 flex flex-wrap gap-8 items-center">
+          <div className="bg-white/90 backdrop-blur-md rounded-[2rem] border border-white/50 shadow-lg px-9 py-6 flex flex-wrap gap-12 items-center">
             <NavBtn
               active={activeTab === "browse"}
               onClick={() => setActiveTab("browse")}
@@ -1617,13 +1761,6 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               onClick={() => setActiveTab("alerts")}
               icon={<Bell size={16} />}
               label="My Alerts"
-            />
-
-            <NavBtn
-              active={activeTab === "messages"}
-              onClick={() => setActiveTab("messages")}
-              icon={<MessageSquare size={16} />}
-              label="Messages"
             />
 
             <NavBtn
@@ -1986,13 +2123,12 @@ const MyBidsView = ({ bids }) => {
         {bids.map((bid) => (
           <div
             key={bid.id}
-            className={`group bg-white rounded-[2.5rem] border-2 p-8 transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 ${
-              bid.status === "accepted"
-                ? "border-emerald-100"
-                : bid.status === "countered"
-                  ? "border-blue-100"
-                  : "border-orange-50"
-            }`}
+            className={`group bg-white rounded-[2.5rem] border-2 p-8 transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 ${bid.status === "accepted"
+              ? "border-emerald-100"
+              : bid.status === "countered"
+                ? "border-blue-100"
+                : "border-orange-50"
+              }`}
           >
             <div className="flex justify-between items-start mb-6">
               <div>
@@ -2001,13 +2137,12 @@ const MyBidsView = ({ bids }) => {
                     {bid.listings?.device_model}
                   </h3>
                   <span
-                    className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
-                      bid.status === "accepted"
-                        ? "bg-emerald-100 text-emerald-600"
-                        : bid.status === "countered"
-                          ? "bg-blue-100 text-blue-600"
-                          : "bg-orange-100 text-orange-600"
-                    }`}
+                    className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${bid.status === "accepted"
+                      ? "bg-emerald-100 text-emerald-600"
+                      : bid.status === "countered"
+                        ? "bg-blue-100 text-blue-600"
+                        : "bg-orange-100 text-orange-600"
+                      }`}
                   >
                     {bid.status || "Pending"}
                   </span>
@@ -2112,21 +2247,19 @@ const AlertsView = ({ notifications }) => {
       {notifications.map((n) => (
         <div
           key={n.id}
-          className={`p-6 rounded-[2rem] border transition-all flex items-center gap-6 ${
-            !n.is_read
-              ? n.type === "alert_match"
-                ? "bg-amber-50/50 border-amber-100" // Distinct color for matches
-                : "bg-lime-50/50 border-lime-100"
-              : "bg-slate-50/30 border-slate-50"
-          }`}
+          className={`p-6 rounded-[2rem] border transition-all flex items-center gap-6 ${!n.is_read
+            ? n.type === "alert_match"
+              ? "bg-amber-50/50 border-amber-100" // Distinct color for matches
+              : "bg-lime-50/50 border-lime-100"
+            : "bg-slate-50/30 border-slate-50"
+            }`}
         >
           {/* Dynamic Icon based on type */}
           <div
-            className={`w-8 h-8 rounded-2xl flex items-center justify-center ${
-              n.type === "alert_match"
-                ? "bg-amber-100 text-amber-600"
-                : "bg-lime-100 text-[#769c2d]"
-            }`}
+            className={`w-8 h-8 rounded-2xl flex items-center justify-center ${n.type === "alert_match"
+              ? "bg-amber-100 text-amber-600"
+              : "bg-lime-100 text-[#769c2d]"
+              }`}
           >
             {n.type === "alert_match" ? (
               <Search size={14} />
@@ -2413,11 +2546,10 @@ const MessagesView = ({ session }) => {
                 <div
                   key={chat.listing_id}
                   onClick={() => setSelectedChat(chat)}
-                  className={`p-4 border-b border-slate-100 cursor-pointer transition ${
-                    selectedChat?.listing_id === chat.listing_id
-                      ? "bg-slate-100"
-                      : "hover:bg-slate-50"
-                  }`}
+                  className={`p-4 border-b border-slate-100 cursor-pointer transition ${selectedChat?.listing_id === chat.listing_id
+                    ? "bg-slate-100"
+                    : "hover:bg-slate-50"
+                    }`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="min-w-0">
@@ -2478,7 +2610,7 @@ const MessagesView = ({ session }) => {
                         <span className="text-sm text-slate-500">
                           {Number(
                             selectedChat.listings?.profiles?.average_rating ||
-                              0,
+                            0,
                           ).toFixed(1)}{" "}
                           ({selectedChat.listings?.profiles?.total_reviews || 0}
                           )
@@ -2497,18 +2629,16 @@ const MessagesView = ({ session }) => {
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
-                      className={`flex ${
-                        msg.sender_id === session.user.id
-                          ? "justify-end"
-                          : "justify-start"
-                      }`}
+                      className={`flex ${msg.sender_id === session.user.id
+                        ? "justify-end"
+                        : "justify-start"
+                        }`}
                     >
                       <div
-                        className={`px-5 py-3 rounded-2xl max-w-[70%] text-sm shadow-sm ${
-                          msg.sender_id === session.user.id
-                            ? "bg-[#769c2d] text-white rounded-br-md"
-                            : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
-                        }`}
+                        className={`px-5 py-3 rounded-2xl max-w-[70%] text-sm shadow-sm ${msg.sender_id === session.user.id
+                          ? "bg-[#769c2d] text-white rounded-br-md"
+                          : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
+                          }`}
                       >
                         {msg.content}
                       </div>
@@ -2567,11 +2697,10 @@ const NavBtn = ({ active, onClick, icon, label, disabled }) => (
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-black text-xs transition-all ${
-      active
-        ? "bg-[#769c2d] text-white shadow-md"
-        : "bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 border border-white/50"
-    } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+    className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-black text-xs transition-all ${active
+      ? "bg-[#769c2d] text-white shadow-md"
+      : "bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 border border-white/50"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
   >
     {icon}
     {label}
@@ -2668,10 +2797,10 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
 
   const postedDate = item.created_at
     ? new Date(item.created_at).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
     : "Recently";
 
   const sellerRating = Number(
@@ -2717,13 +2846,19 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
         )}
 
         {/* CONDITION */}
-        <div className="absolute top-3 left-3">
+        <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
           <span
             className={`px-2.5 py-1 rounded-full border text-[8px] font-black uppercase ${getConditionStyles(
               item.condition,
             )}`}
           >
             {item.condition || "Unknown"}
+          </span>
+
+          <span className="px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-sm text-slate-600 border border-white text-[7px] font-black uppercase shadow-sm">
+            {item.condition?.toLowerCase() === "working"
+              ? "Buyer + Repair Shop"
+              : "Repair Shop"}
           </span>
         </div>
 
@@ -2760,9 +2895,8 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
             {listingMedia.map((_, index) => (
               <div
                 key={index}
-                className={`w-1.5 h-1.5 rounded-full ${
-                  activeIndex === index ? "bg-white" : "bg-white/50"
-                }`}
+                className={`w-1.5 h-1.5 rounded-full ${activeIndex === index ? "bg-white" : "bg-white/50"
+                  }`}
               />
             ))}
           </div>
@@ -2899,11 +3033,10 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
                 onBid();
               }}
               disabled={!isVerified}
-              className={`px-4 py-2.5 rounded-lg text-[8px] font-black uppercase tracking-wide flex items-center gap-1.5 transition-all ${
-                isVerified
-                  ? "bg-[#769c2d] text-white hover:bg-[#658724]"
-                  : "bg-slate-100 text-slate-400 cursor-not-allowed"
-              }`}
+              className={`px-4 py-2.5 rounded-lg text-[8px] font-black uppercase tracking-wide flex items-center gap-1.5 transition-all ${isVerified
+                ? "bg-[#769c2d] text-white hover:bg-[#658724]"
+                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                }`}
             >
               <MessageSquare size={11} />
 
@@ -2923,247 +3056,490 @@ const PlaceBidModal = ({
   onSendMessage,
   session,
 }) => {
-  const [activeTab, setActiveTab] = useState("bid"); // 'bid' or 'question'
-  const [bidAmount, setBidAmount] = useState(listing.asking_price || 0);
+  const [activeTab, setActiveTab] = useState("bid");
+  const [bidAmount, setBidAmount] = useState(
+    Number(listing.asking_price || 0),
+  );
   const [message, setMessage] = useState("");
   const [question, setQuestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [activeImage, setActiveImage] = useState(0);
 
-  const handleQuickSelect = (modifier) => {
-    if (modifier === 0) setBidAmount(listing.asking_price);
-    else {
-      const adjustment = listing.asking_price * modifier;
-      setBidAmount(Math.round(listing.asking_price + adjustment));
-    }
+  // ==============================
+  // LISTING IMAGES
+  // ==============================
+  const listingImages = Array.isArray(listing.images)
+    ? listing.images
+    : listing.images
+      ? [listing.images]
+      : [];
+
+  const askingPrice = Number(listing.asking_price || 0);
+
+  // ==============================
+  // QUICK OFFER
+  // ==============================
+  const quickOffers = [
+    {
+      label: "Full Price",
+      percentage: 100,
+      amount: askingPrice,
+    },
+    {
+      label: "90%",
+      percentage: 90,
+      amount: Math.round(askingPrice * 0.9),
+    },
+    {
+      label: "80%",
+      percentage: 80,
+      amount: Math.round(askingPrice * 0.8),
+    },
+    {
+      label: "70%",
+      percentage: 70,
+      amount: Math.round(askingPrice * 0.7),
+    },
+  ];
+
+  const handleQuickOffer = (amount) => {
+    setBidAmount(amount);
   };
 
+  // ==============================
+  // SUBMIT
+  // ==============================
   const handleFormSubmit = async () => {
+    if (activeTab === "bid") {
+      const amount = Number(bidAmount);
+
+      if (!amount || amount <= 0) {
+        alert("Please enter a valid offer amount.");
+        return;
+      }
+
+      if (amount > askingPrice) {
+        alert("Your offer cannot exceed the maximum price.");
+        return;
+      }
+    }
+
+    if (activeTab === "question" && !question.trim()) {
+      alert("Please enter your question.");
+      return;
+    }
+
     setSubmitting(true);
+
     try {
       if (activeTab === "bid") {
-        await onSubmit(listing.id, bidAmount, message);
-      } else if (activeTab === "question") {
-        await onSendMessage(listing.id, question);
+        await onSubmit(
+          listing.id,
+          Number(bidAmount),
+          message,
+        );
+      } else {
+        await onSendMessage(
+          listing.id,
+          question,
+        );
       }
     } finally {
       setSubmitting(false);
     }
   };
-  const quickQuestions = [
-    "What specific parts are still functional?",
-    "Can you provide more photos?",
-    "Is pickup available today?",
-    "Has the data been fully sanitized?",
-  ];
+
+  const sellerName =
+    listing.profiles?.full_name ||
+    listing.seller_name ||
+    "Seller";
+
+  const sellerInitials = sellerName
+    .split(" ")
+    .map((name) => name[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-        {/* Fixed Header */}
-        <div className="flex justify-between items-center p-8 border-b border-slate-50 flex-shrink-0">
+    <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4">
+      <div className="bg-white w-full max-w-3xl h-full sm:h-auto sm:max-h-[95vh] overflow-hidden rounded-none sm:rounded-[2rem] shadow-2xl flex flex-col">
+
+        {/* =====================================================
+            HEADER
+        ===================================================== */}
+        <div className="px-6 sm:px-8 pt-6 pb-5 flex items-start justify-between border-b border-slate-100">
           <div>
-            <h2 className="text-xl font-black text-slate-800">
+            <h2 className="text-xl sm:text-2xl font-medium text-slate-800">
               Contact Seller
             </h2>
-            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mt-1">
-              {listing.device_model} - ID: {listing.id?.slice(0, 8)}
+
+            <p className="text-sm sm:text-base text-slate-500 mt-1">
+              {listing.device_model || "E-Waste Item"}
             </p>
           </div>
+
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 text-slate-300 hover:text-slate-600"
+            className="text-slate-400 hover:text-slate-700 transition"
           >
-            ✕
+            <XCircle size={30} strokeWidth={1.8} />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="border-b border-slate-50 px-8 flex flex-shrink-0">
-          {[
-            { id: "bid", label: "Place Bid", icon: <Gavel size={16} /> },
-            {
-              id: "question",
-              label: "Ask Question",
-              icon: <MessageSquareText size={16} />,
-            },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2.5 py-4 border-b-2 font-black text-xs uppercase tracking-widest transition-all ${
-                activeTab === tab.id
-                  ? "border-[#769c2d] text-[#769c2d]"
-                  : "border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-100"
-              }`}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* =====================================================
+            IMAGE
+        ===================================================== */}
+        {listingImages.length > 0 && (
+          <div className="relative h-[230px] sm:h-[300px] bg-slate-100 overflow-hidden">
 
-        <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
-          <div className="bg-emerald-50/50 p-5 rounded-3xl flex justify-between items-center border border-emerald-100/30">
-            <div>
-              <span className="text-[9px] font-black text-emerald-700 uppercase mb-1 block">
-                Asking Price
-              </span>
-              <span className="text-xl font-black text-emerald-800">
-                ₱{listing.asking_price?.toLocaleString()}
-              </span>
-            </div>
-            <span className="text-[10px] text-emerald-600 font-bold bg-white/70 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-inner">
-              <MapPin size={12} />
-              Barangay{" "}
-              {listing.profiles?.barangay ||
-                listing.seller_barangay ||
-                "Valenzuela"}
-            </span>
-            <div className="mt-4 flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-[#4a7c59] text-white flex items-center justify-center text-[9px] font-black">
-                {(
-                  listing.profiles?.full_name ||
-                  listing.seller_name ||
-                  "Seller"
-                )
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
+            <img
+              src={listingImages[activeImage]}
+              alt={listing.device_model || "Listing"}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.src =
+                  "https://placehold.co/900x600?text=No+Image";
+              }}
+            />
+
+            {/* Image counter */}
+            {listingImages.length > 1 && (
+              <div className="absolute bottom-4 right-4 bg-black/75 text-white px-4 py-2 rounded-full text-sm">
+                {activeImage + 1} / {listingImages.length}
               </div>
+            )}
 
-              <div>
-                <p className="text-[8px] text-slate-400 uppercase font-bold">
-                  Seller
-                </p>
+            {/* Previous */}
+            {listingImages.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveImage((prev) =>
+                    prev === 0
+                      ? listingImages.length - 1
+                      : prev - 1,
+                  )
+                }
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 rounded-full shadow flex items-center justify-center text-slate-600"
+              >
+                ←
+              </button>
+            )}
 
-                <p className="text-[10px] font-black text-slate-700">
-                  {listing.profiles?.full_name ||
-                    listing.seller_name ||
-                    "Seller"}
-                </p>
-              </div>
-            </div>
-          </div>
+            {/* Next */}
+            {listingImages.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveImage((prev) =>
+                    prev === listingImages.length - 1
+                      ? 0
+                      : prev + 1,
+                  )
+                }
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 rounded-full shadow flex items-center justify-center text-slate-600"
+              >
+                →
+              </button>
+            )}
 
-          {activeTab === "bid" && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              {/* --- BIDDING FORM --- */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block tracking-[0.15em]">
-                  Your Bid Amount
-                </label>
-                <div className="relative">
-                  <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 font-black text-xl">
-                    ₱
-                  </span>
-                  <input
-                    type="number"
-                    value={bidAmount}
-                    onChange={(e) => setBidAmount(Number(e.target.value))}
-                    className="w-full pl-10 pr-6 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-black text-2xl text-[#3285a1] focus:ring-2 focus:ring-[#3285a1]/20 focus:border-[#3285a1]"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { modifier: 0, label: "Asking" },
-                  { modifier: 0.05, label: "+5%" },
-                ].map((option) => (
+            {/* Dots */}
+            {listingImages.length > 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                {listingImages.map((_, index) => (
                   <button
-                    key={option.label}
-                    onClick={() => handleQuickSelect(option.modifier)}
-                    className="py-3.5 border border-slate-100 rounded-2xl text-[10px] font-black text-slate-500 hover:bg-slate-50 transition-colors"
-                  >
-                    {option.label}
-                  </button>
+                    type="button"
+                    key={index}
+                    onClick={() => setActiveImage(index)}
+                    className={`w-2.5 h-2.5 rounded-full transition ${activeImage === index
+                      ? "bg-white"
+                      : "bg-white/50"
+                      }`}
+                  />
                 ))}
               </div>
-              <textarea
-                placeholder="Message to Seller (Optional)"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[1.5rem] text-xs font-medium h-32 resize-none focus:ring-2 focus:ring-lime-100 focus:border-lime-200"
-              />
-              <div className="bg-lime-50/70 border border-lime-100/50 p-4 rounded-2xl text-center text-lime-700 text-[11px] font-medium">
-                <span className="font-bold">
-                  Competitive bid - higher chance of acceptance
-                </span>
+            )}
+          </div>
+        )}
+
+        {/* =====================================================
+            TABS
+        ===================================================== */}
+        <div className="flex border-b border-slate-200 px-6 sm:px-8">
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("bid")}
+            className={`flex items-center gap-2 py-4 px-2 mr-8 border-b-2 text-base sm:text-lg transition ${activeTab === "bid"
+              ? "border-[#5d9f26] text-[#5d9f26]"
+              : "border-transparent text-slate-500"
+              }`}
+          >
+            <Gavel size={21} />
+            Make Offer
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("question")}
+            className={`flex items-center gap-2 py-4 px-2 border-b-2 text-base sm:text-lg transition ${activeTab === "question"
+              ? "border-[#5d9f26] text-[#5d9f26]"
+              : "border-transparent text-slate-500"
+              }`}
+          >
+            <MessageSquare size={21} />
+            Ask Question
+          </button>
+
+        </div>
+
+        {/* =====================================================
+            CONTENT
+        ===================================================== */}
+        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6">
+
+          {/* ===================================================
+              MAKE OFFER
+          =================================================== */}
+          {activeTab === "bid" && (
+            <div className="space-y-7">
+
+              {/* MAXIMUM PRICE */}
+              <div className="border border-slate-200 rounded-2xl p-5 sm:p-6">
+
+                <div className="flex justify-between items-start">
+
+                  <div>
+                    <p className="text-sm sm:text-base uppercase tracking-wide text-slate-400">
+                      Maximum Price
+                    </p>
+
+                    <p className="text-3xl sm:text-4xl font-medium text-slate-800 mt-1">
+                      ₱{askingPrice.toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <p className="text-sm sm:text-base text-slate-400">
+                      Seller
+                    </p>
+
+                    <div className="flex items-center justify-end gap-2 mt-1">
+
+                      <div className="w-9 h-9 rounded-full bg-[#4a7c59] text-white flex items-center justify-center text-xs font-bold">
+                        {sellerInitials}
+                      </div>
+
+                      <p className="text-sm sm:text-base text-slate-600">
+                        {sellerName}
+                      </p>
+
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* INFO */}
+                <div className="mt-5 bg-[#fffbea] border border-yellow-300 rounded-xl px-4 py-3">
+                  <p className="text-sm sm:text-base text-[#a95d16]">
+                    ↘ Offer at or below this price.
+                  </p>
+                </div>
+
               </div>
+
+              {/* YOUR OFFER */}
+              <div>
+                <h3 className="text-xl sm:text-2xl text-slate-700 mb-3">
+                  Your Offer
+                </h3>
+
+                <div className="relative">
+
+                  <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xl">
+                    ₱
+                  </span>
+
+                  <input
+                    type="number"
+                    min="1"
+                    max={askingPrice}
+                    value={bidAmount}
+                    onChange={(e) =>
+                      setBidAmount(e.target.value)
+                    }
+                    className="w-full border-2 border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-xl sm:text-2xl text-slate-800 focus:outline-none focus:border-[#5d9f26]"
+                    placeholder="Enter offer"
+                  />
+
+                </div>
+
+                {/* OFFER INDICATOR */}
+                {Number(bidAmount) > 0 && askingPrice > 0 && (
+                  <div className="inline-block mt-3 bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-sm">
+                    {Math.round(
+                      (Number(bidAmount) / askingPrice) * 100,
+                    )}
+                    % of asking price
+                    {" · "}
+                    {Number(bidAmount) >= askingPrice * 0.8
+                      ? "Good offer"
+                      : "Low offer"}
+                  </div>
+                )}
+              </div>
+
+              {/* QUICK SELECT */}
+              <div>
+
+                <h3 className="text-lg sm:text-xl text-slate-600 mb-3">
+                  Quick select:
+                </h3>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+                  {quickOffers.map((offer) => {
+                    const selected =
+                      Number(bidAmount) === offer.amount;
+
+                    return (
+                      <button
+                        type="button"
+                        key={offer.label}
+                        onClick={() =>
+                          handleQuickOffer(offer.amount)
+                        }
+                        className={`p-3 sm:p-4 rounded-2xl border-2 transition ${selected
+                          ? "border-[#5d9f26] bg-[#f2f8ec]"
+                          : "border-slate-200 hover:border-slate-300"
+                          }`}
+                      >
+                        <p className="text-sm text-slate-500">
+                          {offer.label}
+                        </p>
+
+                        <p className="text-base sm:text-lg font-medium text-slate-800 mt-1">
+                          ₱{offer.amount.toLocaleString()}
+                        </p>
+                      </button>
+                    );
+                  })}
+
+                </div>
+              </div>
+
+              {/* MESSAGE */}
+              <div>
+
+                <h3 className="text-lg sm:text-xl text-slate-600 mb-3">
+                  Message to Seller{" "}
+                  <span className="text-slate-400">
+                    (Optional)
+                  </span>
+                </h3>
+
+                <textarea
+                  value={message}
+                  onChange={(e) =>
+                    setMessage(e.target.value)
+                  }
+                  placeholder="Write a message to the seller..."
+                  className="w-full border-2 border-slate-200 rounded-2xl p-4 min-h-[130px] resize-none text-sm sm:text-base focus:outline-none focus:border-[#5d9f26]"
+                />
+
+              </div>
+
             </div>
           )}
 
+          {/* ===================================================
+              ASK QUESTION
+          =================================================== */}
           {activeTab === "question" && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              {/* --- QUESTION FORM --- */}
-              <div className="bg-emerald-50 border border-emerald-100/50 p-4 rounded-2xl text-emerald-800 text-[11px] font-medium flex items-center gap-3">
-                <XCircle size={16} className="shrink-0" />
-                <div>
-                  <span className="font-bold block">
-                    Have questions before bidding?
-                  </span>
-                  <span className="opacity-80">
-                    Ask the seller about device condition, specific parts,
-                    availability, or pickup arrangements.
-                  </span>
-                </div>
-              </div>
+            <div className="space-y-6">
 
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block tracking-[0.15em]">
-                  Your Message
-                </label>
-                <textarea
-                  placeholder="Example: Is the battery still functional? Can you provide more photos of the device?"
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[1.5rem] text-xs font-medium h-48 resize-none focus:ring-2 focus:ring-lime-100 focus:border-lime-200"
-                />
+                <h3 className="text-xl text-slate-700 mb-2">
+                  Ask the Seller
+                </h3>
+
+                <p className="text-sm text-slate-500">
+                  Ask about the item's condition, functionality,
+                  availability, or pickup arrangements.
+                </p>
               </div>
 
-              {/* Quick Questions Grid */}
+              <textarea
+                value={question}
+                onChange={(e) =>
+                  setQuestion(e.target.value)
+                }
+                placeholder="Example: Is the battery still functional? Can you provide more photos?"
+                className="w-full border-2 border-slate-200 rounded-2xl p-5 min-h-[220px] resize-none text-sm sm:text-base focus:outline-none focus:border-[#5d9f26]"
+              />
+
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block tracking-[0.15em]">
-                  Quick Questions:
-                </label>
-                <div className="grid grid-cols-1 gap-2">
-                  {quickQuestions.map((q) => (
+                <p className="text-sm font-semibold text-slate-500 mb-3">
+                  Quick questions
+                </p>
+
+                <div className="space-y-2">
+
+                  {[
+                    "What specific parts are still functional?",
+                    "Can you provide more photos?",
+                    "Is pickup available today?",
+                    "Has the data been fully sanitized?",
+                  ].map((q) => (
                     <button
+                      type="button"
                       key={q}
                       onClick={() => setQuestion(q)}
-                      className="text-left text-xs font-semibold text-slate-700 bg-white border border-slate-100 p-3 rounded-2xl hover:bg-slate-50 transition-colors"
+                      className="w-full text-left px-4 py-3 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition"
                     >
                       {q}
                     </button>
                   ))}
+
                 </div>
               </div>
+
             </div>
           )}
+
         </div>
 
-        {/* --- FOOTER BUTTONS --- */}
-        <div className="p-8 pt-4 flex gap-6 border-t border-slate-50 flex-shrink-0">
+        {/* =====================================================
+            FOOTER
+        ===================================================== */}
+        <div className="border-t border-slate-100 px-6 sm:px-8 py-5 flex gap-3">
+
           <button
+            type="button"
             onClick={onClose}
-            className="flex-1 py-4 font-black text-xs text-slate-400 hover:text-slate-600"
+            disabled={submitting}
+            className="flex-1 py-4 border-2 border-slate-200 rounded-2xl text-lg text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
           >
             Cancel
           </button>
+
           <button
+            type="button"
             onClick={handleFormSubmit}
-            disabled={
-              submitting || (activeTab === "question" && !question.trim())
-            }
-            className="flex-1 bg-[#769c2d] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-lime-900/20 disabled:opacity-50"
+            disabled={submitting}
+            className="flex-1 py-4 bg-[#5d9f26] text-white rounded-2xl text-lg font-medium hover:bg-[#518b21] transition disabled:opacity-50"
           >
             {submitting
-              ? "Processing..."
+              ? "Sending..."
               : activeTab === "bid"
-                ? "Place Bid"
-                : "Send Message"}
+                ? "Send Offer"
+                : "Send Question"}
           </button>
+
         </div>
+
       </div>
     </div>
   );
