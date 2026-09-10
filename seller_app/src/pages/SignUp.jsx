@@ -1,12 +1,100 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
-import { Upload } from "lucide-react";
+import { Upload, MapPin } from "lucide-react";
+
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  useMapEvents,
+} from "react-leaflet";
+
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+const BARANGAY_COORDINATES = {
+  "Arkong Bato": [14.6756, 120.9576],
+  Bagbaguin: [14.7038, 120.9973],
+  Balangkas: [14.6768, 120.9696],
+  Bignay: [14.7002, 121.0165],
+  Bisig: [14.6852, 120.9664],
+  "Canumay East": [14.6908, 120.9884],
+  "Canumay West": [14.6877, 120.9794],
+
+  // Corrected Coloong location
+  Coloong: [14.7240, 120.9433],
+
+  Dalandanan: [14.6918, 120.9785],
+  "Gen. T. de Leon": [14.6907, 121.0122],
+  Isla: [14.6888, 120.9607],
+  Karuhatan: [14.6847, 120.9747],
+  "Lawang Bato": [14.7154, 121.0034],
+  Lingunan: [14.6984, 120.9819],
+  Mabolo: [14.6786, 120.9845],
+  Malanday: [14.7024, 120.9711],
+  Malinta: [14.6798, 120.9707],
+  "Mapulang Lupa": [14.7155, 121.0173],
+  Marulas: [14.6737, 120.9659],
+  Maysan: [14.6950, 120.9922],
+  Palasan: [14.6808, 120.9745],
+  "Pariancillo Villa": [14.6818, 120.9596],
+  "Paso de Blas": [14.7105, 120.9960],
+  Pasolo: [14.7093, 120.9600],
+  Poblacion: [14.6911, 120.9661],
+  Pulo: [14.6971, 120.9672],
+  Punturin: [14.7237, 121.0180],
+  Rincon: [14.6780, 120.9507],
+  Tagalag: [14.7163, 120.9494],
+  Ugong: [14.6736, 121.0142],
+  "Veinte Reales": [14.7104, 121.0051],
+  "Wawang Pulo": [14.7285, 120.9604],
+};
+
+const VALENZUELA_CENTER = [14.676, 120.983];
+
+const repairShopPin = new L.Icon({
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+
+const LocationSelector = ({ position, onChange }) => {
+  useMapEvents({
+    click(e) {
+      onChange([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+
+  return (
+    <Marker
+      position={position}
+      icon={repairShopPin}
+      draggable={true}
+      eventHandlers={{
+        dragend: (event) => {
+          const marker = event.target;
+          const location = marker.getLatLng();
+
+          onChange([location.lat, location.lng]);
+        },
+      }}
+    />
+  );
+};
 
 const SignUp = ({ onLoginClick }) => {
   const [step, setStep] = useState(1);
   const [accountType, setAccountType] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [shopLocation, setShopLocation] = useState(null);
   const permitRef = React.useRef();
   const techRef = React.useRef();
   const valenzuelaBarangays = [
@@ -54,6 +142,7 @@ const SignUp = ({ onLoginClick }) => {
 
     // Repair Shop
     businessName: "",
+    address: "",
     businessPermit: null,
     certificationType: "",
     otherCertification: "",
@@ -94,11 +183,30 @@ const SignUp = ({ onLoginClick }) => {
   const [errors, setErrors] = useState({});
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (errors[e.target.name]) {
-      setErrors({ ...errors, [e.target.name]: "" });
-    }
-  };
+  const { name, value } = e.target;
+
+  setFormData((prev) => ({
+    ...prev,
+    [name]: value,
+  }));
+
+  if (errors[name]) {
+    setErrors((prev) => ({
+      ...prev,
+      [name]: "",
+    }));
+  }
+
+  // Set the initial repair-shop map position
+  // based on the selected barangay.
+  if (
+    name === "barangay" &&
+    accountType === "repair_shop" &&
+    BARANGAY_COORDINATES[value]
+  ) {
+    setShopLocation(BARANGAY_COORDINATES[value]);
+  }
+};
 
   const handleFileChange = (e, field) => {
     const file = e.target.files?.[0];
@@ -151,6 +259,13 @@ const SignUp = ({ onLoginClick }) => {
     return Object.keys(newErrors).length === 0;
   };
 
+  const getInitialShopLocation = () => {
+    return (
+      BARANGAY_COORDINATES[formData.barangay] ||
+      VALENZUELA_CENTER
+    );
+  };
+
   const handleContinue = async () => {
     if (step === 1 && accountType) {
       setStep(2);
@@ -171,6 +286,16 @@ const SignUp = ({ onLoginClick }) => {
       if (accountType === "repair_shop") {
         if (!formData.businessName.trim()) {
           alert("Please enter your Shop / Business Name.");
+          return;
+        }
+
+        if (!formData.address.trim()) {
+          alert("Please enter your shop address.");
+          return;
+        }
+
+        if (!shopLocation) {
+          alert("Please select your shop location on the map.");
           return;
         }
 
@@ -291,34 +416,49 @@ const SignUp = ({ onLoginClick }) => {
       // PROFILE UPDATES
       // =========================
       let updates = {
-        full_name: formData.fullName,
-        email: formData.email,
-        contact_number: formData.contactNumber,
-        barangay: formData.barangay,
+  full_name: formData.fullName,
+  email: formData.email,
+  contact_number: formData.contactNumber,
+  barangay: formData.barangay,
 
-        // IMPORTANT
-        role: finalRole,
+  role: finalRole,
 
-        business_name: formData.businessName || null,
+  business_name: formData.businessName || null,
 
-        verification_status: "pending",
-        is_verified: false,
-        status: "Pending",
+  // Repair Shop location
+  address:
+    finalRole === "repair_shop"
+      ? formData.address.trim()
+      : null,
 
-        average_rating: 0,
-        total_reviews: 0,
+  latitude:
+    finalRole === "repair_shop" && shopLocation
+      ? shopLocation[0]
+      : null,
 
-        certification_type:
-          finalRole === "repair_shop"
-            ? formData.certificationType
-            : null,
+  longitude:
+    finalRole === "repair_shop" && shopLocation
+      ? shopLocation[1]
+      : null,
 
-        other_certification:
-          finalRole === "repair_shop" &&
-            formData.certificationType === "Other Certification"
-            ? formData.otherCertification
-            : null,
-      };
+  verification_status: "pending",
+  is_verified: false,
+  status: "Pending",
+
+  average_rating: 0,
+  total_reviews: 0,
+
+  certification_type:
+    finalRole === "repair_shop"
+      ? formData.certificationType
+      : null,
+
+  other_certification:
+    finalRole === "repair_shop" &&
+    formData.certificationType === "Other Certification"
+      ? formData.otherCertification
+      : null,
+};
 
       // =========================
       // SELLER ID UPLOAD
@@ -617,7 +757,7 @@ const SignUp = ({ onLoginClick }) => {
                     placeholder="........"
                     className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.confirmPassword ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
                     onChange={handleChange}
-                      value={formData.confirmPassword}
+                    value={formData.confirmPassword}
                   />
                   {errors.confirmPassword && (
                     <p className="text-[10px] text-red-500 mt-1">
@@ -643,277 +783,368 @@ const SignUp = ({ onLoginClick }) => {
               </div>
             </div>
           )}
-{!isSubmitted && step === 3 && (
-  <div className="space-y-4 animate-fadeIn text-left">
-    <h3 className="text-xs font-bold text-emerald-900 mb-1">
-      Professional Verification
-    </h3>
+          {!isSubmitted && step === 3 && (
+            <div className="space-y-4 animate-fadeIn text-left">
+              <h3 className="text-xs font-bold text-emerald-900 mb-1">
+                Professional Verification
+              </h3>
 
-    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
-      <p className="text-[11px] text-blue-800 leading-relaxed">
-        {accountType === "seller"
-          ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts."
-          : accountType === "harvester"
-          ? "To verify your Tech-Harvester account, please upload a valid government ID."
-          : "Please provide your business and technical credentials for verification."}
-      </p>
-    </div>
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
+                <p className="text-[11px] text-blue-800 leading-relaxed">
+                  {accountType === "seller"
+                    ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts."
+                    : accountType === "harvester"
+                      ? "To verify your Tech-Harvester account, please upload a valid government ID."
+                      : "Please provide your business and technical credentials for verification."}
+                </p>
+              </div>
 
-    {/* =========================
+              {/* =========================
         SELLER / HARVESTER
     ========================= */}
-    {(accountType === "seller" || accountType === "harvester") && (
-      <div className="space-y-6">
+              {(accountType === "seller" || accountType === "harvester") && (
+                <div className="space-y-6">
 
-        <div>
-          <label className="text-[11px] font-bold text-gray-700 block mb-2">
-            Valid Government ID{" "}
-            <span className="text-red-500">*</span>
-          </label>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Valid Government ID{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
 
-          <div
-            onClick={() => permitRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
-              formData.businessPermit
-                ? "border-emerald-400 bg-emerald-50/10"
-                : "border-gray-200"
-            }`}
-          >
-            <input
-              type="file"
-              ref={permitRef}
-              accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
-              className="hidden"
-              onChange={(e) =>
-                handleFileChange(e, "businessPermit")
-              }
-            />
+                    <div
+                      onClick={() => permitRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
+                          ? "border-emerald-400 bg-emerald-50/10"
+                          : "border-gray-200"
+                        }`}
+                    >
+                      <input
+                        type="file"
+                        ref={permitRef}
+                        accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleFileChange(e, "businessPermit")
+                        }
+                      />
 
-            <Upload
-              className={
-                formData.businessPermit
-                  ? "text-emerald-500 mb-2"
-                  : "text-gray-400 mb-2"
-              }
-              size={24}
-            />
+                      <Upload
+                        className={
+                          formData.businessPermit
+                            ? "text-emerald-500 mb-2"
+                            : "text-gray-400 mb-2"
+                        }
+                        size={24}
+                      />
 
-            <span className="text-teal-600 font-semibold text-sm">
-              {formData.businessPermit
-                ? "File uploaded successfully!"
-                : "Click to upload"}
-            </span>
+                      <span className="text-teal-600 font-semibold text-sm">
+                        {formData.businessPermit
+                          ? "File uploaded successfully!"
+                          : "Click to upload"}
+                      </span>
 
-            <span className="text-gray-400 text-[10px] mt-1">
-              {formData.businessPermit
-                ? formData.businessPermit.name
-                : "PDF or JPEG (max 5MB)"}
-            </span>
-          </div>
-        </div>
+                      <span className="text-gray-400 text-[10px] mt-1">
+                        {formData.businessPermit
+                          ? formData.businessPermit.name
+                          : "PDF or JPEG (max 5MB)"}
+                      </span>
+                    </div>
+                  </div>
 
-        {/* ROLE DESCRIPTION */}
-        <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-          <p className="text-[10px] text-gray-500 leading-relaxed">
-            {accountType === "harvester"
-              ? "As a Tech-Harvester, you can buy working second-hand electronics and sell unused or non-working electronics on Wasteless."
-              : "As a Seller, you can create listings and sell eligible electronics on Wasteless."}
-          </p>
-        </div>
-      </div>
-    )}
+                  {/* ROLE DESCRIPTION */}
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                    <p className="text-[10px] text-gray-500 leading-relaxed">
+                      {accountType === "harvester"
+                        ? "As a Tech-Harvester, you can buy working second-hand electronics and sell unused or non-working electronics on Wasteless."
+                        : "As a Seller, you can create listings and sell eligible electronics on Wasteless."}
+                    </p>
+                  </div>
+                </div>
+              )}
 
-    {/* =========================
+              {/* =========================
         REPAIR SHOP
     ========================= */}
-    {accountType === "repair_shop" && (
-      <div className="space-y-6">
+              {accountType === "repair_shop" && (
+                <div className="space-y-6">
 
-        {/* BUSINESS NAME */}
-        <div>
-          <label className="text-[11px] font-bold text-gray-700 block mb-2">
-            Business/Shop Name{" "}
-            <span className="text-red-500">*</span>
-          </label>
+                  {/* BUSINESS NAME */}
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Business/Shop Name{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
 
-          <input
-            name="businessName"
-            type="text"
-            placeholder="Enter your business name"
-            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-            onChange={handleChange}
-            value={formData.businessName || ""}
-          />
-        </div>
+                    <input
+                      name="businessName"
+                      type="text"
+                      placeholder="Enter your business name"
+                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      onChange={handleChange}
+                      value={formData.businessName || ""}
+                    />
+                  </div>
 
-        {/* BUSINESS PERMIT */}
-        <div>
-          <label className="text-[11px] font-bold text-gray-700 block mb-2">
-            Business Permit / DTI Registration{" "}
-            <span className="text-red-500">*</span>
-          </label>
+                  {/* SHOP ADDRESS */}
+<div>
+  <label className="text-[11px] font-bold text-gray-700 block mb-2">
+    Shop Address{" "}
+    <span className="text-red-500">*</span>
+  </label>
 
-          <div
-            onClick={() => permitRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
-              formData.businessPermit
-                ? "border-emerald-400 bg-emerald-50/10"
-                : "border-gray-200"
-            }`}
-          >
-            <input
-              type="file"
-              ref={permitRef}
-              accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
-              className="hidden"
-              onChange={(e) =>
-                handleFileChange(e, "businessPermit")
-              }
-            />
+  <textarea
+    name="address"
+    rows={3}
+    placeholder="Enter your complete shop address"
+    value={formData.address}
+    onChange={handleChange}
+    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+  />
 
-            <Upload
-              className={
-                formData.businessPermit
-                  ? "text-emerald-500 mb-2"
-                  : "text-gray-400 mb-2"
-              }
-              size={24}
-            />
+  <p className="text-[9px] text-gray-400 mt-1.5">
+    Enter the address of your actual repair shop location.
+  </p>
+</div>
 
-            <span className="text-teal-600 font-semibold text-sm">
-              {formData.businessPermit
-                ? "Permit uploaded!"
-                : "Click to upload"}
-            </span>
+{/* =========================
+    SHOP LOCATION
+========================= */}
+<div>
+  <label className="text-[11px] font-bold text-gray-700 block mb-2">
+    Shop Location{" "}
+    <span className="text-red-500">*</span>
+  </label>
 
-            <span className="text-gray-400 text-[10px] mt-1">
-              {formData.businessPermit
-                ? formData.businessPermit.name
-                : "PDF or JPEG (max 5MB)"}
-            </span>
-          </div>
-        </div>
+  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 mb-3">
+    <div className="flex items-start gap-2">
+      <MapPin
+        size={16}
+        className="text-emerald-600 mt-0.5 shrink-0"
+      />
 
-        {/* CERTIFICATION TYPE */}
-        <div>
-          <label className="text-[11px] font-bold text-gray-700 block mb-2">
-            Certification Type{" "}
-            <span className="text-red-500">*</span>
-          </label>
-
-          <select
-            name="certificationType"
-            value={formData.certificationType}
-            onChange={handleChange}
-            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-          >
-            <option value="">
-              Select certification type...
-            </option>
-
-            {certificationOptions.map((option) => (
-              <option
-                key={option.value}
-                value={option.value}
-              >
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* OTHER CERTIFICATION */}
-        {formData.certificationType === "Other Certification" && (
-          <div>
-            <label className="text-[11px] font-bold text-gray-700 block mb-2">
-              Specify Certification{" "}
-              <span className="text-red-500">*</span>
-            </label>
-
-            <input
-              name="otherCertification"
-              type="text"
-              placeholder="Enter certification name"
-              value={formData.otherCertification}
-              onChange={handleChange}
-              className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-            />
-          </div>
-        )}
-
-        {/* TECHNICAL CERTIFICATION */}
-        <div>
-          <label className="text-[11px] font-bold text-gray-700 block mb-2">
-            Technical Certification{" "}
-            <span className="text-red-500">*</span>
-          </label>
-
-          <div
-            onClick={() => techRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${
-              formData.techCert
-                ? "border-emerald-400 bg-emerald-50/10"
-                : "border-gray-200"
-            }`}
-          >
-            <input
-              type="file"
-              ref={techRef}
-              accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
-              className="hidden"
-              onChange={(e) =>
-                handleFileChange(e, "techCert")
-              }
-            />
-
-            <Upload
-              className={
-                formData.techCert
-                  ? "text-emerald-500 mb-2"
-                  : "text-gray-400 mb-2"
-              }
-              size={24}
-            />
-
-            <span className="text-teal-600 font-semibold text-sm">
-              {formData.techCert
-                ? "Certification uploaded!"
-                : "Click to upload"}
-            </span>
-
-            <span className="text-gray-400 text-[10px] mt-1">
-              {formData.techCert
-                ? formData.techCert.name
-                : "PDF or JPEG (max 5MB)"}
-            </span>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {/* =========================
-        BUTTONS
-    ========================= */}
-    <div className="flex gap-3 pt-4">
-      <button
-        type="button"
-        onClick={() => setStep(2)}
-        className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50"
-      >
-        Back
-      </button>
-
-      <button
-        type="button"
-        onClick={handleContinue}
-        disabled={loading}
-        className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90 disabled:opacity-50"
-      >
-        {loading ? "Submitting..." : "Continue"}
-      </button>
+      <p className="text-[10px] text-emerald-800 leading-relaxed">
+        Select the exact location of your repair shop.
+        Click on the map or drag the pin to position it
+        at your shop.
+      </p>
     </div>
   </div>
-)}
+
+  <div className="relative overflow-hidden rounded-xl border border-gray-200">
+    <MapContainer
+      center={
+        shopLocation ||
+        getInitialShopLocation()
+      }
+      zoom={15}
+      scrollWheelZoom={true}
+      style={{
+        height: "300px",
+        width: "100%",
+      }}
+    >
+      <TileLayer
+        attribution="&copy; OpenStreetMap contributors"
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+
+      <LocationSelector
+        position={
+          shopLocation ||
+          getInitialShopLocation()
+        }
+        onChange={setShopLocation}
+      />
+    </MapContainer>
+  </div>
+
+  {shopLocation ? (
+    <div className="mt-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+      <p className="text-[9px] font-semibold text-gray-600">
+        Selected shop location
+      </p>
+
+      <p className="text-[9px] text-gray-400 mt-0.5">
+        Latitude: {shopLocation[0].toFixed(6)}
+        {" • "}
+        Longitude: {shopLocation[1].toFixed(6)}
+      </p>
+    </div>
+  ) : (
+    <p className="text-[9px] text-gray-400 mt-1.5">
+      A starting location based on your selected barangay
+      will be shown. Please move the pin to your actual
+      shop location.
+    </p>
+  )}
+</div>
+
+                  {/* BUSINESS PERMIT */}
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Business Permit / DTI Registration{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+
+                    <div
+                      onClick={() => permitRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
+                          ? "border-emerald-400 bg-emerald-50/10"
+                          : "border-gray-200"
+                        }`}
+                    >
+                      <input
+                        type="file"
+                        ref={permitRef}
+                        accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleFileChange(e, "businessPermit")
+                        }
+                      />
+
+                      <Upload
+                        className={
+                          formData.businessPermit
+                            ? "text-emerald-500 mb-2"
+                            : "text-gray-400 mb-2"
+                        }
+                        size={24}
+                      />
+
+                      <span className="text-teal-600 font-semibold text-sm">
+                        {formData.businessPermit
+                          ? "Permit uploaded!"
+                          : "Click to upload"}
+                      </span>
+
+                      <span className="text-gray-400 text-[10px] mt-1">
+                        {formData.businessPermit
+                          ? formData.businessPermit.name
+                          : "PDF or JPEG (max 5MB)"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* CERTIFICATION TYPE */}
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Certification Type{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+
+                    <select
+                      name="certificationType"
+                      value={formData.certificationType}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    >
+                      <option value="">
+                        Select certification type...
+                      </option>
+
+                      {certificationOptions.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* OTHER CERTIFICATION */}
+                  {formData.certificationType === "Other Certification" && (
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                        Specify Certification{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+
+                      <input
+                        name="otherCertification"
+                        type="text"
+                        placeholder="Enter certification name"
+                        value={formData.otherCertification}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      />
+                    </div>
+                  )}
+
+                  {/* TECHNICAL CERTIFICATION */}
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Technical Certification{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+
+                    <div
+                      onClick={() => techRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.techCert
+                          ? "border-emerald-400 bg-emerald-50/10"
+                          : "border-gray-200"
+                        }`}
+                    >
+                      <input
+                        type="file"
+                        ref={techRef}
+                        accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleFileChange(e, "techCert")
+                        }
+                      />
+
+                      <Upload
+                        className={
+                          formData.techCert
+                            ? "text-emerald-500 mb-2"
+                            : "text-gray-400 mb-2"
+                        }
+                        size={24}
+                      />
+
+                      <span className="text-teal-600 font-semibold text-sm">
+                        {formData.techCert
+                          ? "Certification uploaded!"
+                          : "Click to upload"}
+                      </span>
+
+                      <span className="text-gray-400 text-[10px] mt-1">
+                        {formData.techCert
+                          ? formData.techCert.name
+                          : "PDF or JPEG (max 5MB)"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* =========================
+        BUTTONS
+    ========================= */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-50"
+                >
+                  Back
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleContinue}
+                  disabled={loading}
+                  className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90 disabled:opacity-50"
+                >
+                  {loading ? "Submitting..." : "Continue"}
+                </button>
+              </div>
+            </div>
+          )}
 
 
           {isSubmitted && (
