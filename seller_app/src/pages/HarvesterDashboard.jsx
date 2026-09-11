@@ -13,6 +13,7 @@ import RepairShopMessages from "./RepairShopMessages";
 import {
   Search,
   Bell,
+  Building2,
   Map as MapIcon,
   Trophy,
   Package,
@@ -81,6 +82,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
   const [profileData, setProfileData] = useState({
     full_name: "Loading...",
+    business_name: "",
     initials: "??",
     email: "",
     contact_number: "",
@@ -103,6 +105,16 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [verificationStatus, setVerificationStatus] = useState("verified");
   const isVerified = verificationStatus === "verified";
   const [rejectionReason, setRejectionReason] = useState("");
+
+  // Trust Tier — loaded from the admin-configured trust_tiers table.
+  const [trustTiers, setTrustTiers] = useState([]);
+  const [trustTierLoading, setTrustTierLoading] = useState(true);
+  const [trustTierError, setTrustTierError] = useState("");
+  const [userTrustStats, setUserTrustStats] = useState({
+    completedTransactions: 0,
+    averageRating: 0,
+    totalReviews: 0,
+  });
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -173,6 +185,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           .select(
             `
   full_name,
+  business_name,
   contact_number,
   role,
   created_at,
@@ -229,6 +242,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
         setProfileData({
           full_name: name,
+          business_name: profile?.business_name || "",
           initials,
           email: session.user.email || "",
           contact_number: profile?.contact_number || "",
@@ -269,6 +283,114 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
     fetchHarvesterProfile();
   }, [session]);
+
+  // Load the current repair shop's Trust Tier using the same rules configured by Admin.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const fetchTrustTier = async () => {
+      setTrustTierLoading(true);
+      setTrustTierError("");
+
+      try {
+        const userId = session.user.id;
+
+        const [tiersResult, transactionsResult, marketplaceReviewsResult, repairReviewsResult] =
+          await Promise.all([
+            supabase
+              .from("trust_tiers")
+              .select("id,name,min_transactions,min_rating,privileges")
+              .order("min_transactions", { ascending: true }),
+            supabase
+              .from("transactions")
+              .select("id,seller_id,harvester_id,status")
+              .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
+              .eq("status", "completed"),
+            supabase
+              .from("reviews")
+              .select("overall_rating")
+              .eq("seller_id", userId),
+            supabase
+              .from("repair_reviews")
+              .select("overall_rating")
+              .eq("repair_shop_id", userId),
+          ]);
+
+        if (tiersResult.error) throw tiersResult.error;
+        if (transactionsResult.error) throw transactionsResult.error;
+        if (marketplaceReviewsResult.error) throw marketplaceReviewsResult.error;
+        if (repairReviewsResult.error) throw repairReviewsResult.error;
+
+        const tiers = tiersResult.data || [];
+        const completedTransactions = (transactionsResult.data || []).length;
+        const allReviews = [
+          ...(marketplaceReviewsResult.data || []),
+          ...(repairReviewsResult.data || []),
+        ].filter((review) => review?.overall_rating != null);
+
+        const averageRating = allReviews.length
+          ? allReviews.reduce(
+              (sum, review) => sum + Number(review.overall_rating || 0),
+              0,
+            ) / allReviews.length
+          : 0;
+
+        setTrustTiers(tiers);
+        setUserTrustStats({
+          completedTransactions,
+          averageRating,
+          totalReviews: allReviews.length,
+        });
+      } catch (error) {
+        console.error("Error fetching repair shop trust tier:", error);
+        setTrustTierError(error.message || "Unable to load Trust Tier.");
+      } finally {
+        setTrustTierLoading(false);
+      }
+    };
+
+    fetchTrustTier();
+  }, [session?.user?.id]);
+
+  const sortedTrustTiers = [...trustTiers].sort(
+    (a, b) => Number(a.min_transactions || 0) - Number(b.min_transactions || 0),
+  );
+
+  const currentTrustTier =
+    [...sortedTrustTiers]
+      .reverse()
+      .find(
+        (tier) =>
+          userTrustStats.completedTransactions >= Number(tier.min_transactions || 0) &&
+          userTrustStats.averageRating >= Number(tier.min_rating || 0),
+      ) ||
+    sortedTrustTiers.find((tier) => tier.name === "NEWCOMER") ||
+    sortedTrustTiers[0] ||
+    null;
+
+  const currentTierIndex = currentTrustTier
+    ? sortedTrustTiers.findIndex((tier) => tier.id === currentTrustTier.id)
+    : -1;
+  const nextTrustTier =
+    currentTierIndex >= 0 ? sortedTrustTiers[currentTierIndex + 1] || null : null;
+
+  const transactionProgress = nextTrustTier
+    ? Math.min(
+        100,
+        (userTrustStats.completedTransactions /
+          Math.max(1, Number(nextTrustTier.min_transactions || 0))) *
+          100,
+      )
+    : 100;
+  const ratingProgress = nextTrustTier
+    ? Math.min(
+        100,
+        (userTrustStats.averageRating /
+          Math.max(0.01, Number(nextTrustTier.min_rating || 0))) *
+          100,
+      )
+    : 100;
+  const trustTierProgress = Math.round(Math.min(transactionProgress, ratingProgress));
 
   const fetchTransactions = async () => {
     if (!session?.user?.id) return;
@@ -621,7 +743,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("full_name, verification_status, rejection_reason")
+        .select("full_name, business_name, verification_status, rejection_reason")
         .eq("id", session.user.id)
         .single();
 
@@ -642,6 +764,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         setProfileData((prev) => ({
           ...prev,
           full_name: name,
+          business_name: data.business_name || "",
           initials,
         }));
       }
@@ -1063,7 +1186,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               >
                 <div className="text-right hidden sm:block pl-3">
                   <p className="font-bold text-slate-800 text-[11px] leading-none mb-1">
-                    {profileData.full_name}
+                    {((profileData.role === "repair_shop" && profileData.business_name?.trim()) || profileData.full_name)}
                   </p>
 
                   {verificationStatus === "verified" ? (
@@ -1100,7 +1223,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         </div>
                         <div>
                           <p className="font-bold text-xs">
-                            {profileData.full_name}
+                            {((profileData.role === "repair_shop" && profileData.business_name?.trim()) || profileData.full_name)}
                           </p>
                           <p className="text-[9px] text-white/80">
                             {session?.user?.email}
@@ -1189,14 +1312,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
                     <div>
                       <h2 className="text-xl font-bold">
-                        {profileData?.full_name || "Harvester"}
+                        {((profileData?.role === "repair_shop" && profileData?.business_name?.trim()) || profileData?.full_name || "Repair Shop")}
                       </h2>
 
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
                           <Shield size={10} />
                           {verificationStatus === "verified"
-                            ? "Verified Harvester"
+                            ? "Verified Repair Shop"
                             : "Pending Verification"}
                         </span>
 
@@ -1334,6 +1457,125 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     </div>
                   </div>
 
+                  {/* TRUST TIER */}
+                  <div className="bg-gradient-to-br from-purple-700 via-indigo-700 to-slate-900 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
+                    <Award
+                      className="absolute right-4 top-4 opacity-10"
+                      size={72}
+                    />
+
+                    <div className="relative z-10">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-purple-200">
+                            Trust Tier
+                          </p>
+                          <h3 className="text-2xl font-black mt-1">
+                            {trustTierLoading
+                              ? "Loading..."
+                              : currentTrustTier?.name || "NEWCOMER"}
+                          </h3>
+                          <p className="text-[10px] text-white/70 mt-1">
+                            {((profileData?.role === "repair_shop" && profileData?.business_name?.trim()) || profileData?.full_name || "Repair Shop")}
+                          </p>
+                        </div>
+
+                        {!trustTierLoading && currentTrustTier && (
+                          <div className="px-3 py-1.5 rounded-full bg-white/15 border border-white/20 text-[9px] font-black uppercase">
+                            {currentTrustTier.name}
+                          </div>
+                        )}
+                      </div>
+
+                      {trustTierError ? (
+                        <div className="mt-4 rounded-2xl bg-red-500/15 border border-red-300/20 p-3 text-[10px] text-red-100">
+                          {trustTierError}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-3 gap-2 mt-5">
+                            <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
+                              <p className="text-[8px] uppercase tracking-wider text-white/50">
+                                Completed
+                              </p>
+                              <p className="text-lg font-black mt-1">
+                                {userTrustStats.completedTransactions}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
+                              <p className="text-[8px] uppercase tracking-wider text-white/50">
+                                Rating
+                              </p>
+                              <p className="text-lg font-black mt-1">
+                                {Number(userTrustStats.averageRating || 0).toFixed(1)}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
+                              <p className="text-[8px] uppercase tracking-wider text-white/50">
+                                Reviews
+                              </p>
+                              <p className="text-lg font-black mt-1">
+                                {userTrustStats.totalReviews}
+                              </p>
+                            </div>
+                          </div>
+
+                          {nextTrustTier ? (
+                            <div className="mt-5">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-[9px] font-bold text-white/70">
+                                  Next Tier: {nextTrustTier.name}
+                                </span>
+                                <span className="text-[9px] font-black">
+                                  {trustTierProgress}%
+                                </span>
+                              </div>
+
+                              <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-white transition-all"
+                                  style={{ width: `${trustTierProgress}%` }}
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 mt-3 text-[9px] text-white/65">
+                                <span>
+                                  Transactions: {userTrustStats.completedTransactions}/
+                                  {Number(nextTrustTier.min_transactions || 0)}
+                                </span>
+                                <span className="text-right">
+                                  Rating: {Number(userTrustStats.averageRating || 0).toFixed(1)}/
+                                  {Number(nextTrustTier.min_rating || 0).toFixed(1)}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-5 rounded-2xl bg-emerald-400/15 border border-emerald-300/20 p-3 text-[10px] font-bold text-emerald-100">
+                              Maximum Trust Tier reached.
+                            </div>
+                          )}
+
+                          <div className="mt-5">
+                            <p className="text-[9px] font-black uppercase tracking-wider text-white/50 mb-2">
+                              Current Privileges
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {(currentTrustTier?.privileges || []).map((privilege, index) => (
+                                <span
+                                  key={`${privilege}-${index}`}
+                                  className="px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-semibold text-white/80"
+                                >
+                                  {privilege}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* COMMUNITY REPUTATION */}
                   <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
                     <Award
                       className="absolute right-4 top-4 opacity-10"
@@ -1346,11 +1588,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                       </h3>
 
                       <p className="text-[11px] opacity-70 mb-4">
-                        Seller feedback and completed recovery performance
+                        Repair service feedback and completed performance
                       </p>
 
                       <div className="flex items-center gap-3 flex-wrap">
-                        {/* VERIFIED */}
                         {verificationStatus === "verified" && (
                           <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
                             <CheckCircle2 size={10} />
@@ -1358,28 +1599,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           </span>
                         )}
 
-                        {/* RATING */}
                         <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
                           <Star size={10} />
-                          {profileData?.average_rating
-                            ? Number(profileData.average_rating).toFixed(1)
-                            : "0.0"}{" "}
-                          Rating
+                          {Number(userTrustStats.averageRating || 0).toFixed(1)} Rating
                         </span>
 
-                        {/* REVIEW COUNT */}
                         <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
                           <MessageSquareText size={10} />
-                          {profileData?.total_reviews || 0} Reviews
-                        </span>
-
-                        {/* TRUST LEVEL */}
-                        <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full text-[10px] font-bold">
-                          {profileData?.total_reviews >= 10
-                            ? "TOP HARVESTER"
-                            : profileData?.total_reviews >= 5
-                              ? "TRUSTED PARTNER"
-                              : "NEW MEMBER"}
+                          {userTrustStats.totalReviews} Reviews
                         </span>
                       </div>
                     </div>
@@ -1401,6 +1628,23 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     </div>
 
                     <div className="grid gap-5">
+                      {/* BUSINESS NAME */}
+                      <div className="flex items-start gap-3">
+                        <Building2
+                          size={14}
+                          className="text-slate-400 mt-1 shrink-0"
+                        />
+
+                        <div className="flex-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                            Business Name
+                          </p>
+                          <p className="text-sm font-semibold text-slate-700 mt-1">
+                            {profileData?.business_name || "No business name provided"}
+                          </p>
+                        </div>
+                      </div>
+
                       {/* FULL NAME */}
                       <div className="flex items-start gap-3">
                         <User

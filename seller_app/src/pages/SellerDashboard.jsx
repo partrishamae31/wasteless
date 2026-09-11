@@ -595,7 +595,16 @@ const SellerDashboard = ({ session }) => {
   const [cancelReason, setCancelReason] = useState("");
   const [transactions, setTransactions] = useState([]);
   const [selectedReceiptTransaction, setSelectedReceiptTransaction] = useState(null);
-  const nextTierGoal = 10;
+
+  // Trust Tier data is loaded from the same trust_tiers table used by Admin.
+  const [trustTiers, setTrustTiers] = useState([]);
+  const [trustTierLoading, setTrustTierLoading] = useState(true);
+  const [trustTierError, setTrustTierError] = useState("");
+  const [userTrustStats, setUserTrustStats] = useState({
+    completedTransactions: 0,
+    averageRating: 0,
+    totalReviews: 0,
+  });
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [listingToDonate, setListingToDonate] = useState(null);
   const [showRateModal, setShowRateModal] = useState(false);
@@ -1011,10 +1020,132 @@ const SellerDashboard = ({ session }) => {
     }
   };
 
-  const progressPercent = Math.min(
-    (profileData?.total_reviews / nextTierGoal) * 100,
-    100,
+  // Load Trust Tier requirements and calculate this user's current tier.
+  // This is intentionally derived from transactions/reviews instead of a profiles.tier column,
+  // so Admin changes in trust_tiers are reflected on the user side automatically.
+  useEffect(() => {
+    const fetchTrustTierData = async () => {
+      const userId = session?.user?.id;
+      if (!userId || !isAuthorized) return;
+
+      setTrustTierLoading(true);
+      setTrustTierError("");
+
+      try {
+        const [tiersResult, txResult, marketplaceReviewsResult, repairReviewsResult] =
+          await Promise.all([
+            supabase
+              .from("trust_tiers")
+              .select("id,name,min_transactions,min_rating,privileges")
+              .order("min_transactions", { ascending: true }),
+            supabase
+              .from("transactions")
+              .select("id,seller_id,harvester_id,status")
+              .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
+              .eq("status", "completed"),
+            supabase
+              .from("reviews")
+              .select("overall_rating")
+              .eq("seller_id", userId),
+            supabase
+              .from("repair_reviews")
+              .select("overall_rating")
+              .eq("repair_shop_id", userId),
+          ]);
+
+        if (tiersResult.error) throw tiersResult.error;
+        if (txResult.error) throw txResult.error;
+        if (marketplaceReviewsResult.error) throw marketplaceReviewsResult.error;
+        if (repairReviewsResult.error) throw repairReviewsResult.error;
+
+        const tiers = (tiersResult.data || []).map((tier) => ({
+          ...tier,
+          min_transactions: Number(tier.min_transactions || 0),
+          min_rating: Number(tier.min_rating || 0),
+          privileges: Array.isArray(tier.privileges) ? tier.privileges : [],
+        }));
+
+        const allReviews = [
+          ...(marketplaceReviewsResult.data || []),
+          ...(repairReviewsResult.data || []),
+        ].filter((review) => Number(review.overall_rating) > 0);
+
+        const completedTransactions = (txResult.data || []).length;
+        const totalReviews = allReviews.length;
+        const averageRating = totalReviews
+          ? allReviews.reduce((sum, review) => sum + Number(review.overall_rating), 0) / totalReviews
+          : 0;
+
+        setTrustTiers(tiers);
+        setUserTrustStats({
+          completedTransactions,
+          averageRating,
+          totalReviews,
+        });
+      } catch (error) {
+        console.error("Error loading trust tier:", error);
+        setTrustTierError(error.message || "Unable to load trust tier.");
+        setTrustTiers([]);
+        setUserTrustStats({ completedTransactions: 0, averageRating: 0, totalReviews: 0 });
+      } finally {
+        setTrustTierLoading(false);
+      }
+    };
+
+    fetchTrustTierData();
+  }, [session?.user?.id, isAuthorized]);
+
+  const sortedTrustTiers = [...trustTiers].sort(
+    (a, b) => Number(a.min_transactions) - Number(b.min_transactions)
   );
+
+  const currentTrustTier =
+    sortedTrustTiers
+      .filter(
+        (tier) =>
+          userTrustStats.completedTransactions >= Number(tier.min_transactions) &&
+          userTrustStats.averageRating >= Number(tier.min_rating)
+      )
+      .at(-1) ||
+    sortedTrustTiers.find((tier) => tier.name === "NEWCOMER") ||
+    {
+      name: "NEWCOMER",
+      min_transactions: 0,
+      min_rating: 0,
+      privileges: ["Basic Listings", "Basic Messaging"],
+    };
+
+  const currentTierIndex = sortedTrustTiers.findIndex((tier) => tier.id === currentTrustTier.id);
+  const nextTrustTier =
+    currentTierIndex >= 0 ? sortedTrustTiers[currentTierIndex + 1] || null : null;
+
+  const transactionProgress = nextTrustTier
+    ? Math.min(
+        (userTrustStats.completedTransactions / Math.max(Number(nextTrustTier.min_transactions), 1)) * 100,
+        100
+      )
+    : 100;
+  const ratingProgress = nextTrustTier
+    ? Math.min(
+        (userTrustStats.averageRating / Math.max(Number(nextTrustTier.min_rating), 0.1)) * 100,
+        100
+      )
+    : 100;
+  const progressPercent = nextTrustTier
+    ? Math.round(Math.min(transactionProgress, ratingProgress))
+    : 100;
+
+  const getTrustTierLabel = (name) => {
+    const labels = {
+      NEWCOMER: "Newcomer",
+      BRONZE: "Bronze",
+      SILVER: "Silver",
+      GOLD: "Gold",
+      PLATINUM: "Platinum",
+    };
+    return labels[name] || name || "Newcomer";
+  };
+
   const handleCompleteTransaction = async (txId) => {
     try {
       const txToComplete = transactions.find((t) => t.id === txId);
@@ -3149,67 +3280,126 @@ const SellerDashboard = ({ session }) => {
                     </div>
                   ))}
                 </div>
-                {/* Trust Tier Section - Matching the purple card in mockup */}
+                {/* Dynamic Trust Tier Section - requirements come from Supabase trust_tiers */}
                 <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
                   <Shield
                     className="absolute right-4 top-4 opacity-20"
                     size={60}
                   />
                   <div className="relative z-10">
-                    <h3 className="font-bold text-lg">
-                      {session.user.user_metadata?.full_name}
-                    </h3>
-                    <p className="text-[10px] opacity-80 mb-3">
-                      Member since{" "}
-                      {new Date(session.user.created_at).toLocaleDateString()}
-                    </p>
-                    <div className="flex items-center gap-2 mb-4">
-                      {/* Badge/Award Icon */}
-                      {/* <span className="bg-yellow-400 text-yellow-900 text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1">
-                      <Award size={10} /> */}
-                      {/* Logic: Change label based on review count */}
-                      {/* {profileData?.total_reviews > 5
-                        ? "Top Seller"
-                        : "Rising Star"}
-                    </span> */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.18em] font-black text-white/70">
+                          Your Trust Tier
+                        </p>
+                        <h3 className="font-black text-2xl mt-1">
+                          {trustTierLoading ? "Loading..." : getTrustTierLabel(currentTrustTier.name)}
+                        </h3>
+                        <p className="text-[10px] opacity-80 mt-1">
+                          Based on completed transactions and your ratings
+                        </p>
+                      </div>
+                      <div className="bg-white/15 border border-white/20 rounded-2xl px-3 py-2 text-center min-w-[72px]">
+                        <Shield size={16} className="mx-auto mb-1 text-yellow-300" />
+                        <span className="text-[9px] font-black uppercase tracking-wider">Tier</span>
+                      </div>
+                    </div>
 
-                      {/* Star Rating & Review Count */}
+                    <div className="flex items-center gap-2 mt-4 mb-4">
                       <span className="text-xs font-bold flex items-center gap-1 text-white">
                         <span className="text-yellow-400">★</span>
-                        {profileData?.average_rating
-                          ? Number(profileData.average_rating).toFixed(1)
+                        {userTrustStats.averageRating > 0
+                          ? userTrustStats.averageRating.toFixed(1)
                           : "0.0"}
                         <span className="opacity-70 font-normal ml-0.5">
-                          ({profileData?.total_reviews || 0})
+                          ({userTrustStats.totalReviews} reviews)
                         </span>
                       </span>
-
-                      {/* Dynamic Recommended Tag */}
-                      {profileData?.average_rating >= 4.0 && (
+                      {userTrustStats.averageRating >= 4.0 && (
                         <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
                           Recommended
                         </span>
                       )}
                     </div>
 
-                    {/* Progress Bar */}
-                    <div className="space-y-2 bg-white/10 p-3 rounded-xl border border-white/10">
-                      <div className="flex justify-between text-[10px] font-bold">
-                        <span className="flex items-center gap-1 uppercase tracking-wider">
-                          <ArrowUpRight size={10} /> Next Tier:{" "}
-                          <span className="text-cyan-300">N/A</span>
-                        </span>
-                        {/* Updated text to 0% */}
-                        <span>{Math.round(progressPercent)}% complete</span>
+                    {trustTierError ? (
+                      <div className="bg-red-500/15 border border-red-300/20 rounded-xl p-3 text-[10px] text-red-100">
+                        Unable to load Trust Tier requirements: {trustTierError}
                       </div>
-                      <div className="w-full bg-black/20 h-1.5 rounded-full overflow-hidden">
-                        {/* Updated width to 0% */}
-                        <div
-                          style={{ width: `${progressPercent}%` }}
-                          className="bg-gradient-to-r from-cyan-400 to-purple-400 h-full shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-500"
-                        ></div>
-                      </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <div className="bg-white/10 rounded-xl p-3 border border-white/10">
+                            <p className="text-[9px] uppercase tracking-wider text-white/60 font-bold">
+                              Completed
+                            </p>
+                            <p className="text-lg font-black mt-1">
+                              {userTrustStats.completedTransactions}
+                            </p>
+                            <p className="text-[9px] text-white/60">transactions</p>
+                          </div>
+                          <div className="bg-white/10 rounded-xl p-3 border border-white/10">
+                            <p className="text-[9px] uppercase tracking-wider text-white/60 font-bold">
+                              Requirement
+                            </p>
+                            <p className="text-lg font-black mt-1">
+                              {currentTrustTier.min_transactions}+
+                            </p>
+                            <p className="text-[9px] text-white/60">transactions for tier</p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 bg-white/10 p-3 rounded-xl border border-white/10">
+                          <div className="flex justify-between text-[10px] font-bold">
+                            <span className="flex items-center gap-1 uppercase tracking-wider">
+                              <ArrowUpRight size={10} /> Next Tier:
+                              <span className="text-cyan-300 ml-1">
+                                {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "Max Tier"}
+                              </span>
+                            </span>
+                            <span>{progressPercent}% complete</span>
+                          </div>
+                          <div className="w-full bg-black/20 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              style={{ width: `${progressPercent}%` }}
+                              className="bg-gradient-to-r from-cyan-400 to-purple-400 h-full shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-500"
+                            />
+                          </div>
+                          {nextTrustTier ? (
+                            <div className="flex justify-between text-[9px] text-white/65">
+                              <span>
+                                Transactions: {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)}
+                              </span>
+                              <span>
+                                Rating: {userTrustStats.averageRating.toFixed(1)}/{Number(nextTrustTier.min_rating).toFixed(1)}
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-[9px] text-emerald-200 font-bold">
+                              You have reached the highest available trust tier.
+                            </p>
+                          )}
+                        </div>
+
+                        {currentTrustTier.privileges?.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-[9px] uppercase tracking-wider text-white/60 font-bold mb-2">
+                              Current Privileges
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {currentTrustTier.privileges.slice(0, 5).map((privilege, index) => (
+                                <span
+                                  key={`${privilege}-${index}`}
+                                  className="text-[9px] bg-white/10 border border-white/10 px-2 py-1 rounded-full text-white/85"
+                                >
+                                  {privilege}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
