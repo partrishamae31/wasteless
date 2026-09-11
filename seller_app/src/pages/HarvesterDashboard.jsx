@@ -8,11 +8,12 @@ import BarangayLeaderboard from "./BarangayLeaderboard"; // Ensure path is corre
 import bannerBg from "./assets/banner.png";
 import DonationTab from "./DonationTab";
 import SellerProfileModal from "./SellerProfileModal";
+import RepairShopMessages from "./RepairShopMessages";
 
 import {
   Search,
   Bell,
-  Map,
+  Map as MapIcon,
   Trophy,
   Package,
   MapPin,
@@ -1743,7 +1744,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 }
               }}
               icon={
-                <Map size={16} className={!isVerified ? "opacity-50" : ""} />
+                <MapIcon size={16} className={!isVerified ? "opacity-50" : ""} />
               }
               label={isVerified ? "Urban Mine Map" : "Map (Locked)"}
               disabled={!isVerified}
@@ -2301,363 +2302,763 @@ const AlertsView = ({ notifications }) => {
 // --- MESSAGES VIEW COMPONENT ---
 
 const MessagesView = ({ session }) => {
-  const [selectedBid, setSelectedBid] = useState(null);
+  const userId = session?.user?.id;
+
   const [conversations, setConversations] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [messageText, setMessageText] = useState("");
-  const renderStars = (rating = 0) => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 >= 0.5;
-    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+  const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-    return (
-      <div className="flex items-center gap-[1px]">
-        {/* Full Stars */}
-        {[...Array(fullStars)].map((_, i) => (
-          <span key={`full-${i}`} className="text-yellow-400 text-xs">
-            ★
-          </span>
-        ))}
+  // Load every message where this repair shop is either sender OR receiver.
+  // We intentionally use two simple queries instead of a PostgREST OR expression.
+  const loadConversations = async () => {
+    if (!userId) return;
 
-        {/* Half Star */}
-        {hasHalfStar && (
-          <span className="text-yellow-400 text-xs opacity-60">★</span>
-        )}
+    setLoading(true);
+    setLoadError("");
 
-        {/* Empty Stars */}
-        {[...Array(emptyStars)].map((_, i) => (
-          <span key={`empty-${i}`} className="text-slate-300 text-xs">
-            ★
-          </span>
-        ))}
-      </div>
-    );
+    try {
+      const [receivedResult, sentResult, appointmentResult] = await Promise.all([
+        supabase
+          .from("messages")
+          .select("id,sender_id,receiver_id,listing_id,content,created_at,is_read")
+          .eq("receiver_id", userId)
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("messages")
+          .select("id,sender_id,receiver_id,listing_id,content,created_at,is_read")
+          .eq("sender_id", userId)
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("repair_appointments")
+          .select(
+            "id,harvester_id,repair_shop_id,device_model,category,issue_description,preferred_date,preferred_time,notes,status,created_at,updated_at"
+          )
+          .eq("repair_shop_id", userId)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      if (receivedResult.error) throw receivedResult.error;
+      if (sentResult.error) throw sentResult.error;
+      if (appointmentResult.error) throw appointmentResult.error;
+
+      const msgs = [...(receivedResult.data || []), ...(sentResult.data || [])];
+      const apps = appointmentResult.data || [];
+
+      // Remove duplicates in case a message ever appears in both result sets.
+      const uniqueMessages = Array.from(
+        new Map(msgs.map((message) => [message.id, message])).values()
+      );
+
+      const otherIds = new Set();
+
+      uniqueMessages.forEach((message) => {
+        const otherId =
+          message.sender_id === userId
+            ? message.receiver_id
+            : message.sender_id;
+
+        if (otherId) otherIds.add(otherId);
+      });
+
+      apps.forEach((appointment) => {
+        if (appointment.harvester_id) {
+          otherIds.add(appointment.harvester_id);
+        }
+      });
+
+      let profileMap = {};
+
+      if (otherIds.size > 0) {
+        const { data: profiles, error: profileError } = await supabase
+          .from("profiles")
+          .select("id,full_name,business_name,role,average_rating,total_reviews")
+          .in("id", [...otherIds]);
+
+        if (profileError) {
+          console.error("REPAIR SHOP PROFILE ERROR:", profileError);
+        } else {
+          profileMap = Object.fromEntries(
+            (profiles || []).map((profile) => [profile.id, profile])
+          );
+        }
+      }
+
+      const conversationMap = new Map();
+
+      const addConversation = (
+        otherId,
+        lastMessage,
+        lastAt,
+        hasAppointment = false
+      ) => {
+        if (!otherId) return;
+
+        const existing = conversationMap.get(otherId);
+
+        if (!existing) {
+          conversationMap.set(otherId, {
+            id: `harvester-${otherId}`,
+            other_party_id: otherId,
+            profile: profileMap[otherId],
+            last_message: lastMessage,
+            last_at: lastAt,
+            has_appointment: hasAppointment,
+          });
+          return;
+        }
+
+        if (hasAppointment) {
+          existing.has_appointment = true;
+        }
+
+        if (
+          lastAt &&
+          (!existing.last_at ||
+            new Date(lastAt).getTime() > new Date(existing.last_at).getTime())
+        ) {
+          existing.last_message = lastMessage;
+          existing.last_at = lastAt;
+        }
+      };
+
+      uniqueMessages.forEach((message) => {
+        const otherId =
+          message.sender_id === userId
+            ? message.receiver_id
+            : message.sender_id;
+
+        addConversation(
+          otherId,
+          message.content || "Message",
+          message.created_at,
+          false
+        );
+      });
+
+      apps.forEach((appointment) => {
+        addConversation(
+          appointment.harvester_id,
+          "Repair appointment request",
+          appointment.created_at,
+          true
+        );
+      });
+
+      setConversations(
+        [...conversationMap.values()].sort(
+          (a, b) =>
+            new Date(b.last_at || 0).getTime() -
+            new Date(a.last_at || 0).getTime()
+        )
+      );
+    } catch (error) {
+      console.error("REPAIR SHOP MESSAGE LOAD ERROR:", error);
+      setLoadError(error?.message || "Unable to load messages.");
+      setConversations([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    const fetchConversations = async () => {
-      const { data, error } = await supabase
-        .from("messages")
-        .select(
-          `
-        listing_id,
-        listings (
-          device_model, 
-          asking_price,
-          seller_id,
-          profiles:seller_id (
-  full_name,
-  average_rating,
-  total_reviews
-)
-        ),
-        sender_id,
-        receiver_id
-      `,
-        )
-        .or(`sender_id.eq.${session.user.id},receiver_id.eq.${session.user.id}`)
-        .order("created_at", { ascending: false });
+    loadConversations();
+  }, [userId]);
 
-      if (data) {
-        const uniqueChats = data.reduce((acc, current) => {
-          const x = acc.find((item) => item.listing_id === current.listing_id);
-          if (!x) {
-            return acc.concat([current]);
-          } else {
-            return acc;
-          }
-        }, []);
-        setConversations(uniqueChats);
+  // Load the selected Harvester's messages and repair appointments.
+  useEffect(() => {
+    if (!selectedChat || !userId) return;
+
+    const otherId = selectedChat.other_party_id;
+    let alive = true;
+
+    const loadChat = async () => {
+      setLoadError("");
+
+      try {
+        const [receivedResult, sentResult, appointmentResult] =
+          await Promise.all([
+            supabase
+              .from("messages")
+              .select("*")
+              .eq("receiver_id", userId)
+              .eq("sender_id", otherId)
+              .order("created_at", { ascending: true }),
+
+            supabase
+              .from("messages")
+              .select("*")
+              .eq("receiver_id", otherId)
+              .eq("sender_id", userId)
+              .order("created_at", { ascending: true }),
+
+            supabase
+              .from("repair_appointments")
+              .select(
+                "id,harvester_id,repair_shop_id,device_model,category,issue_description,preferred_date,preferred_time,notes,status,created_at,updated_at"
+              )
+              .eq("harvester_id", otherId)
+              .eq("repair_shop_id", userId)
+              .order("created_at", { ascending: true }),
+          ]);
+
+        if (receivedResult.error) throw receivedResult.error;
+        if (sentResult.error) throw sentResult.error;
+        if (appointmentResult.error) throw appointmentResult.error;
+
+        const chatMessages = [
+          ...(receivedResult.data || []),
+          ...(sentResult.data || []),
+        ];
+
+        const uniqueChatMessages = Array.from(
+          new Map(chatMessages.map((message) => [message.id, message])).values()
+        ).sort(
+          (a, b) =>
+            new Date(a.created_at || 0).getTime() -
+            new Date(b.created_at || 0).getTime()
+        );
+
+        if (alive) {
+          setMessages(uniqueChatMessages);
+          setAppointments(appointmentResult.data || []);
+        }
+      } catch (error) {
+        console.error("REPAIR SHOP CHAT LOAD ERROR:", error);
+        if (alive) {
+          setMessages([]);
+          setAppointments([]);
+          setLoadError(error?.message || "Unable to load this conversation.");
+        }
       }
     };
 
-    fetchConversations();
-  }, [session.user.id]);
+    loadChat();
 
-  useEffect(() => {
-    if (!selectedChat) return;
-
-    const fetchMessages = async () => {
-      const { data } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("listing_id", selectedChat.listing_id)
-        .order("created_at", { ascending: true });
-      if (data) setMessages(data);
-    };
-
-    fetchMessages();
-
-    // Real-time subscription for new messages
     const channel = supabase
-      .channel(`chat-${selectedChat.listing_id}`)
+      .channel(`repair-shop-chat-${userId}-${otherId}-${Date.now()}`)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `listing_id=eq.${selectedChat.listing_id}`,
-        },
+        { event: "INSERT", schema: "public", table: "messages" },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
-        },
+          const message = payload.new;
+
+          const belongsToChat =
+            (message.sender_id === userId &&
+              message.receiver_id === otherId) ||
+            (message.sender_id === otherId &&
+              message.receiver_id === userId);
+
+          if (!belongsToChat) return;
+
+          setMessages((previous) =>
+            previous.some((item) => item.id === message.id)
+              ? previous
+              : [...previous, message]
+          );
+
+          loadConversations();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "repair_appointments" },
+        (payload) => {
+          const appointment = payload.new;
+
+          if (
+            appointment.harvester_id !== otherId ||
+            appointment.repair_shop_id !== userId
+          ) {
+            return;
+          }
+
+          setAppointments((previous) =>
+            previous.some((item) => item.id === appointment.id)
+              ? previous
+              : [...previous, appointment]
+          );
+
+          loadConversations();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "repair_appointments" },
+        (payload) => {
+          const appointment = payload.new;
+
+          if (
+            appointment.harvester_id !== otherId ||
+            appointment.repair_shop_id !== userId
+          ) {
+            return;
+          }
+
+          setAppointments((previous) =>
+            previous.map((item) =>
+              item.id === appointment.id ? appointment : item
+            )
+          );
+
+          loadConversations();
+        }
       )
       .subscribe();
 
     return () => {
+      alive = false;
       supabase.removeChannel(channel);
     };
-  }, [selectedChat]);
+  }, [selectedChat, userId]);
 
-  useEffect(() => {
-    if (!selectedChat) return;
+  const updateAppointment = async (id, status) => {
+  if (!userId) return;
 
-    const fetchBid = async () => {
-      const { data, error } = await supabase
-        .from("bids")
-        .select("id, bid_amount, status, created_at")
-        .eq("listing_id", selectedChat.listing_id)
-        .eq("harvester_id", session.user.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
+  try {
+    // First, find the appointment
+    const { data: appointment, error: appointmentFetchError } =
+      await supabase
+        .from("repair_appointments")
+        .select("*")
+        .eq("id", id)
+        .eq("repair_shop_id", userId)
+        .single();
 
-      if (error) {
-        console.error("FETCH BID ERROR:", error);
-        return;
+    if (appointmentFetchError) throw appointmentFetchError;
+
+    // ---------------------------------------------------------
+    // CONFIRM APPOINTMENT
+    // Create a transaction for the repair service.
+    // No repair fee, so amount = 0.
+    // ---------------------------------------------------------
+    if (status === "confirmed") {
+      // Get customer's profile for barangay
+      const { data: customerProfile, error: profileError } =
+        await supabase
+          .from("profiles")
+          .select("id, full_name, barangay")
+          .eq("id", appointment.harvester_id)
+          .single();
+
+      if (profileError) throw profileError;
+
+      // Check whether a transaction already exists.
+      // This prevents duplicate transactions if Confirm is clicked
+      // more than once or the function is triggered again.
+      const { data: existingTransaction, error: existingError } =
+        await supabase
+          .from("transactions")
+          .select("id")
+          .eq("repair_appointment_id", appointment.id)
+          .maybeSingle();
+
+      if (existingError) throw existingError;
+
+      let transaction = existingTransaction;
+
+      // Create transaction only if one does not already exist
+      if (!transaction) {
+        const { data: newTransaction, error: transactionError } =
+          await supabase
+            .from("transactions")
+            .insert({
+              seller_id: appointment.harvester_id,
+              harvester_id: appointment.repair_shop_id,
+
+              // Repair service has no fee
+              amount: 0,
+
+              barangay: customerProfile?.barangay || "N/A",
+
+              // Same transaction status used by the marketplace
+              status: "meetup_scheduled",
+
+              meetup_date: appointment.preferred_date,
+              meetup_time: appointment.preferred_time
+                ? String(appointment.preferred_time).slice(0, 5)
+                : null,
+
+              notes: [
+                "Repair Service",
+                `Device: ${appointment.device_model || "N/A"}`,
+                `Category: ${appointment.category || "N/A"}`,
+                `Issue: ${appointment.issue_description || "N/A"}`,
+                appointment.notes
+                  ? `Customer Notes: ${appointment.notes}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+
+              listing_id: null,
+
+              // Links the transaction directly to this repair appointment
+              repair_appointment_id: appointment.id,
+            })
+            .select("*")
+            .single();
+
+        if (transactionError) throw transactionError;
+
+        transaction = newTransaction;
       }
 
-      console.log("FETCHED BID:", data);
+      console.log("REPAIR TRANSACTION CREATED:", transaction);
+    }
 
-      if (data && data.length > 0) {
-        setSelectedBid(data[0]);
-      } else {
-        setSelectedBid(null);
-      }
-    };
+    // ---------------------------------------------------------
+    // UPDATE APPOINTMENT STATUS
+    // ---------------------------------------------------------
+    const { data, error } = await supabase
+      .from("repair_appointments")
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("repair_shop_id", userId)
+      .select("*")
+      .single();
 
-    fetchBid();
-  }, [selectedChat, session.user.id]);
+    if (error) throw error;
 
-  const RatingModal = ({ transaction, onClose }) => {
-    const [ratings, setRatings] = useState({
-      communication: 0,
-      punctuality: 0,
-      item_condition: 0,
-      overall: 0,
-    });
-    const [feedback, setFeedback] = useState("");
-
-    // Check if all categories are filled as per the warning in image_e54af2.png
-    const isComplete = Object.values(ratings).every((r) => r > 0);
-
-    const handleSubmit = async () => {
-      const { error } = await supabase.from("reviews").insert([
-        {
-          transaction_id: transaction.id,
-          reviewer_id: session.user.id,
-          reviewee_id: transaction.listings.seller_id,
-          ...ratings,
-          comment: feedback,
-        },
-      ]);
-
-      if (!error) {
-        alert("Thank you for your feedback!");
-        onClose();
-      }
-    };
-
-    return (
-      // ... Modal Backdrop and Container from image_e54af2.png
-      <div className="p-8">
-        {/* Map through categories: Communication, Punctuality, etc. */}
-        <StarRating
-          label="Communication"
-          value={ratings.communication}
-          onChange={(v) => setRatings({ ...ratings, communication: v })}
-        />
-
-        {/* Validation Message from image_e54af2.png */}
-        {!isComplete && (
-          <div className="bg-amber-50 text-amber-600 p-3 rounded-2xl text-[10px] font-bold text-center mb-4">
-            Please rate all categories before submitting
-          </div>
-        )}
-
-        <div className="flex gap-4">
-          <button onClick={onClose} className="...">
-            Cancel
-          </button>
-          <button
-            disabled={!isComplete}
-            onClick={handleSubmit}
-            className="bg-[#769c2d] disabled:opacity-50 ..."
-          >
-            Submit Rating
-          </button>
-        </div>
-      </div>
+    setAppointments((previous) =>
+      previous.map((appointment) =>
+        appointment.id === id ? data : appointment
+      )
     );
+
+    // ---------------------------------------------------------
+    // IF MARKED COMPLETED
+    // Also complete the corresponding transaction.
+    // ---------------------------------------------------------
+    if (status === "completed") {
+      const { data: completedTransaction, error: transactionError } =
+        await supabase
+          .from("transactions")
+          .update({
+            status: "completed",
+            updated_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+          })
+          .eq("repair_appointment_id", id)
+          .select("*");
+
+      if (transactionError) {
+        console.error(
+          "REPAIR TRANSACTION COMPLETION ERROR:",
+          transactionError
+        );
+      } else {
+        console.log(
+          "REPAIR TRANSACTION COMPLETED:",
+          completedTransaction
+        );
+      }
+    }
+
+    // ---------------------------------------------------------
+    // SEND STATUS MESSAGE
+    // ---------------------------------------------------------
+    await supabase.from("messages").insert({
+      sender_id: userId,
+      receiver_id: data.harvester_id,
+      listing_id: null,
+      content: `Repair appointment update\nStatus: ${status.replaceAll(
+        "_",
+        " "
+      )}`,
+      is_read: false,
+    });
+
+    await loadConversations();
+  } catch (error) {
+    console.error("UPDATE APPOINTMENT ERROR:", error);
+    alert(error?.message || "Unable to update appointment.");
+  }
+};
+
+  const sendMessage = async () => {
+    const content = messageText.trim();
+
+    if (!userId || !selectedChat || !content) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: userId,
+          receiver_id: selectedChat.other_party_id,
+          listing_id: null,
+          content,
+          is_read: false,
+        })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setMessages((previous) =>
+          previous.some((item) => item.id === data.id)
+            ? previous
+            : [...previous, data]
+        );
+      }
+
+      setMessageText("");
+      await loadConversations();
+    } catch (error) {
+      console.error("SEND REPAIR SHOP MESSAGE ERROR:", error);
+      alert(error?.message || "Unable to send message.");
+    }
   };
 
-  const handleSendMessage = async () => {
-    if (!messageText.trim() || !selectedChat) return;
+  const filtered = conversations.filter((conversation) => {
+    const name =
+      conversation.profile?.full_name ||
+      conversation.profile?.business_name ||
+      "Unknown Harvester";
 
-    // Determine who the receiver is (the person who isn't the current user)
-    const receiverId =
-      selectedChat.sender_id === session.user.id
-        ? selectedChat.receiver_id
-        : selectedChat.sender_id;
-
-    const { error } = await supabase.from("messages").insert([
-      {
-        content: messageText,
-        sender_id: session.user.id,
-        receiver_id: receiverId,
-        listing_id: selectedChat.listing_id,
-        is_read: false,
-      },
-    ]);
-
-    if (!error) setMessageText("");
-  };
+    return name.toLowerCase().includes(searchText.toLowerCase());
+  });
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f8fafc]">
-      {/* MAIN CONTENT */}
       <div className="flex-1">
         <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border border-white overflow-hidden min-h-[600px]">
-          {/* Sidebar: Message List */}
-          <div className="col-span-4 border-r border-slate-50 p-6">
-            <h2 className="text-xl font-black text-slate-800 mb-4">Messages</h2>
+          <div className="col-span-4 border-r border-slate-50 p-6 overflow-y-auto">
+            <h2 className="text-xl font-black text-slate-800 mb-4">
+              Messages
+            </h2>
 
-            <div className="mb-4">
-              <input
-                type="text"
-                placeholder="Search conversations..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs outline-none"
-              />
-            </div>
+            <input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search harvesters..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs outline-none mb-4"
+            />
 
-            <div className="space-y-1">
-              {conversations.map((chat) => (
-                <div
-                  key={chat.listing_id}
-                  onClick={() => setSelectedChat(chat)}
-                  className={`p-4 border-b border-slate-100 cursor-pointer transition ${selectedChat?.listing_id === chat.listing_id
-                    ? "bg-slate-100"
-                    : "hover:bg-slate-50"
+            {loadError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-[10px] text-red-600">
+                <b>Message loading error:</b>
+                <div className="mt-1 break-words">{loadError}</div>
+              </div>
+            )}
+
+            {loading ? (
+              <p className="text-xs text-slate-400 p-4">
+                Loading conversations...
+              </p>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <MessageSquare
+                  size={32}
+                  className="mx-auto mb-3 opacity-40"
+                />
+                <p className="text-xs font-semibold">No messages yet</p>
+                <p className="text-[10px] mt-1">
+                  Harvester messages and repair requests will appear here.
+                </p>
+              </div>
+            ) : (
+              filtered.map((chat) => {
+                const name =
+                  chat.profile?.full_name ||
+                  chat.profile?.business_name ||
+                  "Unknown Harvester";
+
+                return (
+                  <div
+                    key={chat.id}
+                    onClick={() => setSelectedChat(chat)}
+                    className={`p-4 border-b border-slate-100 cursor-pointer rounded-2xl ${
+                      selectedChat?.id === chat.id
+                        ? "bg-slate-100"
+                        : "hover:bg-slate-50"
                     }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="min-w-0">
-                      {/* Seller Name */}
-                      <h3 className="font-semibold text-slate-800 text-sm truncate">
-                        {chat.listings?.profiles?.full_name || "Unknown Seller"}
-                      </h3>
+                  >
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-slate-800 text-sm truncate">
+                          {name}
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1 truncate">
+                          {chat.last_message}
+                        </p>
 
-                      {/* Rating */}
-                      <div className="flex items-center gap-2 mt-1">
-                        {renderStars(chat.listings?.profiles?.average_rating)}
-
-                        <span className="text-xs text-slate-500">
-                          {Number(
-                            chat.listings?.profiles?.average_rating || 0,
-                          ).toFixed(1)}{" "}
-                          ({chat.listings?.profiles?.total_reviews || 0})
-                        </span>
+                        {chat.has_appointment && (
+                          <span className="inline-block mt-2 px-2 py-1 rounded-full bg-amber-50 text-amber-700 text-[9px] font-bold">
+                            Repair appointment
+                          </span>
+                        )}
                       </div>
 
-                      {/* Product */}
-                      <p className="text-xs text-slate-600 mt-1">
-                        Re: {chat.listings?.device_model}
-                      </p>
-
-                      {/* Preview */}
-                      <p className="text-xs text-slate-400 mt-1 truncate">
-                        Tap to view conversation
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-2">
-                      <span className="text-[10px] text-slate-400">Recent</span>
+                      <span className="text-[9px] text-slate-400 shrink-0">
+                        {chat.last_at
+                          ? new Date(chat.last_at).toLocaleDateString()
+                          : ""}
+                      </span>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                );
+              })
+            )}
           </div>
 
-          {/* MAIN CHAT */}
           <div className="col-span-8 flex flex-col bg-slate-50/30">
             {selectedChat ? (
               <>
-                {/* CHAT HEADER */}
                 <div className="p-6 bg-white border-b border-slate-100">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-800">
-                        {selectedChat.listings?.profiles?.full_name}
-                      </h2>
+                  <h2 className="text-xl font-bold text-slate-800">
+                    {selectedChat.profile?.full_name ||
+                      selectedChat.profile?.business_name ||
+                      "Harvester"}
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Tech Harvester
+                  </p>
+                </div>
 
-                      <div className="flex items-center gap-2 mt-1">
-                        {renderStars(
-                          selectedChat.listings?.profiles?.average_rating,
-                        )}
+                <div className="flex-1 p-8 overflow-y-auto space-y-5">
+                  {appointments.map((appointment) => (
+                    <div
+                      key={`appointment-${appointment.id}`}
+                      className="bg-white border border-emerald-100 rounded-3xl p-5 shadow-sm"
+                    >
+                      <div className="flex justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                            Repair Appointment Request
+                          </p>
+                          <h3 className="text-base font-bold text-slate-800 mt-1">
+                            {appointment.device_model || "Device"}
+                          </h3>
+                        </div>
 
-                        <span className="text-sm text-slate-500">
-                          {Number(
-                            selectedChat.listings?.profiles?.average_rating ||
-                            0,
-                          ).toFixed(1)}{" "}
-                          ({selectedChat.listings?.profiles?.total_reviews || 0}
-                          )
+                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[9px] font-bold uppercase h-fit">
+                          {appointment.status || "pending"}
                         </span>
                       </div>
 
-                      <p className="text-sm text-slate-500 mt-2">
-                        {selectedChat.listings?.device_model}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                      <div className="grid grid-cols-2 gap-3 mt-4 text-xs text-slate-600">
+                        <p>
+                          <b>Category:</b> {appointment.category || "—"}
+                        </p>
+                        <p>
+                          <b>Date:</b> {appointment.preferred_date || "—"}
+                        </p>
+                        <p>
+                          <b>Time:</b> {appointment.preferred_time || "—"}
+                        </p>
+                        <p>
+                          <b>Issue:</b> {appointment.issue_description || "—"}
+                        </p>
+                      </div>
 
-                {/* MESSAGES */}
-                <div className="flex-1 p-8 overflow-y-auto space-y-4">
-                  {messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${msg.sender_id === session.user.id
-                        ? "justify-end"
-                        : "justify-start"
-                        }`}
-                    >
-                      <div
-                        className={`px-5 py-3 rounded-2xl max-w-[70%] text-sm shadow-sm ${msg.sender_id === session.user.id
-                          ? "bg-[#769c2d] text-white rounded-br-md"
-                          : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
-                          }`}
-                      >
-                        {msg.content}
+                      {appointment.notes && (
+                        <p className="text-xs text-slate-500 mt-3">
+                          <b>Notes:</b> {appointment.notes}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {(appointment.status === "pending" ||
+                          !appointment.status) && (
+                          <>
+                            <button
+                              onClick={() =>
+                                updateAppointment(appointment.id, "accepted")
+                              }
+                              className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold"
+                            >
+                              Accept Request
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                updateAppointment(appointment.id, "declined")
+                              }
+                              className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-[10px] font-bold"
+                            >
+                              Decline
+                            </button>
+                          </>
+                        )}
+
+                        {appointment.status === "accepted" && (
+                          <button
+                            onClick={() =>
+                              updateAppointment(appointment.id, "confirmed")
+                            }
+                            className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold"
+                          >
+                            Confirm Appointment
+                          </button>
+                        )}
+
+                        {appointment.status === "confirmed" && (
+                          <button
+                            onClick={() =>
+                              updateAppointment(appointment.id, "completed")
+                            }
+                            className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold"
+                          >
+                            Mark Completed
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
+
+                  {messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${
+                        message.sender_id === userId
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`px-5 py-3 rounded-2xl max-w-[70%] text-sm shadow-sm whitespace-pre-line ${
+                          message.sender_id === userId
+                            ? "bg-[#769c2d] text-white rounded-br-md"
+                            : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
+                        }`}
+                      >
+                        {message.content}
+                      </div>
+                    </div>
+                  ))}
+
+                  {messages.length === 0 && appointments.length === 0 && (
+                    <p className="text-center text-xs text-slate-400 py-10">
+                      No messages in this conversation.
+                    </p>
+                  )}
                 </div>
 
-                {/* INPUT */}
                 <div className="p-6 bg-white border-t border-slate-50 flex gap-4">
                   <input
-                    type="text"
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") sendMessage();
+                    }}
                     placeholder="Type a message..."
-                    className="flex-1 bg-slate-50 border-none rounded-2xl py-4 px-6 text-xs"
+                    className="flex-1 bg-slate-50 rounded-2xl py-4 px-6 text-xs outline-none"
                   />
 
                   <button
-                    onClick={handleSendMessage}
+                    onClick={sendMessage}
                     className="bg-[#769c2d] text-white p-4 rounded-2xl"
                   >
                     <Send size={18} />
@@ -2667,9 +3068,8 @@ const MessagesView = ({ session }) => {
             ) : (
               <div className="flex-1 flex items-center justify-center text-slate-300 flex-col gap-4">
                 <MessageSquare size={40} />
-
                 <p className="text-xs font-bold uppercase">
-                  Select a chat to view messages
+                  Select a Harvester to view messages
                 </p>
               </div>
             )}

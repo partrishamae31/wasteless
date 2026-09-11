@@ -131,8 +131,8 @@ const RepairShopMap = ({
   const coordinates = isAllBarangays
     ? VALENZUELA_CENTER
     : BARANGAY_COORDINATES[barangay] ||
-    BARANGAY_COORDINATES[sellerBarangay] ||
-    VALENZUELA_CENTER;
+      BARANGAY_COORDINATES[sellerBarangay] ||
+      VALENZUELA_CENTER;
 
   const hasExactLocation = (shop) => {
     const lat = Number(shop.latitude);
@@ -228,7 +228,7 @@ const RepairShopMap = ({
                     />
                     {Number(shop.repairReviewCount || 0) +
                       Number(shop.saleReviewCount || 0) >
-                      0 ? (
+                    0 ? (
                       <span className="text-[10px] font-bold">
                         {Number(shop.combinedRating || 0).toFixed(1)}
                       </span>
@@ -345,6 +345,8 @@ const SellerRepairShopsTab = ({
   const [messageText, setMessageText] = useState("");
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageAppointments, setMessageAppointments] = useState([]);
+  const [loadingMessageAppointments, setLoadingMessageAppointments] = useState(false);
 
   /* =========================================================
      HELPERS
@@ -564,17 +566,17 @@ const SellerRepairShopsTab = ({
           const saleAverage =
             saleReviews.length > 0
               ? saleReviews.reduce(
-                (sum, review) => sum + Number(review.overall_rating || 0),
-                0
-              ) / saleReviews.length
+                  (sum, review) => sum + Number(review.overall_rating || 0),
+                  0
+                ) / saleReviews.length
               : 0;
 
           const repairAverage =
             repairReviewsForShop.length > 0
               ? repairReviewsForShop.reduce(
-                (sum, review) => sum + Number(review.overall_rating || 0),
-                0
-              ) / repairReviewsForShop.length
+                  (sum, review) => sum + Number(review.overall_rating || 0),
+                  0
+                ) / repairReviewsForShop.length
               : 0;
 
           return {
@@ -590,8 +592,8 @@ const SellerRepairShopsTab = ({
             combinedRating:
               saleReviews.length + repairReviewsForShop.length > 0
                 ? (saleAverage * saleReviews.length +
-                  repairAverage * repairReviewsForShop.length) /
-                (saleReviews.length + repairReviewsForShop.length)
+                    repairAverage * repairReviewsForShop.length) /
+                  (saleReviews.length + repairReviewsForShop.length)
                 : 0,
           };
         })
@@ -886,17 +888,17 @@ const SellerRepairShopsTab = ({
       const saleAverage =
         saleReviews.length > 0
           ? saleReviews.reduce(
-            (sum, review) => sum + Number(review.overall_rating || 0),
-            0
-          ) / saleReviews.length
+              (sum, review) => sum + Number(review.overall_rating || 0),
+              0
+            ) / saleReviews.length
           : 0;
 
       const repairAverage =
         repairReviewsForShop.length > 0
           ? repairReviewsForShop.reduce(
-            (sum, review) => sum + Number(review.overall_rating || 0),
-            0
-          ) / repairReviewsForShop.length
+              (sum, review) => sum + Number(review.overall_rating || 0),
+              0
+            ) / repairReviewsForShop.length
           : 0;
 
       const updatedShop = {
@@ -912,8 +914,8 @@ const SellerRepairShopsTab = ({
         combinedRating:
           saleReviews.length + repairReviewsForShop.length > 0
             ? (saleAverage * saleReviews.length +
-              repairAverage * repairReviewsForShop.length) /
-            (saleReviews.length + repairReviewsForShop.length)
+                repairAverage * repairReviewsForShop.length) /
+              (saleReviews.length + repairReviewsForShop.length)
             : 0,
       };
 
@@ -974,19 +976,19 @@ const SellerRepairShopsTab = ({
       const { data, error } = await supabase
         .from("repair_appointments")
         .select(`
-      id,
-      harvester_id,
-      repair_shop_id,
-      device_model,
-      category,
-      issue_description,
-      preferred_date,
-      preferred_time,
-      notes,
-      status,
-      created_at,
-      updated_at
-    `)
+          id,
+          harvester_id,
+          repair_shop_id,
+          device_model,
+          category,
+          issue_description,
+          preferred_date,
+          preferred_time,
+          notes,
+          status,
+          created_at,
+          updated_at
+        `)
         .eq("harvester_id", userId)
         .eq("repair_shop_id", shop.id)
         .in("status", ["pending", "confirmed", "approved"])
@@ -1204,10 +1206,51 @@ const SellerRepairShopsTab = ({
     }
   };
 
+  const loadMessageAppointments = async (shop) => {
+    if (!userId || !shop?.id) {
+      setMessageAppointments([]);
+      return;
+    }
+
+    setLoadingMessageAppointments(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("repair_appointments")
+        .select(`
+          id,
+          harvester_id,
+          repair_shop_id,
+          device_model,
+          category,
+          issue_description,
+          preferred_date,
+          preferred_time,
+          notes,
+          status,
+          created_at,
+          updated_at
+        `)
+        .eq("harvester_id", userId)
+        .eq("repair_shop_id", shop.id)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      setMessageAppointments(data || []);
+    } catch (error) {
+      console.error("Error loading repair appointments in messages:", error);
+      setMessageAppointments([]);
+    } finally {
+      setLoadingMessageAppointments(false);
+    }
+  };
+
   const openMessageModal = async (shop) => {
     setMessageShop(shop);
     setMessageText("");
-    await loadMessages(shop);
+    setMessageAppointments([]);
+    await Promise.all([loadMessages(shop), loadMessageAppointments(shop)]);
   };
 
   useEffect(() => {
@@ -1227,13 +1270,49 @@ const SellerRepairShopsTab = ({
           const message = payload.new;
 
           if (message.sender_id === messageShop.id) {
-            setMessages((previous) => [...previous, message]);
+            setMessages((previous) => {
+              if (previous.some((item) => item.id === message.id)) {
+                return previous;
+              }
+              return [...previous, message];
+            });
 
             supabase
               .from("messages")
               .update({ is_read: true })
               .eq("id", message.id);
           }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "repair_appointments",
+          filter: `harvester_id=eq.${userId}`,
+        },
+        (payload) => {
+          const appointment = payload.new;
+
+          if (appointment?.repair_shop_id !== messageShop.id) return;
+
+          setMessageAppointments((previous) => {
+            if (payload.eventType === "DELETE") {
+              return previous.filter((item) => item.id !== appointment.id);
+            }
+
+            const exists = previous.some((item) => item.id === appointment.id);
+            if (exists) {
+              return previous.map((item) =>
+                item.id === appointment.id ? appointment : item
+              );
+            }
+
+            return [...previous, appointment].sort(
+              (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)
+            );
+          });
         }
       )
       .subscribe();
@@ -1314,10 +1393,11 @@ const SellerRepairShopsTab = ({
 
         <div className="mt-2">
           <span
-            className={`rounded-full px-2 py-1 text-[7px] font-black ${isRepair
+            className={`rounded-full px-2 py-1 text-[7px] font-black ${
+              isRepair
                 ? "bg-violet-50 text-violet-700"
                 : "bg-blue-50 text-blue-700"
-              }`}
+            }`}
           >
             {isRepair ? "Repair Service" : "Selling Transaction"}
           </span>
@@ -1390,10 +1470,11 @@ const SellerRepairShopsTab = ({
           <button
             type="button"
             onClick={() => setViewMode("list")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[9px] font-black transition ${viewMode === "list"
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[9px] font-black transition ${
+              viewMode === "list"
                 ? "bg-white text-[#2d86a3]"
                 : "bg-white/10 text-white hover:bg-white/20"
-              }`}
+            }`}
           >
             <Building2 size={11} />
             Shop List
@@ -1402,10 +1483,11 @@ const SellerRepairShopsTab = ({
           <button
             type="button"
             onClick={() => setViewMode("map")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[9px] font-black transition ${viewMode === "map"
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[9px] font-black transition ${
+              viewMode === "map"
                 ? "bg-white text-[#2d86a3]"
                 : "bg-white/10 text-white hover:bg-white/20"
-              }`}
+            }`}
           >
             <MapPin size={11} />
             Map View
@@ -1453,10 +1535,11 @@ const SellerRepairShopsTab = ({
         <button
           type="button"
           onClick={() => setVerifiedOnly((value) => !value)}
-          className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-bold transition ${verifiedOnly
+          className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-bold transition ${
+            verifiedOnly
               ? "border-emerald-200 bg-emerald-50 text-emerald-700"
               : "border-slate-200 bg-white text-slate-500"
-            }`}
+          }`}
         >
           <BadgeCheck size={11} className="mr-1 inline" />
           Verified
@@ -1977,19 +2060,19 @@ const SellerRepairShopsTab = ({
                                 {String(
                                   appointment.status || ""
                                 ).toLowerCase() === "pending" && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        cancelRepairAppointment(
-                                          appointment
-                                        )
-                                      }
-                                      className="mt-3 flex items-center gap-1.5 text-[8px] font-bold text-red-500 hover:text-red-600"
-                                    >
-                                      <XCircle size={11} />
-                                      Cancel Request
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      cancelRepairAppointment(
+                                        appointment
+                                      )
+                                    }
+                                    className="mt-3 flex items-center gap-1.5 text-[8px] font-bold text-red-500 hover:text-red-600"
+                                  >
+                                    <XCircle size={11} />
+                                    Cancel Request
+                                  </button>
+                                )}
                               </div>
                             ))}
 
@@ -2476,66 +2559,149 @@ const SellerRepairShopsTab = ({
             </div>
 
             <div className="flex-1 overflow-y-auto bg-slate-50 p-4">
-              {loadingMessages ? (
+              {loadingMessages || loadingMessageAppointments ? (
                 <div className="flex h-full items-center justify-center">
                   <Loader2
                     size={25}
                     className="animate-spin text-[#3285a1]"
                   />
                 </div>
-              ) : messages.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center text-center">
-                  <MessageSquare
-                    size={35}
-                    className="text-slate-200"
-                  />
-                  <p className="mt-3 text-sm font-black text-slate-600">
-                    Start a conversation
-                  </p>
-                  <p className="mt-1 max-w-[250px] text-[9px] text-slate-400">
-                    You can discuss the device or repair appointment with{" "}
-                    {getShopName(messageShop)}.
-                  </p>
-                </div>
               ) : (
-                <div className="space-y-2">
-                  {messages.map((message) => {
-                    const isMine = message.sender_id === userId;
-
-                    return (
-                      <div
-                        key={message.id}
-                        className={`flex ${isMine ? "justify-end" : "justify-start"
-                          }`}
-                      >
-                        <div
-                          className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${isMine
-                              ? "rounded-br-md bg-[#3285a1] text-white"
-                              : "rounded-bl-md bg-white text-slate-700 shadow-sm"
-                            }`}
-                        >
-                          <p className="break-words text-xs leading-relaxed">
-                            {message.content}
-                          </p>
-                          <p
-                            className={`mt-1 text-[7px] ${isMine
-                                ? "text-white/60"
-                                : "text-slate-400"
-                              }`}
-                          >
-                            {message.created_at
-                              ? new Date(
-                                message.created_at
-                              ).toLocaleTimeString([], {
-                                hour: "numeric",
-                                minute: "2-digit",
-                              })
-                              : ""}
-                          </p>
-                        </div>
+                <div className="space-y-4">
+                  {/* Repair appointment cards are shown inside the same conversation. */}
+                  {messageAppointments.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <ClipboardList size={13} className="text-violet-600" />
+                        <p className="text-[9px] font-black uppercase tracking-wide text-slate-500">
+                          Repair Appointments
+                        </p>
                       </div>
-                    );
-                  })}
+
+                      {messageAppointments.map((appointment) => (
+                        <div
+                          key={appointment.id}
+                          className="rounded-2xl border border-violet-100 bg-white p-3 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-black text-slate-700">
+                                {appointment.device_model || "Device"}
+                              </p>
+                              <p className="mt-0.5 text-[8px] font-semibold text-violet-600">
+                                {appointment.category || "Repair request"}
+                              </p>
+                            </div>
+
+                            <span
+                              className={`shrink-0 rounded-full border px-2 py-1 text-[7px] font-black uppercase ${
+                                String(appointment.status || "pending").toLowerCase() === "confirmed" ||
+                                String(appointment.status || "pending").toLowerCase() === "approved"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : String(appointment.status || "pending").toLowerCase() === "rejected" ||
+                                    String(appointment.status || "pending").toLowerCase() === "cancelled"
+                                  ? "border-red-200 bg-red-50 text-red-600"
+                                  : "border-amber-200 bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              {appointment.status || "pending"}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="rounded-lg bg-slate-50 p-2">
+                              <div className="flex items-center gap-1 text-[7px] font-bold uppercase text-slate-400">
+                                <Calendar size={10} /> Date
+                              </div>
+                              <p className="mt-1 text-[9px] font-bold text-slate-600">
+                                {appointment.preferred_date || "Not set"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-lg bg-slate-50 p-2">
+                              <div className="flex items-center gap-1 text-[7px] font-bold uppercase text-slate-400">
+                                <Clock size={10} /> Time
+                              </div>
+                              <p className="mt-1 text-[9px] font-bold text-slate-600">
+                                {appointment.preferred_time || "Not set"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {appointment.issue_description && (
+                            <div className="mt-2 rounded-lg bg-slate-50 p-2">
+                              <p className="text-[7px] font-bold uppercase text-slate-400">Issue</p>
+                              <p className="mt-1 text-[9px] leading-relaxed text-slate-600">
+                                {appointment.issue_description}
+                              </p>
+                            </div>
+                          )}
+
+                          {appointment.notes && (
+                            <div className="mt-2 rounded-lg bg-slate-50 p-2">
+                              <p className="text-[7px] font-bold uppercase text-slate-400">Notes</p>
+                              <p className="mt-1 text-[9px] leading-relaxed text-slate-600">
+                                {appointment.notes}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {messages.length === 0 ? (
+                    <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+                      <MessageSquare size={35} className="text-slate-200" />
+                      <p className="mt-3 text-sm font-black text-slate-600">
+                        {messageAppointments.length > 0
+                          ? "No messages yet"
+                          : "Start a conversation"}
+                      </p>
+                      <p className="mt-1 max-w-[250px] text-[9px] text-slate-400">
+                        You can discuss the device or repair appointment with {getShopName(messageShop)}.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {messages.map((message) => {
+                        const isMine = message.sender_id === userId;
+
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${
+                              isMine ? "justify-end" : "justify-start"
+                            }`}
+                          >
+                            <div
+                              className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
+                                isMine
+                                  ? "rounded-br-md bg-[#3285a1] text-white"
+                                  : "rounded-bl-md bg-white text-slate-700 shadow-sm"
+                              }`}
+                            >
+                              <p className="break-words text-xs leading-relaxed whitespace-pre-wrap">
+                                {message.content}
+                              </p>
+                              <p
+                                className={`mt-1 text-[7px] ${
+                                  isMine ? "text-white/60" : "text-slate-400"
+                                }`}
+                              >
+                                {message.created_at
+                                  ? new Date(message.created_at).toLocaleTimeString([], {
+                                      hour: "numeric",
+                                      minute: "2-digit",
+                                    })
+                                  : ""}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

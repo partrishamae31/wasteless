@@ -99,6 +99,63 @@ const TransactionsView = ({
         };
     }
   };
+
+  const isRepairTransaction = (transaction) => {
+    return Boolean(transaction?.repair_appointment_id);
+  };
+
+  const getRepairDevice = (transaction) => {
+    if (!isRepairTransaction(transaction)) return null;
+
+    // Prefer explicitly attached device data
+    if (transaction.device_model) {
+      return transaction.device_model;
+    }
+
+    // Extract Device: ... from the transaction notes
+    const match = transaction.notes?.match(/Device:\s*(.+)/i);
+
+    return match?.[1]?.trim() || "Repair Service";
+  };
+
+  const getRepairIssue = (transaction) => {
+    if (!isRepairTransaction(transaction)) return null;
+
+    const match = transaction.notes?.match(/Issue:\s*(.+)/i);
+
+    return match?.[1]?.trim() || "Repair service requested";
+  };
+
+  const getRepairCategory = (transaction) => {
+    if (!isRepairTransaction(transaction)) return null;
+
+    const match = transaction.notes?.match(/Category:\s*(.+)/i);
+
+    return match?.[1]?.trim() || "Electronic Device";
+  };
+
+  const getRepairNotes = (transaction) => {
+    if (!isRepairTransaction(transaction)) return null;
+
+    return transaction.notes || "";
+  };
+
+  const getTransactionPersonName = (transaction) => {
+    if (isRepairTransaction(transaction)) {
+      return (
+        transaction.seller?.full_name ||
+        transaction.seller_name ||
+        "Customer"
+      );
+    }
+
+    return (
+      transaction.seller?.full_name ||
+      transaction.seller_name ||
+      "Seller"
+    );
+  };
+
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
 
   const handleRatingSubmit = async (ratingData) => {
@@ -189,8 +246,7 @@ const TransactionsView = ({
       console.error("Unexpected rating submission error:", err);
 
       alert(
-        `Something went wrong while submitting your rating.\n\n${
-          err?.message || "Unknown error"
+        `Something went wrong while submitting your rating.\n\n${err?.message || "Unknown error"
         }`,
       );
     } finally {
@@ -328,11 +384,10 @@ const TransactionsView = ({
                     comment,
                   })
                 }
-                className={`flex-1 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg transition-all text-white ${
-                  isSubmittingRating
-                    ? "bg-slate-400 cursor-not-allowed"
-                    : "bg-[#769c2d] hover:bg-[#668827] active:scale-[0.98]"
-                }`}
+                className={`flex-1 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg transition-all text-white ${isSubmittingRating
+                  ? "bg-slate-400 cursor-not-allowed"
+                  : "bg-[#769c2d] hover:bg-[#668827] active:scale-[0.98]"
+                  }`}
               >
                 {isSubmittingRating ? "Submitting..." : "Submit Rating"}
               </button>
@@ -388,117 +443,117 @@ const TransactionsView = ({
     const carbonSaved = transaction.carbon_saved || 165;
 
     const handleSaveReceipt = () => {
-  try {
-    const doc = new jsPDF();
+      try {
+        const doc = new jsPDF();
 
-    const pageWidth = doc.internal.pageSize.getWidth();
+        const pageWidth = doc.internal.pageSize.getWidth();
 
-    // Header
-    doc.setFillColor(50, 133, 161);
-    doc.rect(0, 0, pageWidth, 45, "F");
+        // Header
+        doc.setFillColor(50, 133, 161);
+        doc.rect(0, 0, pageWidth, 45, "F");
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.text("WASTELESS MARKETPLACE", pageWidth / 2, 15, {
-      align: "center",
-    });
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "normal");
+        doc.text("WASTELESS MARKETPLACE", pageWidth / 2, 15, {
+          align: "center",
+        });
 
-    doc.setFontSize(22);
-    doc.setFont("helvetica", "bold");
-    doc.text("Transaction Receipt", pageWidth / 2, 28, {
-      align: "center",
-    });
+        doc.setFontSize(22);
+        doc.setFont("helvetica", "bold");
+        doc.text("Transaction Receipt", pageWidth / 2, 28, {
+          align: "center",
+        });
 
-    doc.setFontSize(11);
-    doc.text("Transaction Successful", pageWidth / 2, 38, {
-      align: "center",
-    });
+        doc.setFontSize(11);
+        doc.text("Transaction Successful", pageWidth / 2, 38, {
+          align: "center",
+        });
 
-    // Reset text color
-    doc.setTextColor(30, 41, 59);
+        // Reset text color
+        doc.setTextColor(30, 41, 59);
 
-    let y = 65;
+        let y = 65;
 
-    const addRow = (label, value) => {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(148, 163, 184);
-      doc.text(label, 25, y);
+        const addRow = (label, value) => {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          doc.setTextColor(148, 163, 184);
+          doc.text(label, 25, y);
 
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(30, 41, 59);
-      doc.text(String(value), pageWidth - 25, y, {
-        align: "right",
-      });
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(30, 41, 59);
+          doc.text(String(value), pageWidth - 25, y, {
+            align: "right",
+          });
 
-      doc.setDrawColor(226, 232, 240);
-      doc.line(25, y + 6, pageWidth - 25, y + 6);
+          doc.setDrawColor(226, 232, 240);
+          doc.line(25, y + 6, pageWidth - 25, y + 6);
 
-      y += 18;
+          y += 18;
+        };
+
+        addRow("Reference No.", referenceNumber);
+        addRow("Date", formattedDate);
+        addRow("Time", formattedTime);
+        addRow("Item", itemName);
+        addRow("Seller", sellerName);
+        addRow("Buyer", buyerName);
+
+        // Amount
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text("Amount", 25, y);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(50, 133, 161);
+        doc.text(
+          `PHP ${Number(amount).toLocaleString()}`,
+          pageWidth - 25,
+          y,
+          { align: "right" }
+        );
+
+        y += 30;
+
+        // Eco section
+        doc.setFillColor(89, 203, 163);
+        doc.roundedRect(25, y, pageWidth - 50, 45, 5, 5, "F");
+
+        doc.setTextColor(20, 83, 45);
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${carbonSaved}g (gCO2e)`, 35, y + 15);
+
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+
+        const ecoText =
+          "By going digital, you reduce your carbon footprint from transportation, paper, and plastic.";
+
+        const lines = doc.splitTextToSize(ecoText, pageWidth - 70);
+
+        doc.text(lines, 35, y + 25);
+
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184);
+        doc.text(
+          "WasteLess Marketplace - Official Transaction Record",
+          pageWidth / 2,
+          275,
+          { align: "center" }
+        );
+
+        // ACTUAL DOWNLOAD
+        doc.save(`WasteLess-Receipt-${referenceNumber}.pdf`);
+      } catch (error) {
+        console.error("Failed to generate receipt:", error);
+        alert("Unable to download the receipt. Please try again.");
+      }
     };
-
-    addRow("Reference No.", referenceNumber);
-    addRow("Date", formattedDate);
-    addRow("Time", formattedTime);
-    addRow("Item", itemName);
-    addRow("Seller", sellerName);
-    addRow("Buyer", buyerName);
-
-    // Amount
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(148, 163, 184);
-    doc.text("Amount", 25, y);
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(50, 133, 161);
-    doc.text(
-      `PHP ${Number(amount).toLocaleString()}`,
-      pageWidth - 25,
-      y,
-      { align: "right" }
-    );
-
-    y += 30;
-
-    // Eco section
-    doc.setFillColor(89, 203, 163);
-    doc.roundedRect(25, y, pageWidth - 50, 45, 5, 5, "F");
-
-    doc.setTextColor(20, 83, 45);
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text(`${carbonSaved}g (gCO2e)`, 35, y + 15);
-
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-
-    const ecoText =
-      "By going digital, you reduce your carbon footprint from transportation, paper, and plastic.";
-
-    const lines = doc.splitTextToSize(ecoText, pageWidth - 70);
-
-    doc.text(lines, 35, y + 25);
-
-    // Footer
-    doc.setFontSize(8);
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      "WasteLess Marketplace - Official Transaction Record",
-      pageWidth / 2,
-      275,
-      { align: "center" }
-    );
-
-    // ACTUAL DOWNLOAD
-    doc.save(`WasteLess-Receipt-${referenceNumber}.pdf`);
-  } catch (error) {
-    console.error("Failed to generate receipt:", error);
-    alert("Unable to download the receipt. Please try again.");
-  }
-};
 
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
@@ -664,35 +719,74 @@ const TransactionsView = ({
         <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
           Active Transactions
         </h2>
-        {transactions.map((tx) => (
-          <button
-            key={tx.id}
-            onClick={() => onSelect(tx)}
-            className={`w-full text-left p-6 rounded-[1.5rem] border-2 transition-all duration-300 ${
-              selectedTransaction?.id === tx.id
+        {transactions.map((tx) => {
+          const repair = isRepairTransaction(tx);
+          const statusConfig = getStatusConfig(tx.status);
+
+          const title = repair
+            ? getRepairDevice(tx)
+            : tx.listing?.device_model || tx.device_model || "Electronic Device";
+
+          const personName = getTransactionPersonName(tx);
+
+          return (
+            <button
+              key={tx.id}
+              onClick={() => onSelect(tx)}
+              className={`w-full text-left p-6 rounded-[1.5rem] border-2 transition-all duration-300 ${selectedTransaction?.id === tx.id
                 ? "border-[#769c2d] bg-white shadow-xl scale-[1.02]"
                 : "border-transparent bg-white hover:border-slate-100 shadow-sm"
-            }`}
-          >
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="font-bold text-sm text-slate-800">
-                {tx.listing?.device_model || "MacBook Pro 2019"}
-              </h3>
-              <span className="text-[8px] font-black px-2 py-1 rounded-lg uppercase bg-purple-100 text-purple-600">
-                Completed
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400 mb-1">
-              Seller: {tx.seller?.full_name || "Pedro Garcia"}
-            </p>
-            <p className="text-lg font-black text-[#3285a1]">
-              ₱{tx.amount?.toLocaleString() || "24,000"}
-            </p>
-            <p className="text-[9px] text-slate-400 mt-2 flex items-center gap-1">
-              <MessageSquare size={10} /> {tx.message_count || 4} messages
-            </p>
-          </button>
-        ))}
+                }`}
+            >
+              <div className="flex justify-between items-start mb-2 gap-3">
+                <h3 className="font-bold text-sm text-slate-800">
+                  {title}
+                </h3>
+
+                <span
+                  className={`text-[8px] font-black px-2 py-1 rounded-lg uppercase whitespace-nowrap ${statusConfig.color}`}
+                >
+                  {repair ? "Repair" : statusConfig.label}
+                </span>
+              </div>
+
+              {repair ? (
+                <>
+                  <p className="text-[10px] font-bold text-slate-500 mb-1">
+                    🔧 Repair Service
+                  </p>
+
+                  <p className="text-[10px] text-slate-400 mb-1">
+                    Customer: {personName}
+                  </p>
+
+                  <p className="text-[10px] text-slate-400 line-clamp-2">
+                    Issue: {getRepairIssue(tx)}
+                  </p>
+
+                  <p className="text-[9px] text-emerald-600 font-bold mt-2">
+                    No payment required
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[10px] text-slate-400 mb-1">
+                    Seller: {personName}
+                  </p>
+
+                  <p className="text-lg font-black text-[#3285a1]">
+                    ₱{Number(tx.amount || 0).toLocaleString()}
+                  </p>
+                </>
+              )}
+
+              <p className="text-[9px] text-slate-400 mt-2 flex items-center gap-1">
+                <MessageSquare size={10} />
+                {tx.message_count || 0} messages
+              </p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Right Content: Details */}
@@ -703,11 +797,17 @@ const TransactionsView = ({
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-black">
-                  {selectedTransaction.listing?.device_model ||
-                    "MacBook Pro 2019"}
+                  {isRepairTransaction(selectedTransaction)
+                    ? getRepairDevice(selectedTransaction)
+                    : selectedTransaction.listing?.device_model ||
+                    selectedTransaction.device_model ||
+                    "Electronic Device"}
                 </h2>
+
                 <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">
-                  ID: T00{selectedTransaction.id?.slice(0, 4) || "1"}
+                  {isRepairTransaction(selectedTransaction)
+                    ? "Repair Service"
+                    : `ID: T00${selectedTransaction.id?.slice(0, 4) || "1"}`}
                 </p>
               </div>
               <span
@@ -720,25 +820,45 @@ const TransactionsView = ({
 
           <div className="p-10 space-y-8 overflow-y-auto flex-1">
             {/* Stepper Timeline */}
-            <div className="relative px-4 pb-4">
-              <div className="absolute top-4 left-10 right-10 h-[2px] bg-slate-100"></div>
-              <div
-                className="absolute top-4 left-10 h-[2px] bg-[#769c2d] transition-all duration-500"
-                style={{
-                  width:
-                    selectedTransaction.status === "completed" ? "100%" : "50%",
-                }}
-              ></div>
+            {isRepairTransaction(selectedTransaction) ? (
+              <div className="relative px-4 pb-4">
+                <div className="absolute top-4 left-10 right-10 h-[2px] bg-slate-100" />
 
-              <div className="flex justify-between relative z-10">
-                {["Bid Accepted", "Meetup Scheduled", "Meetup Scheduled"].map(
-                  (step, i) => {
+                <div
+                  className="absolute top-4 left-10 h-[2px] bg-[#769c2d] transition-all duration-500"
+                  style={{
+                    width:
+                      selectedTransaction.status === "completed"
+                        ? "100%"
+                        : selectedTransaction.status === "meetup_scheduled"
+                          ? "50%"
+                          : "25%",
+                  }}
+                />
+
+                <div className="flex justify-between relative z-10">
+                  {[
+                    "Appointment Confirmed",
+                    "Repair Scheduled",
+                    "Repair Completed",
+                  ].map((step, i) => {
                     const isPast =
-                      i <= (selectedTransaction.status === "completed" ? 2 : 1);
+                      selectedTransaction.status === "completed"
+                        ? true
+                        : selectedTransaction.status === "meetup_scheduled"
+                          ? i <= 1
+                          : i === 0;
+
                     return (
-                      <div key={i} className="flex flex-col items-center gap-3">
+                      <div
+                        key={step}
+                        className="flex flex-col items-center gap-3"
+                      >
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center border-2 bg-white ${isPast ? "border-[#769c2d] text-[#769c2d]" : "border-slate-200"}`}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center border-2 bg-white ${isPast
+                            ? "border-[#769c2d] text-[#769c2d]"
+                            : "border-slate-200"
+                            }`}
                         >
                           {isPast ? (
                             <Check size={16} strokeWidth={3} />
@@ -746,89 +866,253 @@ const TransactionsView = ({
                             <div className="w-2 h-2 bg-slate-200 rounded-full" />
                           )}
                         </div>
+
                         <span
-                          className={`text-[9px] font-black uppercase tracking-tighter ${isPast ? "text-green-700" : "text-slate-300"}`}
+                          className={`text-[9px] font-black uppercase tracking-tighter text-center ${isPast ? "text-green-700" : "text-slate-300"
+                            }`}
                         >
                           {step}
                         </span>
                       </div>
                     );
-                  },
-                )}
+                  })}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="relative px-4 pb-4">
+                <div className="absolute top-4 left-10 right-10 h-[2px] bg-slate-100" />
+
+                <div
+                  className="absolute top-4 left-10 h-[2px] bg-[#769c2d] transition-all duration-500"
+                  style={{
+                    width:
+                      selectedTransaction.status === "completed"
+                        ? "100%"
+                        : "50%",
+                  }}
+                />
+
+                <div className="flex justify-between relative z-10">
+                  {[
+                    "Bid Accepted",
+                    "Meetup Scheduled",
+                    "Completed",
+                  ].map((step, i) => {
+                    const isPast =
+                      selectedTransaction.status === "completed"
+                        ? true
+                        : i <= 1;
+
+                    return (
+                      <div
+                        key={step}
+                        className="flex flex-col items-center gap-3"
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center border-2 bg-white ${isPast
+                            ? "border-[#769c2d] text-[#769c2d]"
+                            : "border-slate-200"
+                            }`}
+                        >
+                          {isPast ? (
+                            <Check size={16} strokeWidth={3} />
+                          ) : (
+                            <div className="w-2 h-2 bg-slate-200 rounded-full" />
+                          )}
+                        </div>
+
+                        <span
+                          className={`text-[9px] font-black uppercase tracking-tighter ${isPast ? "text-green-700" : "text-slate-300"
+                            }`}
+                        >
+                          {step}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="flex justify-between border-b border-slate-50 pb-6">
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
-                  Seller
+                  {isRepairTransaction(selectedTransaction)
+                    ? "Customer"
+                    : "Seller"}
                 </p>
+
                 <p className="text-sm font-bold text-slate-700">
-                  {selectedTransaction.seller?.full_name || "Pedro Garcia"}
+                  {getTransactionPersonName(selectedTransaction)}
                 </p>
               </div>
+
               <div className="text-right">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
-                  Amount
+                  {isRepairTransaction(selectedTransaction)
+                    ? "Service"
+                    : "Amount"}
                 </p>
+
                 <p className="text-xl font-black text-[#3285a1]">
-                  ₱{selectedTransaction.amount?.toLocaleString() || "24,000"}
+                  {isRepairTransaction(selectedTransaction)
+                    ? "Repair"
+                    : `₱${Number(
+                      selectedTransaction.amount || 0
+                    ).toLocaleString()}`}
                 </p>
               </div>
             </div>
 
             {/* Status Specific Cards */}
-            {selectedTransaction.status === "meetup_scheduled" && (
-              <div className="bg-[#f3e8ff] border border-purple-100 rounded-[2rem] p-8 space-y-6">
-                <div className="flex items-center gap-2 text-purple-600 font-black text-xs uppercase">
-                  <Calendar size={16} /> Meetup Scheduled
-                </div>
-                <div className="grid grid-cols-1 gap-6">
-                  <div className="flex gap-3">
-                    <MapPin className="text-slate-400" size={18} />
-                    <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase">
-                        Location
-                      </p>
-                      <p className="text-xs font-bold text-slate-700">
-                        {selectedTransaction.barangay ||
-                          "Barangay Veinte Reales Hall"}
-                      </p>
+            {!isRepairTransaction(selectedTransaction) &&
+              selectedTransaction.status === "meetup_scheduled" && (
+                <div className="bg-[#f3e8ff] border border-purple-100 rounded-[2rem] p-8 space-y-6">
+                  <div className="flex items-center gap-2 text-purple-600 font-black text-xs uppercase">
+                    <Calendar size={16} /> Meetup Scheduled
+                  </div>
+                  <div className="grid grid-cols-1 gap-6">
+                    <div className="flex gap-3">
+                      <MapPin className="text-slate-400" size={18} />
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase">
+                          Location
+                        </p>
+                        <p className="text-xs font-bold text-slate-700">
+                          {selectedTransaction.barangay ||
+                            "Barangay Veinte Reales Hall"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Clock className="text-slate-400" size={18} />
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase">
+                          Date & Time
+                        </p>
+                        <p className="text-xs font-bold text-slate-700">
+                          {selectedTransaction.meetup_date
+                            ? `${new Date(selectedTransaction.meetup_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} at ${selectedTransaction.meetup_time}`
+                            : "Thursday, April 30, 2026 at 14:00"}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-3">
-                    <Clock className="text-slate-400" size={18} />
-                    <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase">
-                        Date & Time
-                      </p>
-                      <p className="text-xs font-bold text-slate-700">
-                        {selectedTransaction.meetup_date
-                          ? `${new Date(selectedTransaction.meetup_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} at ${selectedTransaction.meetup_time}`
-                          : "Thursday, April 30, 2026 at 14:00"}
-                      </p>
-                    </div>
+                  <div className="pt-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      Notes
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      Meet near the entrance
+                    </p>
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() =>
+                        handleCompleteHandover(selectedTransaction.id)
+                      }
+                      className="flex-1 bg-[#3285a1] text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-900/20"
+                    >
+                      Confirm Handover Complete
+                    </button>
+                    <button className="px-8 border border-slate-200 text-slate-400 py-4 rounded-2xl font-black text-[10px] uppercase">
+                      Cancel
+                    </button>
                   </div>
                 </div>
-                <div className="pt-2">
-                  <p className="text-[9px] font-black text-slate-400 uppercase">
-                    Notes
-                  </p>
-                  <p className="text-xs text-slate-600">
-                    Meet near the entrance
-                  </p>
+              )}
+
+            {isRepairTransaction(selectedTransaction) && (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-[2rem] p-8 space-y-6">
+                <div className="flex items-center gap-3 text-emerald-700 font-black text-xs uppercase">
+                  <CheckCircle size={18} />
+                  Repair Service
                 </div>
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() =>
-                      handleCompleteHandover(selectedTransaction.id)
-                    }
-                    className="flex-1 bg-[#3285a1] text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-900/20"
-                  >
-                    Confirm Handover Complete
-                  </button>
-                  <button className="px-8 border border-slate-200 text-slate-400 py-4 rounded-2xl font-black text-[10px] uppercase">
-                    Cancel
-                  </button>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      Device
+                    </p>
+
+                    <p className="text-sm font-bold text-slate-700 mt-1">
+                      {getRepairDevice(selectedTransaction)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      Category
+                    </p>
+
+                    <p className="text-sm font-bold text-slate-700 mt-1">
+                      {getRepairCategory(selectedTransaction)}
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      Reported Issue
+                    </p>
+
+                    <p className="text-sm font-bold text-slate-700 mt-1">
+                      {getRepairIssue(selectedTransaction)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      Appointment Date
+                    </p>
+
+                    <p className="text-sm font-bold text-slate-700 mt-1">
+                      {selectedTransaction.meetup_date
+                        ? new Date(
+                          selectedTransaction.meetup_date
+                        ).toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })
+                        : "Not specified"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      Appointment Time
+                    </p>
+
+                    <p className="text-sm font-bold text-slate-700 mt-1">
+                      {selectedTransaction.meetup_time || "Not specified"}
+                    </p>
+                  </div>
+                </div>
+
+                {getRepairNotes(selectedTransaction) && (
+                  <div className="pt-4 border-t border-emerald-100">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      Service Details
+                    </p>
+
+                    <p className="text-xs text-slate-600 whitespace-pre-line mt-2">
+                      {getRepairNotes(selectedTransaction)}
+                    </p>
+                  </div>
+                )}
+
+                <div className="bg-white rounded-2xl p-4 border border-emerald-100">
+                  <p className="text-[10px] font-black text-emerald-700 uppercase">
+                    Payment
+                  </p>
+
+                  <p className="text-sm font-bold text-slate-700 mt-1">
+                    No payment required
+                  </p>
+
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    This repair appointment is recorded as a service transaction.
+                  </p>
                 </div>
               </div>
             )}
@@ -850,12 +1134,12 @@ const TransactionsView = ({
                       Completed on{" "}
                       {selectedTransaction.completed_at
                         ? new Date(
-                            selectedTransaction.completed_at,
-                          ).toLocaleDateString("en-US", {
-                            month: "long",
-                            day: "numeric",
-                            year: "numeric",
-                          })
+                          selectedTransaction.completed_at,
+                        ).toLocaleDateString("en-US", {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        })
                         : "April 20, 2026"}
                     </p>
                   </div>
@@ -872,7 +1156,9 @@ const TransactionsView = ({
                       <FileText size={15} />
 
                       <span className="text-[10px] font-black uppercase tracking-widest">
-                        Official Receipt
+                        {isRepairTransaction(selectedTransaction)
+                          ? "Repair Service Record"
+                          : "Official Receipt"}
                       </span>
                     </div>
 
@@ -887,7 +1173,9 @@ const TransactionsView = ({
                       <span className="text-[10px] text-slate-400">Item</span>
 
                       <span className="text-[10px] font-black text-slate-700 text-right">
-                        {selectedTransaction.listing?.device_model ||
+                        {isRepairTransaction(selectedTransaction)
+                          ? getRepairDevice(selectedTransaction)
+                          : selectedTransaction.listing?.device_model ||
                           "Electronic Device"}
                       </span>
                     </div>
@@ -896,17 +1184,25 @@ const TransactionsView = ({
                       <span className="text-[10px] text-slate-400">Seller</span>
 
                       <span className="text-[10px] font-bold text-slate-600 text-right">
-                        {selectedTransaction.seller?.full_name || "Seller"}
+                        {isRepairTransaction(selectedTransaction)
+                          ? getTransactionPersonName(selectedTransaction)
+                          : selectedTransaction.seller?.full_name || "Seller"}
                       </span>
                     </div>
 
                     <div className="flex justify-between items-center py-2 border-t border-slate-100">
                       <span className="text-[10px] text-slate-400">
-                        Amount Paid
+                        {isRepairTransaction(selectedTransaction)
+                          ? "Payment"
+                          : "Amount Paid"}
                       </span>
 
                       <span className="text-sm font-black text-[#3285a1]">
-                        ₱{selectedTransaction.amount?.toLocaleString() || "0"}
+                        {isRepairTransaction(selectedTransaction)
+                          ? "No payment"
+                          : `₱${Number(
+                            selectedTransaction.amount || 0
+                          ).toLocaleString()}`}
                       </span>
                     </div>
 
@@ -923,7 +1219,12 @@ const TransactionsView = ({
                 </button>
 
                 {/* Rate Seller */}
-                {reviewedTransactionIds.includes(selectedTransaction.id) ? (
+                {isRepairTransaction(selectedTransaction) ? (
+                  <div className="w-full bg-slate-50 border border-slate-100 text-slate-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2">
+                    <CheckCircle size={16} />
+                    Repair Service Completed
+                  </div>
+                ) : reviewedTransactionIds.includes(selectedTransaction.id) ? (
                   <button
                     type="button"
                     disabled
@@ -937,11 +1238,10 @@ const TransactionsView = ({
                     type="button"
                     onClick={() => setIsRatingModalOpen(true)}
                     disabled={isLoadingReviews}
-                    className={`w-full transition-all text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg ${
-                      isLoadingReviews
+                    className={`w-full transition-all text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg ${isLoadingReviews
                         ? "bg-slate-300 cursor-not-allowed"
                         : "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-orange-500/10"
-                    }`}
+                      }`}
                   >
                     <Star size={16} fill="white" />
                     {isLoadingReviews ? "Checking Rating..." : "Rate Seller"}

@@ -48,18 +48,38 @@ import {
   Gavel,
   Download,
 } from "lucide-react";
+const isRepairTransaction = (transaction) => Boolean(transaction?.repair_appointment_id);
+
+const getRepairField = (transaction, field, fallback = "") => {
+  if (!isRepairTransaction(transaction)) return fallback;
+  const notes = transaction.notes || "";
+  const regex = new RegExp(`(?:^|\\n)${field}\\s*:\\s*(.+?)(?=\\n[A-Za-z ]+\\s*:|$)`, "i");
+  const match = notes.match(regex);
+  return match?.[1]?.trim() || fallback;
+};
+
+const getRepairDevice = (transaction) =>
+  getRepairField(transaction, "Device", transaction.device_model || "Electronic Device");
+
+const getRepairCategory = (transaction) =>
+  getRepairField(transaction, "Category", "Electronic Device");
+
+const getRepairIssue = (transaction) =>
+  getRepairField(transaction, "Issue", "Repair service requested");
+
+const getRepairNotes = (transaction) =>
+  getRepairField(transaction, "Notes", "");
+
 const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
   if (!transaction) return null;
 
-  const itemName =
-    transaction.listing?.device_model ||
-    transaction.device_model ||
-    "Electronic Device";
+  const isRepair = isRepairTransaction(transaction);
+  const itemName = isRepair
+    ? getRepairDevice(transaction)
+    : transaction.listing?.device_model || transaction.device_model || "Electronic Device";
 
   const sellerName =
-    transaction.seller?.full_name ||
-    transaction.seller_name ||
-    "Seller";
+    transaction.seller?.full_name || transaction.seller_name || "Seller";
 
   const buyerName =
     transaction.harvester?.full_name ||
@@ -67,15 +87,19 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
     transaction.buyer_name ||
     "Buyer";
 
-  const amount = Number(transaction.amount || 0);
+  const repairShopName =
+    transaction.harvester?.business_name ||
+    transaction.harvester?.full_name ||
+    "Repair Shop";
 
+  const amount = Number(transaction.amount || 0);
   const completedDate = transaction.completed_at
     ? new Date(transaction.completed_at)
     : transaction.updated_at
       ? new Date(transaction.updated_at)
       : new Date();
 
-  const referenceNumber = `EWM-${String(transaction.id || "TRANSACTION")
+  const referenceNumber = `${isRepair ? "EWS-R" : "EWM-"}${String(transaction.id || "TRANSACTION")
     .replace(/-/g, "")
     .slice(0, 8)
     .toUpperCase()}`;
@@ -85,7 +109,6 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
     day: "numeric",
     year: "numeric",
   });
-
   const formattedTime = completedDate.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -93,8 +116,11 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
   });
 
   const isSeller = transaction.seller_id === currentUserId;
-  const yourRole = isSeller ? "Seller" : "Buyer";
+  const yourRole = isRepair ? "Customer" : isSeller ? "Seller" : "Buyer";
   const carbonSaved = transaction.carbon_saved ?? 0;
+  const repairCategory = getRepairCategory(transaction);
+  const repairIssue = getRepairIssue(transaction);
+  const repairNotes = getRepairNotes(transaction);
 
   const handleSaveReceipt = () => {
     try {
@@ -102,70 +128,64 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
       const pageWidth = doc.internal.pageSize.getWidth();
 
       doc.setFillColor(50, 133, 161);
-      doc.rect(0, 0, pageWidth, 45, "F");
-
+      doc.rect(0, 0, pageWidth, 48, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(11);
       doc.setFont("helvetica", "normal");
-      doc.text("WASTELESS MARKETPLACE", pageWidth / 2, 15, {
-        align: "center",
-      });
-
-      doc.setFontSize(22);
+      doc.text("WASTELESS", pageWidth / 2, 15, { align: "center" });
+      doc.setFontSize(21);
       doc.setFont("helvetica", "bold");
-      doc.text("Transaction Receipt", pageWidth / 2, 28, {
+      doc.text(isRepair ? "Repair Service Record" : "Transaction Receipt", pageWidth / 2, 29, {
         align: "center",
       });
-
-      doc.setFontSize(11);
-      doc.text("Transaction Successful", pageWidth / 2, 38, {
+      doc.setFontSize(10);
+      doc.text(isRepair ? "Repair Service Completed" : "Transaction Successful", pageWidth / 2, 40, {
         align: "center",
       });
 
       doc.setTextColor(30, 41, 59);
-      let y = 65;
-
+      let y = 67;
       const addRow = (label, value) => {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(10);
         doc.setTextColor(148, 163, 184);
         doc.text(label, 25, y);
-
         doc.setFont("helvetica", "bold");
         doc.setTextColor(30, 41, 59);
-        doc.text(String(value), pageWidth - 25, y, { align: "right" });
-
+        const safeValue = String(value || "-");
+        const maxWidth = pageWidth - 90;
+        const wrapped = doc.splitTextToSize(safeValue, maxWidth);
+        doc.text(wrapped, pageWidth - 25, y, { align: "right" });
+        const rowHeight = Math.max(18, wrapped.length * 5 + 8);
         doc.setDrawColor(226, 232, 240);
-        doc.line(25, y + 6, pageWidth - 25, y + 6);
-        y += 18;
+        doc.line(25, y + rowHeight - 4, pageWidth - 25, y + rowHeight - 4);
+        y += rowHeight;
       };
 
       addRow("Reference No.", referenceNumber);
       addRow("Date", formattedDate);
       addRow("Time", formattedTime);
-      addRow("Item", itemName);
-      addRow("Seller", sellerName);
-      addRow("Buyer", buyerName);
-      addRow("Your Role", yourRole);
 
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(148, 163, 184);
-      doc.text("Amount", 25, y);
+      if (isRepair) {
+        addRow("Device", itemName);
+        addRow("Category", repairCategory);
+        addRow("Customer", sellerName);
+        addRow("Repair Shop", repairShopName);
+        addRow("Issue", repairIssue);
+        addRow("Appointment Date", transaction.meetup_date || "Not set");
+        addRow("Appointment Time", transaction.meetup_time || "Not set");
+        if (repairNotes) addRow("Service Notes", repairNotes);
+        addRow("Payment", "No payment required");
+      } else {
+        addRow("Item", itemName);
+        addRow("Seller", sellerName);
+        addRow("Buyer", buyerName);
+        addRow("Your Role", yourRole);
+        addRow("Amount", `PHP ${amount.toLocaleString()}`);
+      }
 
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(16);
-      doc.setTextColor(50, 133, 161);
-      doc.text(
-        `PHP ${amount.toLocaleString()}`,
-        pageWidth - 25,
-        y,
-        { align: "right" }
-      );
-
-      y += 30;
-
-      if (carbonSaved > 0) {
+      if (!isRepair && carbonSaved > 0) {
+        y += 8;
         doc.setFillColor(89, 203, 163);
         doc.roundedRect(25, y, pageWidth - 50, 35, 5, 5, "F");
         doc.setTextColor(20, 83, 45);
@@ -174,38 +194,50 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
         doc.text(`${carbonSaved} kg CO₂ saved`, 35, y + 15);
         doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
-        doc.text(
-          "Thank you for giving electronics another useful life.",
-          35,
-          y + 25
-        );
+        doc.text("Thank you for helping extend the useful life of electronics.", 35, y + 25);
       }
 
       doc.setFontSize(8);
       doc.setTextColor(148, 163, 184);
       doc.text(
-        "WasteLess Marketplace - Official Transaction Record",
+        isRepair
+          ? "WasteLess - Official Repair Service Record"
+          : "WasteLess Marketplace - Official Transaction Record",
         pageWidth / 2,
         280,
         { align: "center" }
       );
-
-      doc.save(`WasteLess-Receipt-${referenceNumber}.pdf`);
+      doc.save(`WasteLess-${isRepair ? "Repair-Record" : "Receipt"}-${referenceNumber}.pdf`);
     } catch (error) {
-      console.error("Failed to generate receipt:", error);
-      alert("Unable to generate the receipt. Please try again.");
+      console.error("Failed to generate record:", error);
+      alert("Unable to generate the record. Please try again.");
     }
   };
 
-  const rows = [
-    ["Reference No.", referenceNumber],
-    ["Date", formattedDate],
-    ["Time", formattedTime],
-    ["Item", itemName],
-    ["Seller", sellerName],
-    ["Buyer", buyerName],
-    ["Your Role", yourRole],
-  ];
+  const rows = isRepair
+    ? [
+        ["Reference No.", referenceNumber],
+        ["Date", formattedDate],
+        ["Time", formattedTime],
+        ["Device", itemName],
+        ["Category", repairCategory],
+        ["Customer", sellerName],
+        ["Repair Shop", repairShopName],
+        ["Issue", repairIssue],
+        ["Appointment Date", transaction.meetup_date || "Not set"],
+        ["Appointment Time", transaction.meetup_time || "Not set"],
+        ...(repairNotes ? [["Service Notes", repairNotes]] : []),
+        ["Payment", "No payment required"],
+      ]
+    : [
+        ["Reference No.", referenceNumber],
+        ["Date", formattedDate],
+        ["Time", formattedTime],
+        ["Item", itemName],
+        ["Seller", sellerName],
+        ["Buyer", buyerName],
+        ["Your Role", yourRole],
+      ];
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
@@ -217,14 +249,13 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
             </div>
             <div>
               <h2 className="text-xl md:text-2xl font-black text-slate-700">
-                Transaction Receipt
+                {isRepair ? "Repair Service Record" : "Transaction Receipt"}
               </h2>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                Official transaction record
+                Official {isRepair ? "repair service" : "transaction"} record
               </p>
             </div>
           </div>
-
           <button
             onClick={onClose}
             className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition"
@@ -237,10 +268,10 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
           <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-lg">
             <div className="bg-gradient-to-r from-[#3285a1] to-[#14516d] text-white text-center p-8">
               <p className="text-[11px] tracking-[0.3em] text-white/70 font-medium">
-                WASTELESS MARKETPLACE
+                WASTELESS {isRepair ? "REPAIR SERVICE" : "MARKETPLACE"}
               </p>
               <h3 className="text-2xl md:text-3xl font-black mt-2">
-                Transaction Successful
+                {isRepair ? "Repair Service Completed" : "Transaction Successful"}
               </h3>
               <div className="flex items-center justify-center gap-2 mt-3 text-[#a8d129]">
                 <CheckCircle size={20} />
@@ -250,34 +281,37 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
 
             <div className="p-6 md:p-8">
               {rows.map(([label, value]) => (
-                <div
-                  key={label}
-                  className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200"
-                >
+                <div key={label} className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
                   <span className="text-sm text-slate-400">{label}</span>
-                  <span className="text-sm font-bold text-slate-700 text-right">
-                    {value}
-                  </span>
+                  <span className="text-sm font-bold text-slate-700 text-right max-w-[65%]">{value}</span>
                 </div>
               ))}
 
-              <div className="flex justify-between gap-6 py-5">
-                <span className="text-sm text-slate-400">Amount</span>
-                <span className="text-xl font-black text-[#3285a1] text-right">
-                  ₱{amount.toLocaleString()}
-                </span>
-              </div>
+              {!isRepair && (
+                <div className="flex justify-between gap-6 py-5">
+                  <span className="text-sm text-slate-400">Amount</span>
+                  <span className="text-xl font-black text-[#3285a1] text-right">₱{amount.toLocaleString()}</span>
+                </div>
+              )}
 
-              {carbonSaved > 0 && (
+              {!isRepair && carbonSaved > 0 && (
                 <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
                   <div className="flex items-center gap-2 text-emerald-800">
                     <Leaf size={18} />
-                    <span className="font-black text-sm">
-                      {carbonSaved} kg CO₂ saved
-                    </span>
+                    <span className="font-black text-sm">{carbonSaved} kg CO₂ saved</span>
                   </div>
-                  <p className="text-[11px] text-emerald-700 mt-2">
-                    Thank you for helping extend the useful life of electronics.
+                  <p className="text-[11px] text-emerald-700 mt-2">Thank you for helping extend the useful life of electronics.</p>
+                </div>
+              )}
+
+              {isRepair && (
+                <div className="mt-4 bg-purple-50 border border-purple-100 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 text-purple-800">
+                    <Wrench size={18} />
+                    <span className="font-black text-sm">Repair service completed</span>
+                  </div>
+                  <p className="text-[11px] text-purple-700 mt-2">
+                    This record confirms the completed repair appointment. No marketplace payment was required.
                   </p>
                 </div>
               )}
@@ -285,17 +319,11 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
           </div>
 
           <div className="grid grid-cols-2 gap-3 mt-5">
-            <button
-              onClick={onClose}
-              className="py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition"
-            >
+            <button onClick={onClose} className="py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition">
               Close
             </button>
-            <button
-              onClick={handleSaveReceipt}
-              className="py-3 bg-[#3285a1] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-[#276b82] transition"
-            >
-              <Download size={15} /> Save Receipt
+            <button onClick={handleSaveReceipt} className="py-3 bg-[#3285a1] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-[#276b82] transition">
+              <Download size={15} /> {isRepair ? "Save Service Record" : "Save Receipt"}
             </button>
           </div>
         </div>
@@ -737,6 +765,12 @@ const SellerDashboard = ({ session }) => {
       const txToComplete = transactions.find((t) => t.id === txId);
 
       if (!txToComplete) throw new Error("Transaction not found.");
+
+      // Repair transactions are completed by the repair shop, not by the customer.
+      if (txToComplete.repair_appointment_id) {
+        alert("This is a repair service. The repair shop will mark the service as completed.");
+        return;
+      }
 
       // Only the buyer/harvester may confirm that the handover is complete.
       if (txToComplete.harvester_id !== session.user.id) {
@@ -2418,6 +2452,7 @@ const SellerDashboard = ({ session }) => {
                       const isSeller = tx.seller_id === session.user.id;
                       const isBuyer = tx.harvester_id === session.user.id;
                       const isCompleted = tx.status === "completed";
+                      const isRepair = isRepairTransaction(tx);
 
                       const otherParty = isSeller ? tx.harvester : tx.seller;
                       const otherPartyName =
@@ -2437,7 +2472,7 @@ const SellerDashboard = ({ session }) => {
                         >
                           <div className="flex justify-between items-start mb-1 gap-2">
                             <h4 className="font-bold text-sm text-slate-800 truncate">
-                              {tx.listing?.device_model || "Electronic Item"}
+                              {isRepair ? getRepairDevice(tx) : tx.listing?.device_model || "Electronic Item"}
                             </h4>
                             <span
                               className={`text-[10px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${
@@ -2450,23 +2485,31 @@ const SellerDashboard = ({ session }) => {
                                       : "bg-amber-50 text-amber-600 border-amber-200"
                               }`}
                             >
-                              {isCompleted
-                                ? "Completed"
-                                : tx.status === "meetup_scheduled"
-                                  ? "Meetup Scheduled"
-                                  : tx.status === "cancelled"
-                                    ? "Cancelled"
-                                    : "Pending"}
+                              {isRepair
+                                ? isCompleted
+                                  ? "Repair Completed"
+                                  : tx.status === "meetup_scheduled"
+                                    ? "Repair Scheduled"
+                                    : tx.status === "cancelled"
+                                      ? "Cancelled"
+                                      : "Repair Pending"
+                                : isCompleted
+                                  ? "Completed"
+                                  : tx.status === "meetup_scheduled"
+                                    ? "Meetup Scheduled"
+                                    : tx.status === "cancelled"
+                                      ? "Cancelled"
+                                      : "Pending"}
                             </span>
                           </div>
 
                           <p className="text-xs text-slate-500 mb-2">
-                            {isSeller ? "Buyer" : "Seller"}: {otherPartyName}
+                            {isRepair ? "Repair Shop" : isSeller ? "Buyer" : "Seller"}: {otherPartyName}
                           </p>
 
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-black text-[#2d7a7f]">
-                              ₱{Number(tx.amount || 0).toLocaleString()}
+                              {isRepair ? "No payment" : `₱${Number(tx.amount || 0).toLocaleString()}`}
                             </p>
                             <span
                               className={`text-[9px] font-black px-2 py-1 rounded-full ${
@@ -2475,7 +2518,7 @@ const SellerDashboard = ({ session }) => {
                                   : "bg-blue-50 text-blue-700"
                               }`}
                             >
-                              {isSeller ? "SELLING" : "BUYING"}
+                              {isRepair ? "REPAIR" : isSeller ? "SELLING" : "BUYING"}
                             </span>
                           </div>
                         </button>
@@ -2492,6 +2535,11 @@ const SellerDashboard = ({ session }) => {
                         const isBuyer = tx.harvester_id === session.user.id;
                         const isCompleted = tx.status === "completed";
                         const isMeetupScheduled = tx.status === "meetup_scheduled";
+                        const isRepair = isRepairTransaction(tx);
+                        const repairDevice = getRepairDevice(tx);
+                        const repairCategory = getRepairCategory(tx);
+                        const repairIssue = getRepairIssue(tx);
+                        const repairNotes = getRepairNotes(tx);
 
                         const sellerName =
                           tx.seller?.business_name ||
@@ -2507,7 +2555,7 @@ const SellerDashboard = ({ session }) => {
                             <div className="bg-[#2d7a7f] p-6 text-white flex justify-between items-start">
                               <div>
                                 <h2 className="text-xl font-bold">
-                                  {tx.listing?.device_model || "Electronic Item"}
+                                  {isRepair ? repairDevice : tx.listing?.device_model || "Electronic Item"}
                                 </h2>
                                 <p className="text-xs opacity-80 uppercase tracking-wider mt-1">
                                   Transaction ID: {tx.id.slice(0, 8)}
@@ -2515,11 +2563,17 @@ const SellerDashboard = ({ session }) => {
                               </div>
                               <div className="flex flex-col items-end gap-2">
                                 <span className="bg-white/20 px-4 py-1 rounded-full text-xs font-medium backdrop-blur-sm">
-                                  {isCompleted
-                                    ? "Completed"
-                                    : isMeetupScheduled
-                                      ? "Meetup Scheduled"
-                                      : "Matched"}
+                                  {isRepair
+                                    ? isCompleted
+                                      ? "Repair Completed"
+                                      : isMeetupScheduled
+                                        ? "Repair Scheduled"
+                                        : "Repair Matched"
+                                    : isCompleted
+                                      ? "Completed"
+                                      : isMeetupScheduled
+                                        ? "Meetup Scheduled"
+                                        : "Matched"}
                                 </span>
                                 <span className="bg-white/10 px-3 py-1 rounded-full text-[9px] font-black uppercase">
                                   {isSeller ? "You are selling" : "You are buying"}
@@ -2529,255 +2583,135 @@ const SellerDashboard = ({ session }) => {
 
                             {/* PROGRESS */}
                             <div className="p-10 border-b border-slate-50">
-                              <div className="relative flex justify-between items-center max-w-lg mx-auto">
-                                <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2" />
-                                <div
-                                  className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${
-                                    isCompleted
-                                      ? "bg-green-500 w-full"
-                                      : isMeetupScheduled
-                                        ? "bg-blue-500 w-1/2"
-                                        : "bg-blue-500 w-0"
-                                  }`}
-                                />
-
-                                <div className="relative z-10 flex flex-col items-center">
-                                  <div className="bg-white p-1 rounded-full border-2 border-green-500 text-green-500">
-                                    <Check size={14} strokeWidth={3} />
-                                  </div>
-                                  <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">
-                                    Matched
-                                  </span>
-                                </div>
-
-                                <div className="relative z-10 flex flex-col items-center">
+                              {isRepair ? (
+                                <div className="relative flex justify-between items-center max-w-lg mx-auto">
+                                  <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2" />
                                   <div
-                                    className={`bg-white p-1 rounded-full border-2 ${
-                                      isMeetupScheduled || isCompleted
-                                        ? "border-blue-500 text-blue-500"
-                                        : "border-slate-200 text-slate-300"
+                                    className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${
+                                      isCompleted ? "bg-green-500 w-full" : isMeetupScheduled ? "bg-purple-500 w-1/2" : "bg-purple-500 w-0"
                                     }`}
-                                  >
-                                    {isMeetupScheduled || isCompleted ? (
-                                      <Check size={14} strokeWidth={3} />
-                                    ) : (
-                                      <Clock size={14} />
-                                    )}
-                                  </div>
-                                  <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">
-                                    Meetup Scheduled
-                                  </span>
+                                  />
+                                  {[
+                                    ["Matched", true],
+                                    ["Appointment Confirmed", isMeetupScheduled || isCompleted],
+                                    ["Repair Completed", isCompleted],
+                                  ].map(([label, active]) => (
+                                    <div key={label} className="relative z-10 flex flex-col items-center">
+                                      <div className={`bg-white p-1 rounded-full border-2 ${active ? "border-green-500 text-green-500" : "border-slate-200 text-slate-300"}`}>
+                                        {active ? <Check size={14} strokeWidth={3} /> : <Clock size={14} />}
+                                      </div>
+                                      <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">{label}</span>
+                                    </div>
+                                  ))}
                                 </div>
-
-                                <div className="relative z-10 flex flex-col items-center">
-                                  <div
-                                    className={`bg-white p-1 rounded-full border-2 ${
-                                      isCompleted
-                                        ? "border-green-500 text-green-500"
-                                        : "border-slate-200 text-slate-300"
-                                    }`}
-                                  >
-                                    <Check
-                                      size={14}
-                                      strokeWidth={3}
-                                      className={isCompleted ? "opacity-100" : "opacity-0"}
-                                    />
-                                  </div>
-                                  <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">
-                                    Handover Complete
-                                  </span>
+                              ) : (
+                                <div className="relative flex justify-between items-center max-w-lg mx-auto">
+                                  <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2" />
+                                  <div className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${isCompleted ? "bg-green-500 w-full" : isMeetupScheduled ? "bg-blue-500 w-1/2" : "bg-blue-500 w-0"}`} />
+                                  <div className="relative z-10 flex flex-col items-center"><div className="bg-white p-1 rounded-full border-2 border-green-500 text-green-500"><Check size={14} strokeWidth={3} /></div><span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">Matched</span></div>
+                                  <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isMeetupScheduled || isCompleted ? "border-blue-500 text-blue-500" : "border-slate-200 text-slate-300"}`}>{isMeetupScheduled || isCompleted ? <Check size={14} strokeWidth={3} /> : <Clock size={14} />}</div><span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">Meetup Scheduled</span></div>
+                                  <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : "border-slate-200 text-slate-300"}`}><Check size={14} strokeWidth={3} className={isCompleted ? "opacity-100" : "opacity-0"} /></div><span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">Handover Complete</span></div>
                                 </div>
-                              </div>
+                              )}
                             </div>
 
                             <div className="p-8">
-                              <div className="grid grid-cols-3 gap-6 mb-8">
+                              <div className={`grid ${isRepair ? "grid-cols-2" : "grid-cols-3"} gap-6 mb-8`}>
                                 <div>
                                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
-                                    Seller
+                                    {isRepair ? "Customer" : "Seller"}
                                   </p>
                                   <p className="text-sm font-bold text-slate-700">
                                     {sellerName}
                                   </p>
-                                  {isSeller && (
-                                    <span className="text-[9px] text-emerald-600 font-bold">
-                                      You
-                                    </span>
-                                  )}
+                                  {isSeller && !isRepair && <span className="text-[9px] text-emerald-600 font-bold">You</span>}
+                                  {isRepair && <span className="text-[9px] text-blue-600 font-bold">You</span>}
                                 </div>
                                 <div>
                                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
-                                    Buyer
+                                    {isRepair ? "Repair Shop" : "Buyer"}
                                   </p>
                                   <p className="text-sm font-bold text-slate-700">
-                                    {buyerName}
-                                  </p>
-                                  {isBuyer && (
-                                    <span className="text-[9px] text-blue-600 font-bold">
-                                      You
-                                    </span>
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
-                                    Amount
-                                  </p>
-                                  <p className="text-xl font-black text-[#2d7a7f]">
-                                    ₱{Number(tx.amount || 0).toLocaleString()}
+                                    {isRepair ? (tx.harvester?.business_name || tx.harvester?.full_name || "Repair Shop") : buyerName}
                                   </p>
                                 </div>
+                                {!isRepair && (
+                                  <div>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Amount</p>
+                                    <p className="text-xl font-black text-[#2d7a7f]">₱{Number(tx.amount || 0).toLocaleString()}</p>
+                                  </div>
+                                )}
                               </div>
 
-                              {/* MEETUP INFORMATION */}
-                              {isMeetupScheduled || isCompleted ? (
-                                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6">
-                                  <div className="flex items-center gap-2 mb-4">
-                                    <Calendar size={17} className="text-blue-600" />
-                                    <p className="text-sm font-bold text-blue-800">
-                                      Meetup Details
-                                    </p>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                      <p className="text-[9px] uppercase font-bold text-blue-400">
-                                        Date
-                                      </p>
-                                      <p className="text-sm font-bold text-slate-700 mt-1">
-                                        {tx.meetup_date
-                                          ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", {
-                                              month: "long",
-                                              day: "numeric",
-                                              year: "numeric",
-                                            })
-                                          : "Not set"}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[9px] uppercase font-bold text-blue-400">
-                                        Time
-                                      </p>
-                                      <p className="text-sm font-bold text-slate-700 mt-1">
-                                        {tx.meetup_time || "Not set"}
-                                      </p>
-                                    </div>
-                                    <div className="col-span-2">
-                                      <p className="text-[9px] uppercase font-bold text-blue-400">
-                                        Location
-                                      </p>
-                                      <p className="text-sm font-bold text-slate-700 mt-1 flex items-center gap-1">
-                                        <MapPin size={14} className="text-blue-500" />
-                                        {tx.barangay || "Not set"}
-                                      </p>
-                                    </div>
-                                    {tx.notes && (
-                                      <div className="col-span-2">
-                                        <p className="text-[9px] uppercase font-bold text-blue-400">
-                                          Notes
-                                        </p>
-                                        <p className="text-xs text-slate-600 mt-1">
-                                          {tx.notes}
-                                        </p>
+                              {/* REPAIR / MARKETPLACE DETAILS AND ACTIONS */}
+                              {isRepair ? (
+                                <>
+                                  {(isMeetupScheduled || isCompleted) && (
+                                    <div className="bg-purple-50 border border-purple-100 rounded-2xl p-5 mb-6">
+                                      <div className="flex items-center gap-2 mb-4">
+                                        <Calendar size={17} className="text-purple-600" />
+                                        <p className="text-sm font-bold text-purple-800">Repair Appointment</p>
                                       </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {/* COMPLETED */}
-                              {isCompleted ? (
-                                <div className="space-y-4">
-                                  <div className="bg-green-50 border border-green-100 rounded-xl p-5 flex items-center gap-4">
-                                    <div className="bg-white p-2 rounded-full shadow-sm text-green-500 border border-green-100">
-                                      <Check size={20} strokeWidth={3} />
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div><p className="text-[9px] uppercase font-bold text-purple-400">Date</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_date ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Not set"}</p></div>
+                                        <div><p className="text-[9px] uppercase font-bold text-purple-400">Time</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_time || "Not set"}</p></div>
+                                        <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-purple-400">Category</p><p className="text-sm font-bold text-slate-700 mt-1">{repairCategory}</p></div>
+                                        <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-purple-400">Reported Issue</p><p className="text-sm text-slate-600 mt-1">{repairIssue}</p></div>
+                                        {repairNotes && <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-purple-400">Service Notes</p><p className="text-xs text-slate-600 mt-1">{repairNotes}</p></div>}
+                                      </div>
                                     </div>
-                                    <div>
-                                      <p className="text-sm font-bold text-green-800">
-                                        Transaction Completed
-                                      </p>
-                                      <p className="text-xs text-green-600">
-                                        The handover has been confirmed by the buyer.
-                                        {tx.updated_at && (
-                                          <> Completed on {new Date(tx.updated_at).toLocaleDateString("en-US", {
-                                            month: "long",
-                                            day: "numeric",
-                                            year: "numeric",
-                                          })}.</>
-                                        )}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => setSelectedReceiptTransaction(tx)}
-                                    className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100"
-                                  >
-                                    <Download size={18} /> View Transaction Receipt
-                                  </button>
-
-                                  {isSeller && (
-                                    <button
-                                      onClick={() => setShowRateModal(true)}
-                                      className="w-full bg-[#FF4D2D] hover:bg-[#e64528] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"
-                                    >
-                                      <Star size={18} fill="currentColor" /> Rate Buyer
-                                    </button>
                                   )}
-                                </div>
-                              ) : isBuyer && isMeetupScheduled ? (
-                                <div className="space-y-3">
-                                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
-                                    <p className="text-sm font-bold text-amber-800">
-                                      Handover Pending
-                                    </p>
-                                    <p className="text-xs text-amber-600 mt-1">
-                                      After you receive the item at the scheduled meetup, confirm the handover below.
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() => handleCompleteTransaction(tx.id)}
-                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"
-                                  >
-                                    <CheckCheck size={18} /> Confirm Handover Complete
-                                  </button>
-                                </div>
-                              ) : isSeller && !isMeetupScheduled ? (
-                                <div className="space-y-3">
-                                  <button
-                                    onClick={() => {
-                                      setShowMessages(true);
-                                      setActiveTab("listings");
-                                    }}
-                                    className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"
-                                  >
-                                    <Calendar size={18} /> Schedule Meetup via Messages
-                                  </button>
-                                  <button
-                                    onClick={() => setShowCancelModal(true)}
-                                    className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"
-                                  >
-                                    <XCircle size={18} /> Cancel Transaction
-                                  </button>
-                                </div>
-                              ) : isSeller && isMeetupScheduled ? (
-                                <div className="space-y-3">
-                                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                                    <p className="text-sm font-bold text-blue-800">
-                                      Meetup Scheduled
-                                    </p>
-                                    <p className="text-xs text-blue-600 mt-1">
-                                      The buyer can confirm the handover after the scheduled meetup.
-                                    </p>
-                                  </div>
-                                </div>
+
+                                  {isCompleted ? (
+                                    <div className="space-y-4">
+                                      <div className="bg-green-50 border border-green-100 rounded-xl p-5 flex items-center gap-4">
+                                        <div className="bg-white p-2 rounded-full shadow-sm text-green-500 border border-green-100"><Check size={20} strokeWidth={3} /></div>
+                                        <div><p className="text-sm font-bold text-green-800">Repair Service Completed</p><p className="text-xs text-green-600 mt-1">The repair shop has marked your repair service as completed.</p></div>
+                                      </div>
+                                      <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100">
+                                        <Download size={18} /> View Repair Service Record
+                                      </button>
+                                    </div>
+                                  ) : isMeetupScheduled ? (
+                                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-5">
+                                      <div className="flex items-center gap-3"><Calendar className="text-purple-600" size={20} /><div><p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p><p className="text-xs text-purple-600 mt-1">Your repair appointment has been confirmed. The repair shop will mark the service as completed after the repair is finished.</p></div></div>
+                                      <div className="grid grid-cols-2 gap-3 mt-4"><div className="bg-white rounded-xl p-3 border border-purple-100"><p className="text-[9px] font-black uppercase text-slate-400">Date</p><p className="text-xs font-bold text-slate-700 mt-1">{tx.meetup_date || "Not scheduled"}</p></div><div className="bg-white rounded-xl p-3 border border-purple-100"><p className="text-[9px] font-black uppercase text-slate-400">Time</p><p className="text-xs font-bold text-slate-700 mt-1">{tx.meetup_time || "Not scheduled"}</p></div></div>
+                                    </div>
+                                  ) : (
+                                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-5"><div className="flex items-center gap-3"><Wrench className="text-purple-600" size={20}/><div><p className="text-sm font-bold text-purple-800">Repair Service Request</p><p className="text-xs text-purple-600 mt-1">Your repair request is being processed. The repair shop will confirm the appointment before the service begins.</p></div></div></div>
+                                  )}
+                                </>
                               ) : (
-                                <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
-                                  <p className="text-sm font-bold text-slate-600">
-                                    Waiting for seller to schedule the meetup.
-                                  </p>
-                                  <p className="text-xs text-slate-400 mt-1">
-                                    You will see the meetup details here once the seller schedules it.
-                                  </p>
-                                </div>
+                                <>
+                                  {/* NORMAL MARKETPLACE MEETUP */}
+                                  {isMeetupScheduled || isCompleted ? (
+                                    <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6">
+                                      <div className="flex items-center gap-2 mb-4"><Calendar size={17} className="text-blue-600" /><p className="text-sm font-bold text-blue-800">Meetup Details</p></div>
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div><p className="text-[9px] uppercase font-bold text-blue-400">Date</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_date ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"}) : "Not set"}</p></div>
+                                        <div><p className="text-[9px] uppercase font-bold text-blue-400">Time</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_time || "Not set"}</p></div>
+                                        <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-blue-400">Location</p><p className="text-sm font-bold text-slate-700 mt-1 flex items-center gap-1"><MapPin size={14} className="text-blue-500" />{tx.barangay || "Not set"}</p></div>
+                                        {tx.notes && <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-blue-400">Notes</p><p className="text-xs text-slate-600 mt-1">{tx.notes}</p></div>}
+                                      </div>
+                                    </div>
+                                  ) : null}
+
+                                  {isCompleted ? (
+                                    <div className="space-y-4">
+                                      <div className="bg-green-50 border border-green-100 rounded-xl p-5 flex items-center gap-4"><div className="bg-white p-2 rounded-full shadow-sm text-green-500 border border-green-100"><Check size={20} strokeWidth={3}/></div><div><p className="text-sm font-bold text-green-800">Transaction Completed</p><p className="text-xs text-green-600">The handover has been confirmed by the buyer.{tx.updated_at && <> Completed on {new Date(tx.updated_at).toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"})}.</>}</p></div></div>
+                                      <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100"><Download size={18}/> View Transaction Receipt</button>
+                                      {isSeller && <button onClick={() => setShowRateModal(true)} className="w-full bg-[#FF4D2D] hover:bg-[#e64528] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"><Star size={18} fill="currentColor"/> Rate Buyer</button>}
+                                    </div>
+                                  ) : isBuyer && isMeetupScheduled ? (
+                                    <div className="space-y-3"><div className="bg-amber-50 border border-amber-100 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Handover Pending</p><p className="text-xs text-amber-600 mt-1">After you receive the item at the scheduled meetup, confirm the handover below.</p></div><button onClick={() => handleCompleteTransaction(tx.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"><CheckCheck size={18}/> Confirm Handover Complete</button></div>
+                                  ) : isSeller && !isMeetupScheduled ? (
+                                    <div className="space-y-3"><button onClick={() => {setShowMessages(true);setActiveTab("listings");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> Schedule Meetup via Messages</button><button onClick={() => setShowCancelModal(true)} className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"><XCircle size={18}/> Cancel Transaction</button></div>
+                                  ) : isSeller && isMeetupScheduled ? (
+                                    <div className="space-y-3"><div className="bg-blue-50 border border-blue-100 rounded-xl p-4"><p className="text-sm font-bold text-blue-800">Meetup Scheduled</p><p className="text-xs text-blue-600 mt-1">The buyer can confirm the handover after the scheduled meetup.</p></div></div>
+                                  ) : (
+                                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4"><p className="text-sm font-bold text-slate-600">Waiting for seller to schedule the meetup.</p><p className="text-xs text-slate-400 mt-1">You will see the meetup details here once the seller schedules it.</p></div>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
