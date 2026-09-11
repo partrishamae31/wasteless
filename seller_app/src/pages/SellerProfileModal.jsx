@@ -16,8 +16,15 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
   const [seller, setSeller] = useState(null);
   const [listings, setListings] = useState([]);
   const [soldListings, setSoldListings] = useState([]);
+  // Marketplace reviews (Buy/Sell)
   const [reviews, setReviews] = useState([]);
   const [reviewers, setReviewers] = useState({});
+
+  // Repair-service reviews (kept completely separate from marketplace reviews)
+  const [repairReviews, setRepairReviews] = useState([]);
+  const [repairReviewers, setRepairReviewers] = useState({});
+  const [reviewType, setReviewType] = useState("marketplace");
+
   const [stats, setStats] = useState({
     totalListed: 0,
     sold: 0,
@@ -193,7 +200,70 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
         }
       }
 
+      // ============================================
+      // 8. GET REPAIR-SERVICE REVIEWS
+      // ============================================
+      const { data: sellerRepairReviews, error: repairReviewsError } =
+        await supabase
+          .from("repair_reviews")
+          .select(`
+            id,
+            appointment_id,
+            repair_shop_id,
+            reviewer_id,
+            communication_rating,
+            service_rating,
+            overall_rating,
+            recommend,
+            comment,
+            created_at
+          `)
+          .eq("repair_shop_id", sellerId)
+          .order("created_at", { ascending: false });
+
+      if (repairReviewsError) {
+        // A missing/blocked repair_reviews policy should not prevent the
+        // seller profile from loading.
+        console.error("Repair reviews error:", repairReviewsError);
+        setRepairReviews([]);
+      } else {
+        const loadedRepairReviews = sellerRepairReviews || [];
+        setRepairReviews(loadedRepairReviews);
+
+        const repairReviewerIds = [
+          ...new Set(
+            loadedRepairReviews
+              .map((review) => review.reviewer_id)
+              .filter(Boolean)
+          ),
+        ];
+
+        if (repairReviewerIds.length > 0) {
+          const { data: repairReviewerProfiles, error: repairReviewerError } =
+            await supabase
+              .from("profiles")
+              .select("id, full_name")
+              .in("id", repairReviewerIds);
+
+          if (repairReviewerError) {
+            console.error(
+              "Repair reviewer profiles error:",
+              repairReviewerError
+            );
+          } else {
+            const repairReviewerMap = {};
+
+            (repairReviewerProfiles || []).forEach((profile) => {
+              repairReviewerMap[profile.id] = profile.full_name;
+            });
+
+            setRepairReviewers(repairReviewerMap);
+          }
+        }
+      }
+
       console.log("Seller Reviews:", sellerReviews);
+      console.log("Repair Reviews:", sellerRepairReviews);
     } catch (error) {
       console.error("Error loading seller profile:", error);
     } finally {
@@ -281,6 +351,14 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
     return review.created_at;
   };
 
+  const getRepairReviewerName = (review) => {
+    return repairReviewers[review.reviewer_id] || "Verified Customer";
+  };
+
+  const getRepairReviewComment = (review) => {
+    return review.comment?.trim() || "No written review.";
+  };
+
   const getCategoryAverage = (field) => {
     if (!reviews.length) return 0;
 
@@ -295,19 +373,39 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
     );
   };
 
-  const reviewAverage =
+  const getRepairAverage = (field) => {
+    if (!repairReviews.length) return 0;
+
+    const validReviews = repairReviews
+      .map((review) => Number(review[field]))
+      .filter((value) => !Number.isNaN(value) && value > 0);
+
+    if (!validReviews.length) return 0;
+
+    return (
+      validReviews.reduce((sum, value) => sum + value, 0) / validReviews.length
+    );
+  };
+
+  // Marketplace rating — from public.reviews only.
+  const marketplaceReviewAverage =
     reviews.length > 0
       ? reviews.reduce((sum, review) => sum + getReviewRating(review), 0) /
         reviews.length
       : rating;
 
+  // Repair rating — from public.repair_reviews only.
+  const repairReviewAverage = getRepairAverage("overall_rating");
+  const repairCommunicationAverage = getRepairAverage("communication_rating");
+  const repairServiceAverage = getRepairAverage("service_rating");
+
   const communicationAverage = getCategoryAverage("communication_rating");
-
   const punctualityAverage = getCategoryAverage("punctuality_rating");
-
   const itemConditionAverage = getCategoryAverage("condition_rating");
-
   const overallExperienceAverage = getCategoryAverage("overall_rating");
+
+  const displayedReviews =
+    reviewType === "repair" ? repairReviews : reviews;
 
   return (
     <div
@@ -354,7 +452,9 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 </span>
               </div>
 
-              <p className="text-[8px] text-slate-400 mt-0.5">Seller Rating</p>
+              <p className="text-[8px] text-slate-400 mt-0.5">
+                Marketplace Rating
+              </p>
             </div>
           </div>
 
@@ -386,12 +486,18 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
           </div>
 
           {/* SMALL RATING BADGE */}
-          <div className="mt-2">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-yellow-50 border border-yellow-100 rounded-full text-[8px] font-black text-slate-600">
               <Star size={9} className="fill-yellow-400 text-yellow-400" />
-
-              {rating > 0 ? rating.toFixed(1) : "No rating yet"}
+              {rating > 0 ? rating.toFixed(1) : "No marketplace rating"}
             </span>
+
+            {repairReviews.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 border border-purple-100 rounded-full text-[8px] font-black text-purple-700">
+                <Star size={9} className="fill-purple-400 text-purple-400" />
+                {repairReviewAverage.toFixed(1)} Repair
+              </span>
+            )}
           </div>
         </div>
 
@@ -437,7 +543,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
             },
             {
               name: "Reviews",
-              count: reviews.length,
+              count: reviews.length + repairReviews.length,
             },
             {
               name: "About",
@@ -649,226 +755,348 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
           )}
 
           {/* ============================================
-    REVIEWS TAB
-============================================ */}
+              REVIEWS TAB
+          ============================================ */}
           {!loading && activeTab === "Reviews" && (
             <div className="p-2.5">
-              {reviews.length === 0 ? (
-                <div className="py-12 text-center">
-                  <Star size={30} className="mx-auto text-yellow-300" />
+              {/* REVIEW TYPE SWITCHER */}
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-50 border border-slate-100 rounded-lg mb-3">
+                <button
+                  type="button"
+                  onClick={() => setReviewType("marketplace")}
+                  className={`py-2 rounded-md text-[8px] font-black transition ${
+                    reviewType === "marketplace"
+                      ? "bg-white text-sky-600 shadow-sm"
+                      : "text-slate-400"
+                  }`}
+                >
+                  Buy / Sell ({reviews.length})
+                </button>
 
-                  <p className="text-xs font-black text-slate-500 mt-3">
-                    No reviews yet
-                  </p>
+                <button
+                  type="button"
+                  onClick={() => setReviewType("repair")}
+                  className={`py-2 rounded-md text-[8px] font-black transition ${
+                    reviewType === "repair"
+                      ? "bg-white text-purple-600 shadow-sm"
+                      : "text-slate-400"
+                  }`}
+                >
+                  Repair Service ({repairReviews.length})
+                </button>
+              </div>
 
-                  <p className="text-[8px] text-slate-400 mt-1">
-                    Reviews from completed transactions will appear here.
-                  </p>
-                </div>
-              ) : (
+              {/* MARKETPLACE REVIEWS */}
+              {reviewType === "marketplace" && (
                 <>
-                  {/* ============================================
-            RATING SUMMARY
-        ============================================ */}
-                  <div className="border border-slate-100 rounded-xl p-2.5 mb-2">
-                    <div className="flex items-center gap-3">
-                      {/* OVERALL RATING */}
-                      <div className="w-[92px] text-center">
-                        <p className="text-[28px] leading-none font-black text-sky-600">
-                          {reviewAverage.toFixed(1)}
-                        </p>
-
-                        <div className="flex justify-center gap-[1px] mt-1">
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <Star
-                              key={star}
-                              size={9}
-                              className={
-                                star <= Math.round(reviewAverage)
-                                  ? "text-yellow-400 fill-yellow-400"
-                                  : "text-slate-200"
-                              }
-                            />
-                          ))}
-                        </div>
-
-                        <p className="text-[7px] text-slate-400 mt-1">
-                          {reviews.length}{" "}
-                          {reviews.length === 1 ? "review" : "reviews"}
-                        </p>
-                      </div>
-
-                      {/* RATING BREAKDOWN */}
-                      <div className="flex-1 space-y-1">
-                        {/* COMMUNICATION */}
-                        <div className="flex items-center gap-1">
-                          <span className="w-[52px] text-[6px] text-slate-400">
-                            Communication
-                          </span>
-
-                          <div className="flex-1 h-[3px] bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-[#5b962d] rounded-full"
-                              style={{
-                                width: `${(communicationAverage / 5) * 100}%`,
-                              }}
-                            />
-                          </div>
-
-                          <span className="w-[17px] text-right text-[6px] text-slate-500 font-bold">
-                            {communicationAverage
-                              ? communicationAverage.toFixed(1)
-                              : "—"}
-                          </span>
-                        </div>
-
-                        {/* PUNCTUALITY */}
-                        <div className="flex items-center gap-1">
-                          <span className="w-[52px] text-[6px] text-slate-400">
-                            Punctuality
-                          </span>
-
-                          <div className="flex-1 h-[3px] bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-[#5b962d] rounded-full"
-                              style={{
-                                width: `${(punctualityAverage / 5) * 100}%`,
-                              }}
-                            />
-                          </div>
-
-                          <span className="w-[17px] text-right text-[6px] text-slate-500 font-bold">
-                            {punctualityAverage
-                              ? punctualityAverage.toFixed(1)
-                              : "—"}
-                          </span>
-                        </div>
-
-                        {/* ITEM CONDITION */}
-                        <div className="flex items-center gap-1">
-                          <span className="w-[52px] text-[6px] text-slate-400">
-                            Item Condition
-                          </span>
-
-                          <div className="flex-1 h-[3px] bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-[#5b962d] rounded-full"
-                              style={{
-                                width: `${(itemConditionAverage / 5) * 100}%`,
-                              }}
-                            />
-                          </div>
-
-                          <span className="w-[17px] text-right text-[6px] text-slate-500 font-bold">
-                            {itemConditionAverage
-                              ? itemConditionAverage.toFixed(1)
-                              : "—"}
-                          </span>
-                        </div>
-
-                        {/* OVERALL EXPERIENCE */}
-                        <div className="flex items-center gap-1">
-                          <span className="w-[52px] text-[6px] text-slate-400">
-                            Overall
-                          </span>
-
-                          <div className="flex-1 h-[3px] bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-[#5b962d] rounded-full"
-                              style={{
-                                width: `${
-                                  (overallExperienceAverage / 5) * 100
-                                }%`,
-                              }}
-                            />
-                          </div>
-
-                          <span className="w-[17px] text-right text-[6px] text-slate-500 font-bold">
-                            {overallExperienceAverage
-                              ? overallExperienceAverage.toFixed(1)
-                              : "—"}
-                          </span>
-                        </div>
-                      </div>
+                  {reviews.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <Star size={30} className="mx-auto text-yellow-300" />
+                      <p className="text-xs font-black text-slate-500 mt-3">
+                        No marketplace reviews yet
+                      </p>
+                      <p className="text-[8px] text-slate-400 mt-1">
+                        Reviews from completed buying/selling transactions will
+                        appear here.
+                      </p>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="border border-slate-100 rounded-xl p-2.5 mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-[92px] text-center">
+                            <p className="text-[28px] leading-none font-black text-sky-600">
+                              {marketplaceReviewAverage.toFixed(1)}
+                            </p>
 
-                  {/* ============================================
-            INDIVIDUAL REVIEWS
-        ============================================ */}
-                  <div className="space-y-2">
-                    {reviews.map((review) => {
-                      const reviewRating = getReviewRating(review);
-                      const reviewerName = getReviewerName(review);
-                      const reviewComment = getReviewComment(review);
-                      const reviewDate = getReviewDate(review);
-
-                      const reviewerInitial = reviewerName
-                        .charAt(0)
-                        .toUpperCase();
-
-                      return (
-                        <div
-                          key={review.id}
-                          className="border border-slate-100 rounded-xl p-2.5 bg-white"
-                        >
-                          {/* REVIEW HEADER */}
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-2">
-                              {/* REVIEWER AVATAR */}
-                              <div className="w-6 h-6 rounded-full bg-[#4a9672] text-white flex items-center justify-center text-[8px] font-black">
-                                {reviewerInitial}
-                              </div>
-
-                              <div>
-                                <p className="text-[8px] font-black text-slate-700">
-                                  {reviewerName}
-                                </p>
-
-                                {/* STARS */}
-                                <div className="flex items-center gap-[1px] mt-0.5">
-                                  {[1, 2, 3, 4, 5].map((star) => (
-                                    <Star
-                                      key={star}
-                                      size={7}
-                                      className={
-                                        star <= Math.round(reviewRating)
-                                          ? "text-yellow-400 fill-yellow-400"
-                                          : "text-slate-200"
-                                      }
-                                    />
-                                  ))}
-
-                                  <span className="text-[6px] text-slate-400 ml-1">
-                                    {reviewRating.toFixed(1)}
-                                  </span>
-                                </div>
-                              </div>
+                            <div className="flex justify-center gap-[1px] mt-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star
+                                  key={star}
+                                  size={9}
+                                  className={
+                                    star <= Math.round(marketplaceReviewAverage)
+                                      ? "text-yellow-400 fill-yellow-400"
+                                      : "text-slate-200"
+                                  }
+                                />
+                              ))}
                             </div>
 
-                            {/* DATE */}
-                            <span className="text-[6px] text-slate-300">
-                              {reviewDate ? formatRelativeDate(reviewDate) : ""}
-                            </span>
+                            <p className="text-[7px] text-slate-400 mt-1">
+                              {reviews.length}{" "}
+                              {reviews.length === 1 ? "review" : "reviews"}
+                            </p>
                           </div>
 
-                          {/* REVIEW TEXT */}
-                          <p className="text-[7px] leading-[1.45] text-slate-500 mt-2">
-                            "{reviewComment}"
-                          </p>
-
-                          {/* VERIFIED PURCHASE */}
-                          <div className="flex items-center gap-1 mt-1.5">
-                            <CheckCircle2 size={7} className="text-[#67a83a]" />
-
-                            <span className="text-[6px] text-[#67a83a] font-bold">
-                              Verified Purchase
-                            </span>
+                          <div className="flex-1 space-y-1">
+                            {[
+                              ["Communication", communicationAverage],
+                              ["Punctuality", punctualityAverage],
+                              ["Item Condition", itemConditionAverage],
+                              ["Overall", overallExperienceAverage],
+                            ].map(([label, value]) => (
+                              <div
+                                key={label}
+                                className="flex items-center gap-1"
+                              >
+                                <span className="w-[52px] text-[6px] text-slate-400">
+                                  {label}
+                                </span>
+                                <div className="flex-1 h-[3px] bg-slate-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-[#5b962d] rounded-full"
+                                    style={{
+                                      width: `${(value / 5) * 100}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="w-[17px] text-right text-[6px] text-slate-500 font-bold">
+                                  {value ? value.toFixed(1) : "—"}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {reviews.map((review) => {
+                          const reviewRating = getReviewRating(review);
+                          const reviewerName = getReviewerName(review);
+                          const reviewComment = getReviewComment(review);
+                          const reviewDate = getReviewDate(review);
+                          const reviewerInitial = reviewerName
+                            .charAt(0)
+                            .toUpperCase();
+
+                          return (
+                            <div
+                              key={review.id}
+                              className="border border-slate-100 rounded-xl p-2.5 bg-white"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-[#4a9672] text-white flex items-center justify-center text-[8px] font-black">
+                                    {reviewerInitial}
+                                  </div>
+
+                                  <div>
+                                    <p className="text-[8px] font-black text-slate-700">
+                                      {reviewerName}
+                                    </p>
+
+                                    <div className="flex items-center gap-[1px] mt-0.5">
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <Star
+                                          key={star}
+                                          size={7}
+                                          className={
+                                            star <= Math.round(reviewRating)
+                                              ? "text-yellow-400 fill-yellow-400"
+                                              : "text-slate-200"
+                                          }
+                                        />
+                                      ))}
+                                      <span className="text-[6px] text-slate-400 ml-1">
+                                        {reviewRating.toFixed(1)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <span className="text-[6px] text-slate-300">
+                                  {reviewDate
+                                    ? formatRelativeDate(reviewDate)
+                                    : ""}
+                                </span>
+                              </div>
+
+                              <p className="text-[7px] leading-[1.45] text-slate-500 mt-2">
+                                "{reviewComment}"
+                              </p>
+
+                              <div className="flex items-center gap-1 mt-1.5">
+                                <CheckCircle2
+                                  size={7}
+                                  className="text-[#67a83a]"
+                                />
+                                <span className="text-[6px] text-[#67a83a] font-bold">
+                                  Verified Purchase
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* REPAIR REVIEWS */}
+              {reviewType === "repair" && (
+                <>
+                  {repairReviews.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <Star size={30} className="mx-auto text-purple-300" />
+                      <p className="text-xs font-black text-slate-500 mt-3">
+                        No repair reviews yet
+                      </p>
+                      <p className="text-[8px] text-slate-400 mt-1">
+                        Reviews from completed repair services will appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="border border-purple-100 bg-purple-50/40 rounded-xl p-2.5 mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-[92px] text-center">
+                            <p className="text-[28px] leading-none font-black text-purple-600">
+                              {repairReviewAverage.toFixed(1)}
+                            </p>
+
+                            <div className="flex justify-center gap-[1px] mt-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star
+                                  key={star}
+                                  size={9}
+                                  className={
+                                    star <= Math.round(repairReviewAverage)
+                                      ? "text-purple-400 fill-purple-400"
+                                      : "text-slate-200"
+                                  }
+                                />
+                              ))}
+                            </div>
+
+                            <p className="text-[7px] text-slate-400 mt-1">
+                              {repairReviews.length}{" "}
+                              {repairReviews.length === 1 ? "repair review" : "repair reviews"}
+                            </p>
+                          </div>
+
+                          <div className="flex-1 space-y-1">
+                            {[
+                              ["Communication", repairCommunicationAverage],
+                              ["Service Quality", repairServiceAverage],
+                              ["Overall", repairReviewAverage],
+                            ].map(([label, value]) => (
+                              <div
+                                key={label}
+                                className="flex items-center gap-1"
+                              >
+                                <span className="w-[65px] text-[6px] text-slate-400">
+                                  {label}
+                                </span>
+                                <div className="flex-1 h-[3px] bg-white rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-purple-400 rounded-full"
+                                    style={{
+                                      width: `${(value / 5) * 100}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="w-[17px] text-right text-[6px] text-slate-500 font-bold">
+                                  {value ? value.toFixed(1) : "—"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {repairReviews.map((review) => {
+                          const reviewRating = Number(review.overall_rating || 0);
+                          const reviewerName = getRepairReviewerName(review);
+                          const reviewComment = getRepairReviewComment(review);
+                          const reviewDate = review.created_at;
+                          const reviewerInitial = reviewerName
+                            .charAt(0)
+                            .toUpperCase();
+
+                          return (
+                            <div
+                              key={review.id}
+                              className="border border-purple-100 rounded-xl p-2.5 bg-white"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-purple-500 text-white flex items-center justify-center text-[8px] font-black">
+                                    {reviewerInitial}
+                                  </div>
+
+                                  <div>
+                                    <div className="flex items-center gap-1">
+                                      <p className="text-[8px] font-black text-slate-700">
+                                        {reviewerName}
+                                      </p>
+                                      <span className="text-[5px] px-1 py-0.5 rounded bg-purple-50 text-purple-600 font-black">
+                                        REPAIR
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-[1px] mt-0.5">
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <Star
+                                          key={star}
+                                          size={7}
+                                          className={
+                                            star <= Math.round(reviewRating)
+                                              ? "text-purple-400 fill-purple-400"
+                                              : "text-slate-200"
+                                          }
+                                        />
+                                      ))}
+                                      <span className="text-[6px] text-slate-400 ml-1">
+                                        {reviewRating.toFixed(1)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <span className="text-[6px] text-slate-300">
+                                  {reviewDate
+                                    ? formatRelativeDate(reviewDate)
+                                    : ""}
+                                </span>
+                              </div>
+
+                              <p className="text-[7px] leading-[1.45] text-slate-500 mt-2">
+                                "{reviewComment}"
+                              </p>
+
+                              <div className="mt-2 grid grid-cols-2 gap-1">
+                                <span className="text-[6px] text-slate-400">
+                                  Communication:{" "}
+                                  <b className="text-slate-600">
+                                    {Number(review.communication_rating || 0).toFixed(1)}
+                                  </b>
+                                </span>
+                                <span className="text-[6px] text-slate-400">
+                                  Service:{" "}
+                                  <b className="text-slate-600">
+                                    {Number(review.service_rating || 0).toFixed(1)}
+                                  </b>
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1 mt-1.5">
+                                <CheckCircle2
+                                  size={7}
+                                  className="text-purple-500"
+                                />
+                                <span className="text-[6px] text-purple-500 font-bold">
+                                  Verified Repair Service
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>

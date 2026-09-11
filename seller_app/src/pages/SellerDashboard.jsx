@@ -70,6 +70,238 @@ const getRepairIssue = (transaction) =>
 const getRepairNotes = (transaction) =>
   getRepairField(transaction, "Notes", "");
 
+const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubmitted }) => {
+  const [communication, setCommunication] = useState(0);
+  const [service, setService] = useState(0);
+  const [overall, setOverall] = useState(0);
+  const [recommend, setRecommend] = useState(true);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCommunication(0);
+      setService(0);
+      setOverall(0);
+      setRecommend(true);
+      setComment("");
+      setSubmitting(false);
+    }
+  }, [isOpen, transaction?.id]);
+
+  if (!isOpen || !transaction) return null;
+
+  const repairShop =
+    transaction.harvester?.business_name ||
+    transaction.harvester?.full_name ||
+    "Repair Shop";
+  const device = getRepairDevice(transaction);
+
+  const renderStars = (value, setValue) => (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => setValue(star)}
+          className="p-1 transition-transform hover:scale-110"
+          aria-label={`${star} star${star > 1 ? "s" : ""}`}
+        >
+          <Star
+            size={28}
+            fill={star <= value ? "currentColor" : "none"}
+            className={star <= value ? "text-yellow-400" : "text-slate-300"}
+          />
+        </button>
+      ))}
+    </div>
+  );
+
+  const handleSubmit = async () => {
+    if (!currentUserId) {
+      alert("Your account information is missing. Please log in again.");
+      return;
+    }
+
+    if (!transaction.repair_appointment_id) {
+      alert("Repair appointment information is missing.");
+      return;
+    }
+
+    if (!transaction.harvester_id) {
+      alert("Repair shop information is missing.");
+      return;
+    }
+
+    if (!communication || !service || !overall) {
+      alert("Please provide all three ratings before submitting.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const { data: existingReview, error: existingError } = await supabase
+        .from("repair_reviews")
+        .select("id")
+        .eq("appointment_id", transaction.repair_appointment_id)
+        .eq("reviewer_id", currentUserId)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+
+      if (existingReview) {
+        alert("You have already reviewed this repair service.");
+        onClose();
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("repair_reviews")
+        .insert({
+          appointment_id: transaction.repair_appointment_id,
+          repair_shop_id: transaction.harvester_id,
+          reviewer_id: currentUserId,
+          communication_rating: communication,
+          service_rating: service,
+          overall_rating: overall,
+          recommend,
+          comment: comment.trim() || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      onSubmitted?.(data);
+      alert("Repair shop rated successfully!");
+      onClose();
+    } catch (error) {
+      console.error("Repair review error:", error);
+      alert(`Failed to submit repair review: ${error.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden">
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-white/80 text-[10px] font-black uppercase tracking-widest">
+                <Wrench size={14} /> Repair Service Review
+              </div>
+              <h2 className="text-2xl font-black mt-2">Rate Repair Shop</h2>
+              <p className="text-xs text-white/75 mt-1">
+                Share your experience with {repairShop}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
+            <p className="text-[10px] font-black text-purple-500 uppercase tracking-widest">
+              Repair Shop
+            </p>
+            <p className="text-sm font-black text-slate-800 mt-1">{repairShop}</p>
+            <p className="text-xs text-slate-500 mt-1">{device}</p>
+          </div>
+
+          <div>
+            <p className="text-sm font-black text-slate-700">Communication</p>
+            <p className="text-[11px] text-slate-400 mb-2">
+              How well did the repair shop communicate with you?
+            </p>
+            {renderStars(communication, setCommunication)}
+          </div>
+
+          <div>
+            <p className="text-sm font-black text-slate-700">Service Quality</p>
+            <p className="text-[11px] text-slate-400 mb-2">
+              How satisfied are you with the repair service?
+            </p>
+            {renderStars(service, setService)}
+          </div>
+
+          <div>
+            <p className="text-sm font-black text-slate-700">Overall Experience</p>
+            <p className="text-[11px] text-slate-400 mb-2">
+              Overall, how would you rate this repair shop?
+            </p>
+            {renderStars(overall, setOverall)}
+          </div>
+
+          <div>
+            <p className="text-sm font-black text-slate-700 mb-2">
+              Would you recommend this repair shop?
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setRecommend(true)}
+                className={`py-3 rounded-xl text-xs font-black border ${
+                  recommend
+                    ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                    : "bg-white border-slate-200 text-slate-500"
+                }`}
+              >
+                Yes, I recommend
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecommend(false)}
+                className={`py-3 rounded-xl text-xs font-black border ${
+                  !recommend
+                    ? "bg-red-50 border-red-300 text-red-700"
+                    : "bg-white border-slate-200 text-slate-500"
+                }`}
+              >
+                No
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-black text-slate-700">Write a review</label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={4}
+              maxLength={1000}
+              placeholder="Tell us about your repair experience..."
+              className="w-full mt-2 rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 resize-none"
+            />
+            <p className="text-[10px] text-slate-400 text-right mt-1">
+              {comment.length}/1000
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-black flex items-center justify-center gap-2 transition"
+          >
+            <Star size={18} fill="currentColor" />
+            {submitting ? "Submitting Review..." : "Submit Repair Review"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
   if (!transaction) return null;
 
@@ -367,6 +599,9 @@ const SellerDashboard = ({ session }) => {
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [listingToDonate, setListingToDonate] = useState(null);
   const [showRateModal, setShowRateModal] = useState(false);
+  const [showRepairReviewModal, setShowRepairReviewModal] = useState(false);
+  const [selectedRepairReviewTransaction, setSelectedRepairReviewTransaction] = useState(null);
+  const [reviewedRepairAppointments, setReviewedRepairAppointments] = useState(new Set());
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [selectedBidder, setSelectedBidder] = useState(null);
   const isRepairShop = user?.role === "repair_shop";
@@ -577,6 +812,26 @@ const SellerDashboard = ({ session }) => {
     } catch (err) {
       console.error("Donation error:", err);
       alert(`Failed to process donation: ${err.message}`);
+    }
+  };
+
+  const handleOpenRepairReview = async (transaction) => {
+    if (!transaction?.repair_appointment_id) return alert("Repair appointment information is missing.");
+    try {
+      const { data, error } = await supabase.from("repair_reviews").select("id")
+        .eq("appointment_id", transaction.repair_appointment_id)
+        .eq("reviewer_id", session.user.id).maybeSingle();
+      if (error) throw error;
+      if (data) {
+        setReviewedRepairAppointments((prev) => new Set(prev).add(transaction.repair_appointment_id));
+        alert("You have already reviewed this repair service.");
+        return;
+      }
+      setSelectedRepairReviewTransaction(transaction);
+      setShowRepairReviewModal(true);
+    } catch (error) {
+      console.error("Error checking repair review:", error);
+      alert(`Unable to check the repair review: ${error.message}`);
     }
   };
 
@@ -2671,6 +2926,20 @@ const SellerDashboard = ({ session }) => {
                                       <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100">
                                         <Download size={18} /> View Repair Service Record
                                       </button>
+                                      <button
+                                        onClick={() => handleOpenRepairReview(tx)}
+                                        disabled={reviewedRepairAppointments.has(tx.repair_appointment_id)}
+                                        className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                                          reviewedRepairAppointments.has(tx.repair_appointment_id)
+                                            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                            : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100"
+                                        }`}
+                                      >
+                                        <Star size={18} fill="currentColor" />
+                                        {reviewedRepairAppointments.has(tx.repair_appointment_id)
+                                          ? "Repair Shop Already Rated"
+                                          : "Rate Repair Shop"}
+                                      </button>
                                     </div>
                                   ) : isMeetupScheduled ? (
                                     <div className="bg-purple-50 border border-purple-100 rounded-xl p-5">
@@ -2698,10 +2967,17 @@ const SellerDashboard = ({ session }) => {
 
                                   {isCompleted ? (
                                     <div className="space-y-4">
-                                      <div className="bg-green-50 border border-green-100 rounded-xl p-5 flex items-center gap-4"><div className="bg-white p-2 rounded-full shadow-sm text-green-500 border border-green-100"><Check size={20} strokeWidth={3}/></div><div><p className="text-sm font-bold text-green-800">Transaction Completed</p><p className="text-xs text-green-600">The handover has been confirmed by the buyer.{tx.updated_at && <> Completed on {new Date(tx.updated_at).toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"})}.</>}</p></div></div>
-                                      <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100"><Download size={18}/> View Transaction Receipt</button>
-                                      {isSeller && <button onClick={() => setShowRateModal(true)} className="w-full bg-[#FF4D2D] hover:bg-[#e64528] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"><Star size={18} fill="currentColor"/> Rate Buyer</button>}
+                                      <div className={`border rounded-xl p-5 flex items-center gap-4 ${isRepair ? "bg-purple-50 border-purple-100" : "bg-green-50 border-green-100"}`}>
+                                        <div className={`bg-white p-2 rounded-full shadow-sm border ${isRepair ? "text-purple-600 border-purple-100" : "text-green-500 border-green-100"}`}>{isRepair ? <Wrench size={20}/> : <Check size={20} strokeWidth={3}/>}</div>
+                                        <div><p className={`text-sm font-bold ${isRepair ? "text-purple-800" : "text-green-800"}`}>{isRepair ? "Repair Service Completed" : "Transaction Completed"}</p><p className={`text-xs mt-1 ${isRepair ? "text-purple-600" : "text-green-600"}`}>{isRepair ? "The repair shop has marked your repair service as completed." : <>The handover has been confirmed by the buyer.{tx.updated_at && <> Completed on {new Date(tx.updated_at).toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"})}.</>}</>}</p></div>
+                                      </div>
+                                      <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100"><Download size={18}/>{isRepair ? "View Repair Service Record" : "View Transaction Receipt"}</button>
+                                      {isRepair ? (
+                                        <button onClick={() => handleOpenRepairReview(tx)} disabled={reviewedRepairAppointments.has(tx.repair_appointment_id)} className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedRepairAppointments.has(tx.repair_appointment_id) ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100"}`}><Star size={18} fill="currentColor"/>{reviewedRepairAppointments.has(tx.repair_appointment_id) ? "Repair Shop Already Rated" : "Rate Repair Shop"}</button>
+                                      ) : isSeller && <button onClick={() => setShowRateModal(true)} className="w-full bg-[#FF4D2D] hover:bg-[#e64528] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"><Star size={18} fill="currentColor"/> Rate Buyer</button>}
                                     </div>
+                                  ) : isRepair ? (
+                                    <div className="space-y-3"><div className="bg-purple-50 border border-purple-100 rounded-xl p-4"><p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p><p className="text-xs text-purple-600 mt-1">The repair shop will mark the repair service as completed after the device has been repaired.</p></div></div>
                                   ) : isBuyer && isMeetupScheduled ? (
                                     <div className="space-y-3"><div className="bg-amber-50 border border-amber-100 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Handover Pending</p><p className="text-xs text-amber-600 mt-1">After you receive the item at the scheduled meetup, confirm the handover below.</p></div><button onClick={() => handleCompleteTransaction(tx.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"><CheckCheck size={18}/> Confirm Handover Complete</button></div>
                                   ) : isSeller && !isMeetupScheduled ? (
@@ -3289,6 +3565,16 @@ const SellerDashboard = ({ session }) => {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           userId={session.user.id} // use this instead
+        />
+        <RepairReviewModal
+          isOpen={showRepairReviewModal}
+          transaction={selectedRepairReviewTransaction}
+          currentUserId={session.user.id}
+          onClose={() => { setShowRepairReviewModal(false); setSelectedRepairReviewTransaction(null); }}
+          onSubmitted={(review) => {
+            const appointmentId = review?.appointment_id || selectedRepairReviewTransaction?.repair_appointment_id;
+            if (appointmentId) setReviewedRepairAppointments((prev) => new Set(prev).add(appointmentId));
+          }}
         />
         <RateBuyerModal
           isOpen={showRateModal}
