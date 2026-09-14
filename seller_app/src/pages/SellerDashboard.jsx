@@ -572,6 +572,8 @@ const SellerDashboard = ({ session }) => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileData, setProfileData] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showAchievements, setShowAchievements] = useState(false);
+  const [showAchievementsModal, setShowAchievementsModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1975,8 +1977,13 @@ const SellerDashboard = ({ session }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 relative">
+      {/* Reference-style gradient banner behind the dashboard header */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[360px] bg-gradient-to-r from-cyan-300 via-emerald-200 to-lime-300"
+      />
       {/* Header Area */}
-      <div className="p-6">
+      <div className="relative z-10 p-6">
         <div className="flex justify-end items-center gap-4 mb-8 relative z-40">
           {/* Notification Bell with Toggle */}
           <div className="relative">
@@ -2188,9 +2195,88 @@ const SellerDashboard = ({ session }) => {
                 <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition">
                   <Settings size={18} className="text-slate-400" /> Settings
                 </button>
-                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition">
-                  <Award size={18} className="text-slate-400" /> Achievements
-                </button>
+                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowAchievementsModal(true);
+                                    setShowProfileMenu(false);
+                                  }}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition"
+                                >
+                                  <Award size={18} className="text-slate-400" /> Achievements
+                                </button>
+
+                {showAchievements && (
+                  <div className="mx-1 mb-2 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-full bg-white text-emerald-700 flex items-center justify-center">
+                        <Award size={20} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                          Current Trust Tier
+                        </p>
+                        <p className="text-sm font-black text-slate-800">
+                          {getTrustTierLabel(currentTrustTier?.name)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {trustTierLoading ? (
+                      <p className="text-xs text-slate-500">Loading achievements…</p>
+                    ) : trustTierError ? (
+                      <p className="text-xs text-red-600">{trustTierError}</p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-lg bg-white p-2">
+                            <p className="text-[10px] text-slate-500">Completed transactions</p>
+                            <p className="text-sm font-black text-slate-800">
+                              {userTrustStats.completedTransactions}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-white p-2">
+                            <p className="text-[10px] text-slate-500">Average rating</p>
+                            <p className="text-sm font-black text-slate-800">
+                              {Number(userTrustStats.averageRating || 0).toFixed(1)} / 5
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between gap-2 text-[10px] text-slate-500 mb-1">
+                            <span>Progress to {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "top tier"}</span>
+                            <span className="font-bold">{progressPercent}%</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-white overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-emerald-500 transition-all"
+                              style={{ width: `${progressPercent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">
+                            Tier privileges
+                          </p>
+                          {currentTrustTier?.privileges?.length ? (
+                            <ul className="space-y-1">
+                              {currentTrustTier.privileges.map((privilege, index) => (
+                                <li key={`${privilege}-${index}`} className="text-xs text-slate-600 flex gap-2">
+                                  <Check size={13} className="text-emerald-600 shrink-0 mt-0.5" />
+                                  <span>{privilege}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-xs text-slate-500">No privileges listed for this tier.</p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
                 <hr className="my-2 border-slate-100" />
                 <button
                   onClick={handleLogout}
@@ -2346,7 +2432,7 @@ const SellerDashboard = ({ session }) => {
               <div className="col-span-2">
 
                 {/* Browse Banner */}
-                <div className="bg-white border border-slate-100 rounded-2xl p-5 mb-8 shadow-sm">
+                <div className="bg-white border border-slate-100 rounded-2xl p-5 mb-5 mt-7 shadow-sm">
                   <div className="flex items-start gap-3">
 
                     <div className="bg-[#3285a1]/10 p-2 rounded-xl text-[#3285a1]">
@@ -2594,7 +2680,7 @@ const SellerDashboard = ({ session }) => {
   =========================================== */}
               <div className="col-span-1">
 
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm sticky top-6">
+                <div className="bg-white rounded-2xl border mt-7 border-slate-100 shadow-sm sticky top-6">
 
                   {/* HEADER */}
                   <div className="p-5 border-b border-slate-100">
@@ -4390,9 +4476,132 @@ const SellerDashboard = ({ session }) => {
           </div>
         </div>
       </footer>
+      {/* Achievements modal */}
+            {showAchievementsModal && (
+              <div
+                className="fixed inset-0 z-[320] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="seller-achievements-title"
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) setShowAchievementsModal(false);
+                }}
+              >
+                <div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl">
+                  <div className="flex items-start justify-between gap-4 bg-gradient-to-r from-emerald-600 to-teal-700 p-6 text-white">
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-white/80">
+                        <Award size={18} />
+                        <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Your achievements</span>
+                      </div>
+                      <h2 id="seller-achievements-title" className="text-2xl font-black">
+                        {trustTierLoading ? "Loading your progress…" : getTrustTierLabel(currentTrustTier.name)}
+                      </h2>
+                      <p className="mt-1 text-xs text-white/80">
+                        Keep completing transactions and earning positive reviews to progress.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Close achievements"
+                      onClick={() => setShowAchievementsModal(false)}
+                      className="rounded-full p-2 text-white/90 hover:bg-white/15"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="space-y-5 p-6">
+                    {trustTierError ? (
+                      <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                        Could not load achievements: {trustTierError}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="rounded-xl bg-slate-50 p-3 text-center">
+                            <p className="text-xl font-black text-slate-800">{userTrustStats.completedTransactions}</p>
+                            <p className="text-[10px] text-slate-500">Completed</p>
+                          </div>
+                          <div className="rounded-xl bg-slate-50 p-3 text-center">
+                            <p className="text-xl font-black text-slate-800">{userTrustStats.averageRating.toFixed(1)} ★</p>
+                            <p className="text-[10px] text-slate-500">Average rating</p>
+                          </div>
+                          <div className="rounded-xl bg-slate-50 p-3 text-center">
+                            <p className="text-xl font-black text-slate-800">{userTrustStats.totalReviews}</p>
+                            <p className="text-[10px] text-slate-500">Reviews</p>
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="font-bold text-emerald-900">
+                              Next: {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "Highest tier reached"}
+                            </span>
+                            <span className="font-bold text-emerald-800">{progressPercent}%</span>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
+                            <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${progressPercent}%` }} />
+                          </div>
+                          {nextTrustTier && (
+                            <p className="mt-2 text-[11px] text-emerald-800">
+                              {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)} transactions · Rating {userTrustStats.averageRating.toFixed(1)}/{Number(nextTrustTier.min_rating).toFixed(1)}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="mb-2 text-sm font-bold text-slate-800">Current tier privileges</h3>
+                          {currentTrustTier.privileges?.length ? (
+                            <ul className="space-y-2">
+                              {currentTrustTier.privileges.map((privilege, index) => (
+                                <li key={`${privilege}-${index}`} className="flex items-start gap-2 text-sm text-slate-600">
+                                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                                  <span>{privilege}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-slate-500">No privileges are configured for this tier yet.</p>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="mb-2 text-sm font-bold text-slate-800">Trust tier milestones</h3>
+                          <div className="space-y-2">
+                            {sortedTrustTiers.map((tier) => {
+                              const achieved =
+                                userTrustStats.completedTransactions >= Number(tier.min_transactions) &&
+                                userTrustStats.averageRating >= Number(tier.min_rating);
+                              return (
+                                <div key={tier.id || tier.name} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-700">{getTrustTierLabel(tier.name)}</p>
+                                    <p className="text-[10px] text-slate-500">
+                                      {Number(tier.min_transactions)}+ transactions · {Number(tier.min_rating).toFixed(1)}+ rating
+                                    </p>
+                                  </div>
+                                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${achieved ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                    {achieved ? "Unlocked" : "Locked"}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowAchievementsModal(false)}
+                      className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
     </div>
   );
 };
+
 const CancelTransactionModal = ({
   isOpen,
   onClose,
