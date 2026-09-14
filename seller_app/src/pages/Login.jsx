@@ -113,16 +113,24 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
       console.log("Database role:", profile?.role);
 
       // Check whether selected role matches database role
-      const allowedRoles = [role];
 
-      if (!profile || !allowedRoles.includes(profile.role)) {
+      // Check whether selected role matches database role
+      const roleNames = {
+        seller: "Seller",
+        harvester: "Harvester",
+        repair_shop: "Repair Shop",
+      };
+
+      if (!profile || profile.role !== role) {
+        const selectedRole = roleNames[role] || role;
+        const registeredRole =
+          roleNames[profile?.role] || "another role";
+
         setErrorMsg(
-          `Access Denied: This account is registered as a ${profile?.role || "another role"}. Please select the correct role above.`
+          `Wrong Role Selected: You selected ${selectedRole}, but this account is registered as a ${registeredRole}. Please select the correct role to sign in.`
         );
 
         await supabase.auth.signOut();
-
-        setLoading(false);
         return;
       }
 
@@ -161,6 +169,8 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
       }
 
       setErrorMsg("");
+      // Remember the selected role for the OAuth callback
+localStorage.setItem("wasteless_login_role", role);
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -178,6 +188,7 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
       }
     } catch (error) {
       console.error(error);
+      localStorage.removeItem("wasteless_login_role");
       setErrorMsg("Authentication failed. Please try again.");
     }
   };
@@ -257,7 +268,12 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
 
           {/* ERROR MESSAGE */}
           {errorMsg && (
-            <div className="mb-5 flex items-start justify-between bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 text-xs">
+
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="mb-5 flex items-start justify-between bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 text-sm"
+            >
 
               <div className="flex items-start gap-2">
                 <span className="font-bold">✕</span>

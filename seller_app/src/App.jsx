@@ -23,6 +23,7 @@ function App() {
   const [isChecked, setIsChecked] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isSuspended, setIsSuspended] = useState(false);
+  const [roleMismatch, setRoleMismatch] = useState(null);
 
   // --- ADDED STATE FOR ENV OFFICER DEMO ---
   const [isAdminDemo, setIsAdminDemo] = useState(false);
@@ -65,6 +66,40 @@ function App() {
       setCurrentPage("login");
     } else {
       const accountStatus = (data.status || "").toLowerCase();
+      
+      // Check the role selected before social login
+      const selectedRole = localStorage.getItem(
+        "wasteless_login_role"
+      );
+
+      if (selectedRole && selectedRole !== data.role) {
+        const roleNames = {
+          seller: "Seller",
+          harvester: "Harvester",
+          repair_shop: "Repair Shop",
+        };
+
+        setRoleMismatch({
+          selected: roleNames[selectedRole] || selectedRole,
+          registered: roleNames[data.role] || data.role,
+        });
+
+        localStorage.removeItem("wasteless_login_role");
+
+        await supabase.auth.signOut();
+
+        setSession(null);
+        setRole(null);
+        setLoading(false);
+        setIsChecked(true);
+
+        return;
+      }
+
+      // Clear the saved role after a successful match
+      if (selectedRole) {
+        localStorage.removeItem("wasteless_login_role");
+      }
 
       if (accountStatus === "suspended") {
         setIsSuspended(true);
@@ -154,6 +189,41 @@ function App() {
   }
 
   if (isUnauthorized) {
+    
+  // Wrong role selected during social login
+  if (roleMismatch) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] p-6">
+        <div className="bg-white border border-red-200 rounded-2xl shadow-sm p-8 max-w-md w-full text-center">
+          <div className="text-red-500 text-3xl mb-4">
+            ✕
+          </div>
+
+          <h1 className="text-xl font-bold text-red-600 mb-3">
+            Wrong Role Selected
+          </h1>
+
+          <p className="text-gray-600 text-sm leading-relaxed mb-6">
+            You selected{" "}
+            <strong>{roleMismatch.selected}</strong>, but
+            this account is registered as{" "}
+            <strong>{roleMismatch.registered}</strong>.
+            Please select the correct role to sign in.
+          </p>
+
+          <button
+            onClick={() => {
+              setRoleMismatch(null);
+              setCurrentPage("login");
+            }}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-[#2d91a8] to-[#619d2d] text-white font-semibold text-sm"
+          >
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
         <p className="text-red-500 font-bold text-center">
