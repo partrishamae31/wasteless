@@ -2895,7 +2895,7 @@ const SellerDashboard = ({ session }) => {
           {/* --- TRANSACTIONS TAB --- */}
           {activeTab === "transactions" && (
             <div className="animate-in fade-in duration-500 max-w-6xl mx-auto">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center mt-16 justify-between mb-4">
                 <div>
                   <h3 className="text-sm font-bold text-slate-700">
                     Active Transactions
@@ -2907,9 +2907,9 @@ const SellerDashboard = ({ session }) => {
               </div>
 
               {transactions.length === 0 ? (
-                <div className="bg-white rounded-xl border-2 border-dashed border-slate-100 p-12 text-center">
+                <div className="bg-white rounded-xl border-2 mt-7border-dashed border-slate-100 p-12 text-center">
                   <ArrowLeftRight size={30} className="mx-auto text-slate-300" />
-                  <p className="text-sm font-bold text-slate-500 mt-3">
+                  <p className="text-sm mt-7 font-bold text-slate-500 mt-3">
                     No active transactions
                   </p>
                   <p className="text-[10px] text-slate-400 mt-1">

@@ -1,4 +1,7 @@
-import React, { useMemo, useState } from "react";
+
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "../supabaseClient";
+
 import {
   Gift,
   Clock,
@@ -6,113 +9,348 @@ import {
   Package,
   ArrowRight,
   Leaf,
+  MapPin,
+  ClipboardCheck,
+  ShieldCheck,
+  Info,
+  RefreshCw,
 } from "lucide-react";
 
-/**
- * SellerDonationTab
- *
- * This component is intentionally separate from SellerDashboard.
- *
- * Props:
- * - listings: seller's listings from Supabase
- * - donationConfig: { firstReminder, secondReminder, autoSuggest }
- * - onDonate: async (listingId) => void
- * - onBackToListings: () => void
- */
+const DEFAULT_CONFIG = {
+  firstReminder: 7,
+  secondReminder: 3,
+  autoSuggest: 14,
+};
+
+const DONATION_STATUSES = ["donated", "drop_off_assigned", "processed"];
+
+const formatDate = (date) => {
+  if (!date) return "Listing date unavailable";
+
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Listing date unavailable";
+  }
+
+  return parsedDate.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
+const formatStatus = (status) =>
+  String(status || "unknown").replace(/_/g, " ");
+
+const getPointAddress = (point) =>
+  [point?.address, point?.barangay, point?.city]
+    .filter(Boolean)
+    .join(", ");
+
 const SellerDonationTab = ({
   listings = [],
-  donationConfig = {
-    firstReminder: 7,
-    secondReminder: 3,
-    autoSuggest: 14,
-  },
+  donationConfig = DEFAULT_CONFIG,
+  dropOffPoints: dropOffPointsProp = [],
   onDonate,
   onBackToListings,
 }) => {
+  const parentDropOffPoints = Array.isArray(dropOffPointsProp)
+    ? dropOffPointsProp
+    : [];
+
+  const [availableDropOffPoints, setAvailableDropOffPoints] = useState(
+    parentDropOffPoints,
+  );
+  const [loadingDropOffPoints, setLoadingDropOffPoints] = useState(true);
   const [selectedListing, setSelectedListing] = useState(null);
+  const [selectedDropOffPointId, setSelectedDropOffPointId] = useState("");
+  const [isDonating, setIsDonating] = useState(false);
+  const [donationError, setDonationError] = useState("");
+  const [donationSuccess, setDonationSuccess] = useState("");
+  const [savedDonations, setSavedDonations] = useState([]);
+
+  // Fetch drop-off locations once. Do not depend on the parent's array:
+  // a parent may create a new array on every render.
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchDropOffPoints = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("drop_off_points")
+          .select(
+            "id, name, address, barangay, city, operating_hours, is_active",
+          )
+          .eq("is_active", true);
+
+        if (error) throw error;
+
+        if (isMounted) {
+          const fetchedPoints = Array.isArray(data) ? data : [];
+          setAvailableDropOffPoints(
+            fetchedPoints.length > 0 ? fetchedPoints : parentDropOffPoints,
+          );
+        }
+      } catch (error) {
+        console.error("Failed to load drop-off points:", error);
+
+        if (isMounted) {
+          setAvailableDropOffPoints(parentDropOffPoints);
+          setDonationError(
+            error?.message ||
+              "Could not load drop-off locations. Please refresh and try again.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingDropOffPoints(false);
+        }
+      }
+    };
+
+    fetchDropOffPoints();
+
+    return () => {
+      isMounted = false;
+    };
+    // Intentionally fetch only once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the available locations updated if the parent later supplies them.
+  useEffect(() => {
+    if (parentDropOffPoints.length > 0) {
+      setAvailableDropOffPoints((current) =>
+        current.length > 0 ? current : parentDropOffPoints,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropOffPointsProp]);
+
+  // Keep locally saved donation records in sync with parent listings.
+  useEffect(() => {
+    setSavedDonations((current) => {
+      const currentById = new Map(current.map((item) => [item.id, item]));
+
+      return listings.map((listing) => ({
+        ...listing,
+        ...(currentById.get(listing.id) || {}),
+      }));
+    });
+  }, [listings]);
+
+  const allListings = useMemo(() => {
+    const byId = new Map();
+
+    listings.forEach((listing) => {
+      byId.set(listing.id, listing);
+    });
+
+    savedDonations.forEach((listing) => {
+      byId.set(listing.id, {
+        ...(byId.get(listing.id) || {}),
+        ...listing,
+      });
+    });
+
+    return Array.from(byId.values());
+  }, [listings, savedDonations]);
 
   const donationListings = useMemo(
     () =>
-      listings
+      allListings
         .filter((listing) =>
-          ["donated", "drop_off_assigned", "processed"].includes(
-            listing.status?.toLowerCase(),
+          DONATION_STATUSES.includes(
+            String(listing.status || "").toLowerCase(),
           ),
         )
         .sort(
-          (a, b) =>
-            new Date(b.updated_at || b.created_at) -
-            new Date(a.updated_at || a.created_at),
-        ),
-    [listings],
+  (a, b) =>
+    new Date(b.created_at || 0) - new Date(a.created_at || 0),
+),
+    [allListings],
   );
 
   const eligibleListings = useMemo(() => {
-    const now = new Date();
+    const now = Date.now();
 
-    return listings
-      .filter((listing) => {
-        const status = listing.status?.toLowerCase();
+    const excludedStatuses = [
+      "donated",
+      "drop_off_assigned",
+      "processed",
+      "inactive",
+      "sold",
+      "completed",
+      "cancelled",
+    ];
 
-        if (
-          [
-            "donated",
-            "drop_off_assigned",
-            "processed",
-            "inactive",
-            "sold",
-            "completed",
-            "cancelled",
-          ].includes(status)
-        ) {
-          return false;
-        }
-
-        const createdDate = new Date(listing.created_at);
-
-        if (Number.isNaN(createdDate.getTime())) return false;
-
-        const ageInDays =
-          (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
-
-        if (ageInDays < Number(donationConfig.firstReminder || 7)) {
-          return false;
-        }
-
-        const activeBids =
-          listing.bids?.filter((bid) => bid.status !== "declined") || [];
-
-        return activeBids.length === 0;
-      })
+    return allListings
+      .filter(
+        (listing) =>
+          !excludedStatuses.includes(
+            String(listing.status || "").toLowerCase(),
+          ),
+      )
       .map((listing) => {
-        const ageInDays = Math.floor(
-          (now.getTime() - new Date(listing.created_at).getTime()) /
-            (1000 * 60 * 60 * 24),
+        const createdAt = new Date(listing.created_at || 0).getTime();
+        const ageInDays = Number.isFinite(createdAt)
+          ? Math.max(0, Math.floor((now - createdAt) / 86400000))
+          : 0;
+
+        const activeBids = Array.isArray(listing.bids)
+          ? listing.bids.filter(
+              (bid) =>
+                !["declined", "cancelled"].includes(
+                  String(bid.status || "").toLowerCase(),
+                ),
+            )
+          : [];
+
+        const autoSuggestDays = Number(
+          donationConfig?.autoSuggest ?? DEFAULT_CONFIG.autoSuggest,
         );
 
         return {
           ...listing,
           ageInDays,
+          hasActiveBids: activeBids.length > 0,
           isStrongSuggestion:
-            ageInDays >= Number(donationConfig.autoSuggest || 14),
+            ageInDays >= autoSuggestDays && activeBids.length === 0,
         };
       })
-      .sort((a, b) => b.ageInDays - a.ageInDays);
-  }, [listings, donationConfig]);
+      .sort((a, b) => {
+        if (a.isStrongSuggestion !== b.isStrongSuggestion) {
+          return a.isStrongSuggestion ? -1 : 1;
+        }
+
+        return b.ageInDays - a.ageInDays;
+      });
+  }, [allListings, donationConfig]);
+
+  const selectedDropOffPoint = availableDropOffPoints.find(
+    (point) => String(point.id) === String(selectedDropOffPointId),
+  );
+
+  const openDonationModal = (listing) => {
+    setDonationError("");
+    setDonationSuccess("");
+    setSelectedDropOffPointId("");
+    setSelectedListing(listing);
+  };
+
+  const closeDonationModal = () => {
+    if (isDonating) return;
+
+    setSelectedListing(null);
+    setSelectedDropOffPointId("");
+    setDonationError("");
+  };
 
   const handleDonate = async () => {
-    if (!selectedListing) return;
+    if (!selectedListing || isDonating) return;
 
-    await onDonate?.(selectedListing.id);
-    setSelectedListing(null);
+    if (!selectedDropOffPointId) {
+      setDonationError("Please choose a drop-off point.");
+      return;
+    }
+
+    const chosenPoint = availableDropOffPoints.find(
+      (point) => String(point.id) === String(selectedDropOffPointId),
+    );
+
+    if (!chosenPoint) {
+      setDonationError(
+        "The selected drop-off point is no longer available. Please select another one.",
+      );
+      return;
+    }
+
+    setIsDonating(true);
+    setDonationError("");
+    setDonationSuccess("");
+
+    try {
+      const { data, error } = await supabase
+        .from("listings")
+        .update({
+          status: "donated",
+          drop_off_point_id: chosenPoint.id,
+        })
+        .eq("id", selectedListing.id)
+        .select(
+          "id, status, drop_off_point_id, device_model, category, created_at",
+        )
+        .single();
+
+      if (error) throw error;
+
+      if (!data) {
+        throw new Error(
+          "No listing was returned. Check that the listing exists and your Supabase update policy allows this action.",
+        );
+      }
+
+      if (!data.drop_off_point_id) {
+        throw new Error(
+          "The donation status was updated, but no drop-off point ID was returned. Check the listings.drop_off_point_id column and Supabase policies.",
+        );
+      }
+
+      const savedListing = {
+        ...selectedListing,
+        ...data,
+        drop_off_point_id: data.drop_off_point_id,
+        saved_drop_off_point_name: chosenPoint.name,
+        saved_drop_off_point_address: getPointAddress(chosenPoint),
+      };
+
+      setSavedDonations((current) => [
+        savedListing,
+        ...current.filter((item) => item.id !== savedListing.id),
+      ]);
+
+      setDonationSuccess("Donation saved successfully.");
+      setSelectedListing(null);
+      setSelectedDropOffPointId("");
+
+      // This callback should refresh parent data only.
+      // Do not perform the same donation update again inside onDonate.
+      if (typeof onDonate === "function") {
+        try {
+          await onDonate(savedListing.id, chosenPoint.id, savedListing);
+        } catch (callbackError) {
+          console.error("Parent donation refresh callback failed:", callbackError);
+        }
+      }
+    } catch (error) {
+      console.error("Donation failed:", error);
+      setDonationError(
+        error?.message ||
+          "Unable to save this donation. Please check your connection and try again.",
+      );
+    } finally {
+      setIsDonating(false);
+    }
+  };
+
+  const getSavedPoint = (listing) => {
+    if (!listing.drop_off_point_id) return null;
+
+    return (
+      availableDropOffPoints.find(
+        (point) =>
+          String(point.id) === String(listing.drop_off_point_id),
+      ) || null
+    );
   };
 
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
-      <div className="rounded-[2rem] bg-gradient-to-r from-[#f97316] to-[#d97706] p-7 text-white shadow-lg">
+      {/* Header */}
+      <div className="mt-16 rounded-[2rem] bg-gradient-to-r from-[#f97316] to-[#d97706] p-7 text-white shadow-lg">
         <div className="flex items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="mb-2 flex items-center gap-2">
               <Gift size={20} />
               <span className="text-[10px] font-black uppercase tracking-[0.2em]">
                 Donation Management
@@ -123,127 +361,285 @@ const SellerDonationTab = ({
               Give your unused devices a second life.
             </h2>
 
-            <p className="text-sm text-white/80 mt-2 max-w-2xl">
-              Donate electronics that are no longer receiving interest and
-              help reduce e-waste in your community.
+            <p className="mt-2 max-w-2xl text-sm text-white/80">
+              Donate any active listing whenever you’re ready. Choose an
+              available community drop-off location and prepare your device
+              before bringing it in.
             </p>
           </div>
 
-          <div className="hidden md:flex w-16 h-16 rounded-2xl bg-white/15 items-center justify-center">
+          <div className="hidden h-16 w-16 items-center justify-center rounded-2xl bg-white/15 md:flex">
             <Leaf size={32} />
           </div>
         </div>
       </div>
 
-      {eligibleListings.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-black text-slate-800">
-                Recommended for Donation
-              </h3>
-              <p className="text-xs text-slate-400">
-                These listings have been inactive without active bids.
-              </p>
-            </div>
-
-            <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">
-              {eligibleListings.length} eligible
-            </span>
+      {/* Available drop-off locations */}
+      {/* <section className="rounded-2xl border border-emerald-100 bg-white p-5 md:p-6">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+            <MapPin size={20} />
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <h3 className="text-lg font-black text-slate-800">
+              Where to Donate
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              These active locations are managed by your administrator.
+            </p>
+          </div>
+        </div>
+
+        {loadingDropOffPoints ? (
+          <div className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-500">
+            <RefreshCw size={16} className="animate-spin" />
+            Loading available drop-off locations...
+          </div>
+        ) : availableDropOffPoints.length === 0 ? (
+          <div className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <Info size={18} className="mt-0.5 shrink-0 text-slate-400" />
+            <div>
+              <p className="text-sm font-bold text-slate-700">
+                No active drop-off locations available
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Please check that your admin-created locations are active and
+                visible to sellers.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {availableDropOffPoints.map((point) => (
+              <div
+                key={point.id}
+                className="rounded-xl border border-slate-200 p-4"
+              >
+                <div className="flex items-start gap-2">
+                  <MapPin
+                    size={16}
+                    className="mt-0.5 shrink-0 text-emerald-600"
+                  />
+                  <div className="min-w-0">
+                    <h4 className="font-black text-slate-800">
+                      {point.name || "Community Drop-off Point"}
+                    </h4>
+
+                    <p className="mt-2 text-xs text-slate-500">
+                      {getPointAddress(point) || "Address not provided"}
+                    </p>
+
+                    {point.operating_hours && (
+                      <p className="mt-2 text-xs text-slate-600">
+                        <span className="font-bold">Operating hours:</span>{" "}
+                        {point.operating_hours}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section> */}
+
+      {/* Device preparation */}
+      <section className="rounded-2xl border border-blue-100 bg-white p-5 md:p-6">
+        <div className="mb-5 flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+            <ClipboardCheck size={20} />
+          </div>
+
+          <div>
+            <h3 className="text-lg font-black text-slate-800">
+              How to Prepare Your Device
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Follow these steps before handing over your electronics.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {[
+            [
+              "Back up your important files",
+              "Save photos, documents, contacts, and other files you want to keep to a separate, trusted storage location.",
+            ],
+            [
+              "Sign out and remove personal information",
+              "Sign out of personal accounts, remove SIM and memory cards, and perform a factory reset when appropriate for the device.",
+            ],
+            [
+              "Make the device safe to handle",
+              "Turn it off and unplug it. Keep devices with swollen, leaking, or damaged batteries separate, and tell the drop-off staff about the condition. Do not attempt to open or repair a damaged battery.",
+            ],
+            [
+              "Include accessories only when safe and accepted",
+              "Keep chargers and other accessories together if the drop-off point accepts them. Do not include unrelated household waste.",
+            ],
+            [
+              "Confirm the handover",
+              "Follow the selected drop-off location’s instructions and ask for confirmation or a receipt if the location provides one.",
+            ],
+          ].map(([title, description], index) => (
+            <div key={title} className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-black text-blue-700">
+                {index + 1}
+              </span>
+              <div>
+                <h4 className="text-sm font-bold text-slate-800">{title}</h4>
+                <p className="mt-1 text-xs text-slate-500">{description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 flex gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4">
+          <ShieldCheck size={18} className="mt-0.5 shrink-0 text-amber-600" />
+          <p className="text-xs text-amber-800">
+            <span className="font-bold">Data safety:</span> Back up your files
+            first. A factory reset may not securely erase data on every device.
+            If the device contains sensitive information, ask the authorized
+            drop-off or processing staff about their data-sanitization process.
+          </p>
+        </div>
+      </section>
+
+      {/* Available listings */}
+      <section>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-black text-slate-800">
+              Available to Donate
+            </h3>
+            <p className="text-xs text-slate-400">
+              Donate any active listing now, even if it still has inquiries.
+            </p>
+          </div>
+
+          <span className="rounded-full bg-orange-100 px-3 py-1 text-[10px] font-black uppercase text-orange-600">
+            {eligibleListings.length} available
+          </span>
+        </div>
+
+        {eligibleListings.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-10 text-center">
+            <Gift className="mx-auto mb-3 text-slate-200" size={36} />
+            <h4 className="font-black text-slate-700">
+              No active listings available
+            </h4>
+            <p className="mt-1 text-xs text-slate-400">
+              Your active listings will appear here when you have something to
+              donate.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
             {eligibleListings.map((listing) => (
               <div
                 key={listing.id}
-                className="bg-white border border-orange-100 rounded-2xl p-5 shadow-sm"
+                className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h4 className="font-black text-slate-800">
                       {listing.device_model || "Electronic Device"}
                     </h4>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="mt-1 text-xs text-slate-400">
                       {listing.category || "Electronics"}
                     </p>
                   </div>
 
-                  <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-lg text-[9px] font-black">
-                    {listing.ageInDays} DAYS
-                  </span>
+                  {listing.isStrongSuggestion ? (
+                    <span className="rounded-lg bg-orange-50 px-2 py-1 text-[9px] font-black text-orange-600">
+                      RECOMMENDED
+                    </span>
+                  ) : (
+                    <span className="rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-500">
+                      ACTIVE LISTING
+                    </span>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-2 mt-4 text-xs text-slate-500">
+                <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
                   <Clock size={14} />
-                  <span>
-                    Listed{" "}
-                    {new Date(listing.created_at).toLocaleDateString(
-                      "en-PH",
-                      {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      },
-                    )}
-                  </span>
+                  <span>Listed {formatDate(listing.created_at)}</span>
                 </div>
 
-                {listing.asking_price && (
-                  <p className="text-sm font-black text-[#3285a1] mt-3">
-                    Est. Value: ₱
+                {listing.asking_price != null && (
+                  <p className="mt-3 text-sm font-black text-[#3285a1]">
+                    Asking Price: ₱
                     {Number(listing.asking_price).toLocaleString()}
+                  </p>
+                )}
+
+                {listing.hasActiveBids && (
+                  <p className="mt-2 text-xs text-amber-600">
+                    This listing has active inquiries or bids. You can still
+                    choose to donate it.
                   </p>
                 )}
 
                 <button
                   type="button"
-                  onClick={() => setSelectedListing(listing)}
-                  className="mt-5 w-full bg-[#f97316] hover:bg-[#ea580c] text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-2"
+                  onClick={() => openDonationModal(listing)}
+                  disabled={
+                    loadingDropOffPoints || availableDropOffPoints.length === 0
+                  }
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#f97316] py-3 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-[#ea580c] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Gift size={14} />
-                  Convert to Donation
+                  Donate This Listing
                 </button>
               </div>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
+      {/* Donation history */}
       <section>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-black text-slate-800">
-              My Donations
-            </h3>
-            <p className="text-xs text-slate-400">
-              Track devices that you have already donated.
-            </p>
-          </div>
+        <div className="mb-4">
+          <h3 className="text-lg font-black text-slate-800">My Donations</h3>
+          <p className="text-xs text-slate-400">
+            Track devices that you have already donated.
+          </p>
         </div>
 
         {donationListings.length === 0 ? (
-          <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center">
-            <Gift className="mx-auto text-slate-200 mb-3" size={36} />
-            <h4 className="font-black text-slate-700">
-              No donations yet
-            </h4>
-            <p className="text-xs text-slate-400 mt-1">
-              Eligible listings will appear above when they meet your donation
-              reminder settings.
+          <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
+            <Gift className="mx-auto mb-3 text-slate-200" size={36} />
+            <h4 className="font-black text-slate-700">No donations yet</h4>
+            <p className="mt-1 text-xs text-slate-400">
+              Your confirmed donations will appear here.
             </p>
           </div>
         ) : (
           <div className="space-y-3">
             {donationListings.map((listing) => {
-              const status = listing.status?.toLowerCase();
+              const status = String(listing.status || "").toLowerCase();
+              const savedPoint = getSavedPoint(listing);
+
+              const pointName =
+                savedPoint?.name ||
+                listing.saved_drop_off_point_name ||
+                (listing.drop_off_point_id
+                  ? "Saved drop-off point"
+                  : "No drop-off point saved");
+
+              const pointAddress =
+                getPointAddress(savedPoint) ||
+                listing.saved_drop_off_point_address;
 
               return (
                 <div
                   key={listing.id}
-                  className="bg-white border border-emerald-100 rounded-2xl p-5 flex items-center justify-between gap-5 shadow-sm"
+                  className="flex flex-col justify-between gap-4 rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                       <Package size={20} />
                     </div>
 
@@ -257,21 +653,19 @@ const SellerDonationTab = ({
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[9px] font-black uppercase">
+                  <div className="text-left sm:text-right">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-[9px] font-black uppercase text-emerald-700">
                       <CheckCircle2 size={12} />
-                      {status === "donated"
-                        ? "Donated"
-                        : status.replaceAll("_", " ")}
+                      {status === "donated" ? "Donated" : formatStatus(status)}
                     </span>
 
-                    {listing.drop_off_point_id ? (
-                      <p className="text-[10px] text-slate-400 mt-2">
-                        Drop-off point assigned
-                      </p>
-                    ) : (
-                      <p className="text-[10px] text-slate-400 mt-2">
-                        Waiting for admin assignment
+                    <p className="mt-2 text-[10px] font-bold text-slate-600">
+                      {pointName}
+                    </p>
+
+                    {pointAddress && (
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        {pointAddress}
                       </p>
                     )}
                   </div>
@@ -282,6 +676,24 @@ const SellerDonationTab = ({
         )}
       </section>
 
+      {donationSuccess && (
+        <p
+          role="status"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700"
+        >
+          {donationSuccess}
+        </p>
+      )}
+
+      {donationError && !selectedListing && (
+        <p
+          role="alert"
+          className="break-words rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {donationError}
+        </p>
+      )}
+
       <button
         type="button"
         onClick={onBackToListings}
@@ -291,41 +703,106 @@ const SellerDonationTab = ({
         <ArrowRight size={14} />
       </button>
 
+      {/* Donation confirmation modal */}
       {selectedListing && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-md p-7 shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-orange-100 text-orange-500 flex items-center justify-center mb-5">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="donation-dialog-title"
+            className="w-full max-w-md rounded-[2rem] bg-white p-7 shadow-2xl"
+          >
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-500">
               <Gift size={24} />
             </div>
 
-            <h3 className="text-xl font-black text-slate-800">
+            <h3
+              id="donation-dialog-title"
+              className="text-xl font-black text-slate-800"
+            >
               Donate this device?
             </h3>
 
-            <p className="text-sm text-slate-500 mt-2">
-              You are about to donate{" "}
+            <p className="mt-2 text-sm text-slate-500">
+              Choose where you plan to bring{" "}
               <span className="font-bold text-slate-700">
                 {selectedListing.device_model || "this device"}
               </span>
-              . The listing will be marked as donated and will wait for admin
-              drop-off assignment.
+              . The selected location will be saved with this donation.
             </p>
 
-            <div className="flex gap-3 mt-7">
+            <div className="mt-5">
+              <label
+                htmlFor="donation-drop-off-point"
+                className="mb-2 block text-sm font-bold text-slate-700"
+              >
+                Choose a drop-off point *
+              </label>
+
+              <select
+                id="donation-drop-off-point"
+                value={selectedDropOffPointId}
+                onChange={(event) =>
+                  setSelectedDropOffPointId(event.target.value)
+                }
+                disabled={
+                  loadingDropOffPoints || availableDropOffPoints.length === 0
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              >
+                <option value="">Select a location</option>
+                {availableDropOffPoints.map((point) => (
+                  <option key={point.id} value={point.id}>
+                    {point.name || "Drop-off Point"} —{" "}
+                    {[point.barangay, point.city].filter(Boolean).join(", ")}
+                  </option>
+                ))}
+              </select>
+
+              {selectedDropOffPoint && (
+                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-600">
+                    {getPointAddress(selectedDropOffPoint)}
+                  </p>
+
+                  {selectedDropOffPoint.operating_hours && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      <span className="font-bold">Operating hours:</span>{" "}
+                      {selectedDropOffPoint.operating_hours}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {donationError && (
+              <p role="alert" className="mt-3 break-words text-sm text-red-600">
+                {donationError}
+              </p>
+            )}
+
+            <div className="mt-7 flex gap-3">
               <button
                 type="button"
-                onClick={() => setSelectedListing(null)}
-                className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-black uppercase"
+                disabled={isDonating}
+                onClick={closeDonationModal}
+                className="flex-1 rounded-xl bg-slate-100 py-3 text-[10px] font-black uppercase text-slate-500 disabled:opacity-50"
               >
                 Cancel
               </button>
 
               <button
                 type="button"
+                disabled={
+                  isDonating ||
+                  loadingDropOffPoints ||
+                  !selectedDropOffPointId ||
+                  availableDropOffPoints.length === 0
+                }
                 onClick={handleDonate}
-                className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-black uppercase"
+                className="flex-1 rounded-xl bg-orange-500 py-3 text-[10px] font-black uppercase text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Confirm Donation
+                {isDonating ? "Saving..." : "Confirm Donation"}
               </button>
             </div>
           </div>

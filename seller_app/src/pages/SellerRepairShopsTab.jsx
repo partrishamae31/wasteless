@@ -1426,7 +1426,7 @@ const SellerRepairShopsTab = ({
   return (
     <div className="animate-in fade-in duration-500 space-y-3">
       {/* HEADER */}
-      <div className="rounded-[1.25rem] bg-gradient-to-r from-[#2d86a3] to-[#14516d] p-5 text-white shadow-sm">
+      <div className="rounded-[1.25rem] mt-16 bg-gradient-to-r from-[#2d86a3] to-[#14516d] p-5 text-white shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-white/60">
