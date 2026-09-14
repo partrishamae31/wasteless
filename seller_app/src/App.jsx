@@ -58,13 +58,26 @@ function App() {
       .eq("id", session.user.id)
       .maybeSingle();
 
-    if (!data || error || !data.role) {
-      await supabase.auth.signOut();
-      setSession(null);
-      setRole(null);
-      setIsUnauthorized(true);
-      setCurrentPage("login");
-    } else {
+    if (error) {
+  console.error("Could not load profile:", error);
+
+  setSession(session);
+  setRole(null);
+  setLoading(false);
+  setIsChecked(true);
+  return;
+}
+
+if (!data || !data.role) {
+  // Email may be verified before the user finishes document uploads.
+  // Keep the session so SignUp can continue to Step 3.
+  setSession(session);
+  setRole(null);
+  setIsUnauthorized(false);
+  setLoading(false);
+  setIsChecked(true);
+  return;
+} else {
       const accountStatus = (data.status || "").toLowerCase();
       
       // Check the role selected before social login
@@ -144,7 +157,7 @@ function App() {
   }, []);
 
   // 🔥 LOADING STATE
-  if (loading && !session) {
+  if (loading && !session && currentPage !== "signup") {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-[#f8fafc]">
         <div className="w-12 h-12 border-4 border-[#769c2d] border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -245,8 +258,15 @@ function App() {
     );
   }
 
+  // Keep signup visible while the user verifies their email
+// and completes document uploads.
+if (currentPage === "signup") {
+  return <SignUp onLoginClick={() => setCurrentPage("login")} />;
+}
+
   // 🔥 LOGGED IN
   if (session && role) {
+    
     if (role === "NO_ROLE") {
       return (
         <SignUp

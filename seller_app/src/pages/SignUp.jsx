@@ -94,6 +94,9 @@ const SignUp = ({ onLoginClick }) => {
   const [accountType, setAccountType] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [authUserId, setAuthUserId] = useState(null);
   const [shopLocation, setShopLocation] = useState(null);
   const permitRef = React.useRef();
   const techRef = React.useRef();
@@ -183,30 +186,30 @@ const SignUp = ({ onLoginClick }) => {
   const [errors, setErrors] = useState({});
 
   const handleChange = (e) => {
-  const { name, value } = e.target;
+    const { name, value } = e.target;
 
-  setFormData((prev) => ({
-    ...prev,
-    [name]: value,
-  }));
-
-  if (errors[name]) {
-    setErrors((prev) => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: "",
+      [name]: value,
     }));
-  }
 
-  // Set the initial repair-shop map position
-  // based on the selected barangay.
-  if (
-    name === "barangay" &&
-    accountType === "repair_shop" &&
-    BARANGAY_COORDINATES[value]
-  ) {
-    setShopLocation(BARANGAY_COORDINATES[value]);
-  }
-};
+    if (errors[name]) {
+      setErrors((prev) => ({
+        ...prev,
+        [name]: "",
+      }));
+    }
+
+    // Set the initial repair-shop map position
+    // based on the selected barangay.
+    if (
+      name === "barangay" &&
+      accountType === "repair_shop" &&
+      BARANGAY_COORDINATES[value]
+    ) {
+      setShopLocation(BARANGAY_COORDINATES[value]);
+    }
+  };
 
   const handleFileChange = (e, field) => {
     const file = e.target.files?.[0];
@@ -273,9 +276,48 @@ const SignUp = ({ onLoginClick }) => {
     }
 
     if (step === 2) {
-      if (validateStep2()) {
-        setStep(3);
+      if (!validateStep2()) return;
+      setLoading(true);
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email.trim().toLowerCase(),
+          password: formData.password,
+          options: { data: { full_name: formData.fullName, role: accountType, buyer_type: accountType, barangay: formData.barangay, contact_number: formData.contactNumber, business_name: formData.businessName || "", is_verified: false, status: "Pending" } }
+        });
+        if (error) throw error;
+        if (!data?.user) throw new Error("Could not create the account.");
+        setAuthUserId(data.user.id);
+        setStep(4);
+        alert("A verification code has been sent to your email. Check your inbox and spam folder.");
+      } catch (err) {
+        console.error("Signup error details:", err);
+
+        const details = [
+          err?.message,
+          err?.code,
+          err?.status,
+          err?.name,
+        ].filter(Boolean).join(" | ");
+
+        alert("Could not send verification code: " + (details || String(err)));
+      } finally {
+        setLoading(false);
       }
+    }
+
+    if (step === 4) {
+      if (!/^\d{6}$/.test(otp.trim())) { alert("Enter the 6-digit code sent to your email."); return; }
+      setLoading(true);
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({ email: formData.email.trim().toLowerCase(), token: otp.trim(), type: "signup" });
+        if (error) throw error;
+        if (!data?.user?.id) throw new Error("Email verification could not be confirmed.");
+        setEmailVerified(true);
+        setAuthUserId(data.user.id);
+        setStep(3);
+        alert("Email verified! Please complete your account verification details.");
+      } catch (err) { alert("Email verification failed: " + err.message); }
+      finally { setLoading(false); }
       return;
     }
 
@@ -378,87 +420,54 @@ const SignUp = ({ onLoginClick }) => {
       // =========================
       const finalRole = accountType;
 
-      // =========================
-      // CREATE AUTH ACCOUNT
-      // =========================
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
+      if (!emailVerified || !authUserId) throw new Error("Please verify your email before submitting registration.");
+      const userId = authUserId;
 
-        options: {
-          data: {
-            full_name: formData.fullName,
-
-            // SAVE CORRECT ROLE
-            role: finalRole,
-
-            buyer_type: finalRole,
-
-            barangay: formData.barangay,
-            contact_number: formData.contactNumber,
-            business_name: formData.businessName,
-
-            is_verified: autoVerify,
-            status: autoVerify ? "Active" : "Pending",
-          },
-        },
-      });
-
-      if (authError) throw authError;
-
-      if (!authData?.user) {
-        throw new Error("User creation failed.");
-      }
-
-      const userId = authData.user.id;
-
-      // =========================
-      // PROFILE UPDATES
       // =========================
       let updates = {
-  full_name: formData.fullName,
-  email: formData.email,
-  contact_number: formData.contactNumber,
-  barangay: formData.barangay,
+        full_name: formData.fullName,
+        email: formData.email,
+        contact_number: formData.contactNumber,
+        barangay: formData.barangay,
 
-  role: finalRole,
+        role: finalRole,
 
-  business_name: formData.businessName || null,
+        business_name: formData.businessName || null,
 
-  // Repair Shop location
-  address:
-    finalRole === "repair_shop"
-      ? formData.address.trim()
-      : null,
+        // Repair Shop location
+        address:
+          finalRole === "repair_shop"
+            ? formData.address.trim()
+            : null,
 
-  latitude:
-    finalRole === "repair_shop" && shopLocation
-      ? shopLocation[0]
-      : null,
+        latitude:
+          finalRole === "repair_shop" && shopLocation
+            ? shopLocation[0]
+            : null,
 
-  longitude:
-    finalRole === "repair_shop" && shopLocation
-      ? shopLocation[1]
-      : null,
+        longitude:
+          finalRole === "repair_shop" && shopLocation
+            ? shopLocation[1]
+            : null,
 
-  verification_status: "pending",
-  is_verified: false,
-  status: "Pending",
+        verification_status: "pending",
+        is_verified: false,
+        status: "Pending",
 
-  average_rating: 0,
-  total_reviews: 0,
+        average_rating: 0,
+        total_reviews: 0,
 
-  certification_type:
-    finalRole === "repair_shop"
-      ? formData.certificationType
-      : null,
+        certification_type:
+          finalRole === "repair_shop"
+            ? formData.certificationType
+            : null,
 
-  other_certification:
-    finalRole === "repair_shop" &&
-    formData.certificationType === "Other Certification"
-      ? formData.otherCertification
-      : null,
-};
+        other_certification:
+          finalRole === "repair_shop" &&
+            formData.certificationType === "Other Certification"
+            ? formData.otherCertification
+            : null,
+      };
 
       // =========================
       // SELLER ID UPLOAD
@@ -543,11 +552,7 @@ const SignUp = ({ onLoginClick }) => {
 
       if (profileError) throw profileError;
 
-      alert(
-        autoVerify
-          ? "Account created! You can now log in."
-          : "Registration submitted! Please wait for admin approval.",
-      );
+      alert("Registration submitted! Your email is verified. Please wait for admin approval.");
     } catch (err) {
       console.error(err);
 
@@ -783,6 +788,19 @@ const SignUp = ({ onLoginClick }) => {
               </div>
             </div>
           )}
+          {!isSubmitted && step === 4 && (
+            <div className="space-y-4 animate-fadeIn text-left">
+              <h3 className="text-lg font-bold text-gray-800">Verify your email</h3>
+              <p className="text-sm text-gray-600">We sent a 6-digit code to <strong>{formData.email}</strong>. Enter it below to continue.</p>
+              <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Enter 6-digit code" className="w-full px-4 py-3 border border-gray-200 rounded-lg text-center text-xl tracking-widest" />
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setStep(2)} className="flex-1 py-3 border rounded-xl text-sm">Back</button>
+                <button type="button" onClick={handleContinue} disabled={loading || otp.length !== 6} className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Verifying..." : "Verify code"}</button>
+              </div>
+              <button type="button" disabled={loading} onClick={async () => { setLoading(true); try { const { error } = await supabase.auth.resend({ type: "signup", email: formData.email.trim().toLowerCase() }); if (error) throw error; alert("A new verification code has been sent."); } catch (err) { alert("Could not resend code: " + err.message); } finally { setLoading(false); } }} className="w-full text-sm text-teal-700 font-semibold disabled:opacity-50">Resend code</button>
+            </div>
+          )}
+
           {!isSubmitted && step === 3 && (
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-xs font-bold text-emerald-900 mb-1">
@@ -814,8 +832,8 @@ const SignUp = ({ onLoginClick }) => {
                     <div
                       onClick={() => permitRef.current?.click()}
                       className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
-                          ? "border-emerald-400 bg-emerald-50/10"
-                          : "border-gray-200"
+                        ? "border-emerald-400 bg-emerald-50/10"
+                        : "border-gray-200"
                         }`}
                     >
                       <input
@@ -886,98 +904,98 @@ const SignUp = ({ onLoginClick }) => {
                   </div>
 
                   {/* SHOP ADDRESS */}
-<div>
-  <label className="text-[11px] font-bold text-gray-700 block mb-2">
-    Shop Address{" "}
-    <span className="text-red-500">*</span>
-  </label>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Shop Address{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
 
-  <textarea
-    name="address"
-    rows={3}
-    placeholder="Enter your complete shop address"
-    value={formData.address}
-    onChange={handleChange}
-    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-  />
+                    <textarea
+                      name="address"
+                      rows={3}
+                      placeholder="Enter your complete shop address"
+                      value={formData.address}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    />
 
-  <p className="text-[9px] text-gray-400 mt-1.5">
-    Enter the address of your actual repair shop location.
-  </p>
-</div>
+                    <p className="text-[9px] text-gray-400 mt-1.5">
+                      Enter the address of your actual repair shop location.
+                    </p>
+                  </div>
 
-{/* =========================
+                  {/* =========================
     SHOP LOCATION
 ========================= */}
-<div>
-  <label className="text-[11px] font-bold text-gray-700 block mb-2">
-    Shop Location{" "}
-    <span className="text-red-500">*</span>
-  </label>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Shop Location{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
 
-  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 mb-3">
-    <div className="flex items-start gap-2">
-      <MapPin
-        size={16}
-        className="text-emerald-600 mt-0.5 shrink-0"
-      />
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 mb-3">
+                      <div className="flex items-start gap-2">
+                        <MapPin
+                          size={16}
+                          className="text-emerald-600 mt-0.5 shrink-0"
+                        />
 
-      <p className="text-[10px] text-emerald-800 leading-relaxed">
-        Select the exact location of your repair shop.
-        Click on the map or drag the pin to position it
-        at your shop.
-      </p>
-    </div>
-  </div>
+                        <p className="text-[10px] text-emerald-800 leading-relaxed">
+                          Select the exact location of your repair shop.
+                          Click on the map or drag the pin to position it
+                          at your shop.
+                        </p>
+                      </div>
+                    </div>
 
-  <div className="relative overflow-hidden rounded-xl border border-gray-200">
-    <MapContainer
-      center={
-        shopLocation ||
-        getInitialShopLocation()
-      }
-      zoom={15}
-      scrollWheelZoom={true}
-      style={{
-        height: "300px",
-        width: "100%",
-      }}
-    >
-      <TileLayer
-        attribution="&copy; OpenStreetMap contributors"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+                    <div className="relative overflow-hidden rounded-xl border border-gray-200">
+                      <MapContainer
+                        center={
+                          shopLocation ||
+                          getInitialShopLocation()
+                        }
+                        zoom={15}
+                        scrollWheelZoom={true}
+                        style={{
+                          height: "300px",
+                          width: "100%",
+                        }}
+                      >
+                        <TileLayer
+                          attribution="&copy; OpenStreetMap contributors"
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        />
 
-      <LocationSelector
-        position={
-          shopLocation ||
-          getInitialShopLocation()
-        }
-        onChange={setShopLocation}
-      />
-    </MapContainer>
-  </div>
+                        <LocationSelector
+                          position={
+                            shopLocation ||
+                            getInitialShopLocation()
+                          }
+                          onChange={setShopLocation}
+                        />
+                      </MapContainer>
+                    </div>
 
-  {shopLocation ? (
-    <div className="mt-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
-      <p className="text-[9px] font-semibold text-gray-600">
-        Selected shop location
-      </p>
+                    {shopLocation ? (
+                      <div className="mt-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                        <p className="text-[9px] font-semibold text-gray-600">
+                          Selected shop location
+                        </p>
 
-      <p className="text-[9px] text-gray-400 mt-0.5">
-        Latitude: {shopLocation[0].toFixed(6)}
-        {" • "}
-        Longitude: {shopLocation[1].toFixed(6)}
-      </p>
-    </div>
-  ) : (
-    <p className="text-[9px] text-gray-400 mt-1.5">
-      A starting location based on your selected barangay
-      will be shown. Please move the pin to your actual
-      shop location.
-    </p>
-  )}
-</div>
+                        <p className="text-[9px] text-gray-400 mt-0.5">
+                          Latitude: {shopLocation[0].toFixed(6)}
+                          {" • "}
+                          Longitude: {shopLocation[1].toFixed(6)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-[9px] text-gray-400 mt-1.5">
+                        A starting location based on your selected barangay
+                        will be shown. Please move the pin to your actual
+                        shop location.
+                      </p>
+                    )}
+                  </div>
 
                   {/* BUSINESS PERMIT */}
                   <div>
@@ -989,8 +1007,8 @@ const SignUp = ({ onLoginClick }) => {
                     <div
                       onClick={() => permitRef.current?.click()}
                       className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
-                          ? "border-emerald-400 bg-emerald-50/10"
-                          : "border-gray-200"
+                        ? "border-emerald-400 bg-emerald-50/10"
+                        : "border-gray-200"
                         }`}
                     >
                       <input
@@ -1083,8 +1101,8 @@ const SignUp = ({ onLoginClick }) => {
                     <div
                       onClick={() => techRef.current?.click()}
                       className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.techCert
-                          ? "border-emerald-400 bg-emerald-50/10"
-                          : "border-gray-200"
+                        ? "border-emerald-400 bg-emerald-50/10"
+                        : "border-gray-200"
                         }`}
                     >
                       <input
