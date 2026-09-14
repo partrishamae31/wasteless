@@ -13,6 +13,7 @@ import EnvOfficerLogin from "./pages/EnvOfficerLogin";
 import EnvOfficerPanel from "./wmo/EnvOfficerPanel";
 import AdminLogin from "./pages/AdminLogin";
 import AdminSignup from "./admin/AdminSignup";
+import ResetPassword from "./pages/ResetPassword";
 
 function App() {
   const [session, setSession] = useState(null);
@@ -155,6 +156,12 @@ if (!data || !data.role) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // PASSWORD RESET PAGE
+// Must be checked before authentication and loading screens.
+if (window.location.pathname === "/reset-password") {
+  return <ResetPassword />;
+}
 
   // 🔥 LOADING STATE
   if (loading && !session && currentPage !== "signup") {

@@ -22,6 +22,142 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isForgotPasswordView, setIsForgotPasswordView] = useState(false);
+const [resetEmail, setResetEmail] = useState("");
+const [resetLoading, setResetLoading] = useState(false);
+const [resetMessage, setResetMessage] = useState("");
+const [resetError, setResetError] = useState("");
+
+const handleForgotPassword = async (e) => {
+  e.preventDefault();
+
+  setResetMessage("");
+  setResetError("");
+
+  const normalizedEmail = resetEmail.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    setResetError("Please enter your email address.");
+    return;
+  }
+
+  setResetLoading(true);
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      normalizedEmail,
+      {
+        redirectTo: `${window.location.origin}/reset-password`,
+      }
+    );
+
+    if (error) throw error;
+
+    setResetMessage(
+      "If an account exists for this email, a password reset link will be sent. Please check your inbox and spam folder."
+    );
+  } catch (error) {
+    console.error("Password reset error:", error);
+
+    setResetError(
+      error.message || "Unable to send the password reset email."
+    );
+  } finally {
+    setResetLoading(false);
+  }
+};
+
+if (isForgotPasswordView) {
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-white px-6 font-sans">
+      <div className="w-full max-w-[420px]">
+
+        <div className="mb-8 text-center">
+          <img
+            src={wastelessLogo}
+            alt="Wasteless Logo"
+            className="mx-auto mb-5 h-24 w-24 object-contain"
+          />
+
+          <h2 className="text-2xl font-bold text-[#182033]">
+            Forgot Password?
+          </h2>
+
+          <p className="mt-2 text-sm text-[#7c8494]">
+            Enter your registered email address and we'll send you a link
+            to reset your password.
+          </p>
+        </div>
+
+        {resetError && (
+          <div
+            role="alert"
+            className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600"
+          >
+            {resetError}
+          </div>
+        )}
+
+        {resetMessage && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700"
+          >
+            {resetMessage}
+          </div>
+        )}
+
+        <form onSubmit={handleForgotPassword} className="space-y-5">
+          <div>
+            <label
+              htmlFor="reset-email"
+              className="mb-2 block text-sm font-semibold text-[#4d5667]"
+            >
+              Email Address
+            </label>
+
+            <input
+              id="reset-email"
+              type="email"
+              value={resetEmail}
+              onChange={(e) => {
+                setResetEmail(e.target.value);
+                setResetError("");
+                setResetMessage("");
+              }}
+              placeholder="your@email.com"
+              autoComplete="email"
+              required
+              className="w-full rounded-xl border border-[#dce1e7] bg-[#f9fafb] px-4 py-3 text-sm text-[#182033] outline-none focus:border-[#3295aa] focus:ring-2 focus:ring-[#3295aa]/20"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={resetLoading}
+            className="w-full rounded-xl bg-gradient-to-r from-[#2d91a8] to-[#619d2d] py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {resetLoading ? "Sending Reset Link..." : "Send Reset Link"}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsForgotPasswordView(false);
+            setResetError("");
+            setResetMessage("");
+          }}
+          className="mt-6 w-full text-center text-sm font-semibold text-[#2587a2] hover:underline"
+        >
+          ← Back to Login
+        </button>
+
+      </div>
+    </div>
+  );
+}
 
   // =========================
   // ADMIN SIGNUP VIEW
@@ -397,14 +533,17 @@ localStorage.setItem("wasteless_login_role", role);
                 </label>
 
                 <button
-                  type="button"
-                  className="text-[10px] font-medium text-[#2587a2] hover:underline"
-                  onClick={() => {
-                    // Add your forgot-password functionality here
-                  }}
-                >
-                  Forgot Password?
-                </button>
+  type="button"
+  className="text-[10px] font-medium text-[#2587a2] hover:underline"
+  onClick={() => {
+    setResetEmail(email);
+    setResetError("");
+    setResetMessage("");
+    setIsForgotPasswordView(true);
+  }}
+>
+  Forgot Password?
+</button>
 
               </div>
 
@@ -439,10 +578,8 @@ localStorage.setItem("wasteless_login_role", role);
                     transition
                   "
                 />
-
               </div>
             </div>
-
             {/* SIGN IN */}
             <button
               type="submit"
@@ -475,88 +612,17 @@ localStorage.setItem("wasteless_login_role", role);
                 <ArrowRight size={17} />
               )}
             </button>
-
           </form>
-
-          
-
-          {/* SOCIAL LOGIN */}
-          {/* <div className="flex gap-3">
-
-            <button
-              type="button"
-              onClick={() => handleSocialLogin("google")}
-              className="
-                flex-1
-                flex
-                items-center
-                justify-center
-                gap-2
-                py-3
-                border
-                border-[#dce1e7]
-                rounded-xl
-                text-[11px]
-                font-semibold
-                text-[#4d5667]
-                hover:bg-gray-50
-                transition
-              "
-            >
-              <img
-                src="https://www.svgrepo.com/show/355037/google.svg"
-                className="w-4 h-4"
-                alt="Google"
-              />
-
-              Google
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSocialLogin("facebook")}
-              className="
-                flex-1
-                flex
-                items-center
-                justify-center
-                gap-2
-                py-3
-                border
-                border-[#dce1e7]
-                rounded-xl
-                text-[11px]
-                font-semibold
-                text-[#4d5667]
-                hover:bg-gray-50
-                transition
-              "
-            >
-              <img
-                src="https://www.svgrepo.com/show/475647/facebook-color.svg"
-                className="w-4 h-4"
-                alt="Facebook"
-              />
-
-              Facebook
-            </button>
-
-          </div> */}
-
           {/* CREATE ACCOUNT */}
           <p className="text-center text-[11px] text-[#8b93a0] mt-6">
-
             Don't have an account?{" "}
-
             <span
               onClick={onSignUpClick}
               className="text-[#2587a2] font-bold cursor-pointer hover:underline"
             >
               Create Account
             </span>
-
           </p>
-
         </div>
       </div>
     </div>
