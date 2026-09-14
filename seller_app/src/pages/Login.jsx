@@ -478,23 +478,11 @@ localStorage.setItem("wasteless_login_role", role);
 
           </form>
 
-          {/* DIVIDER */}
-          <div className="relative flex py-6 items-center">
-
-            <div className="flex-grow border-t border-[#e1e4e8]" />
-
-            <span className="flex-shrink mx-4 text-[#a4aab4] text-[10px]">
-              Or continue with
-            </span>
-
-            <div className="flex-grow border-t border-[#e1e4e8]" />
-
-          </div>
+          
 
           {/* SOCIAL LOGIN */}
-          <div className="flex gap-3">
+          {/* <div className="flex gap-3">
 
-            {/* GOOGLE */}
             <button
               type="button"
               onClick={() => handleSocialLogin("google")}
@@ -524,7 +512,6 @@ localStorage.setItem("wasteless_login_role", role);
               Google
             </button>
 
-            {/* FACEBOOK */}
             <button
               type="button"
               onClick={() => handleSocialLogin("facebook")}
@@ -554,7 +541,7 @@ localStorage.setItem("wasteless_login_role", role);
               Facebook
             </button>
 
-          </div>
+          </div> */}
 
           {/* CREATE ACCOUNT */}
           <p className="text-center text-[11px] text-[#8b93a0] mt-6">
