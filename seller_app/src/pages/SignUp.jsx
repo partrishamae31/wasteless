@@ -254,7 +254,22 @@ const SignUp = ({ onLoginClick }) => {
     if (!formData.contactNumber)
       newErrors.contactNumber = "Contact number is required";
     if (!formData.barangay) newErrors.barangay = "Please select your barangay";
-    if (!formData.password) newErrors.password = "Password is required";
+    if (!formData.password) {
+      newErrors.password = "Password is required";
+    } else {
+      const password = formData.password;
+      const hasMinLength = password.length >= 8;
+      const hasUppercase = /[A-Z]/.test(password);
+      const hasLowercase = /[a-z]/.test(password);
+      const hasNumber = /[0-9]/.test(password);
+      const hasSymbol = /[^A-Za-z0-9]/.test(password);
+
+      if (!hasMinLength || !hasUppercase || !hasLowercase || !hasNumber || !hasSymbol) {
+        newErrors.password =
+          "Password must be at least 8 characters and include an uppercase letter, lowercase letter, number, and symbol.";
+      }
+    }
+
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = "Passwords do not match";
     }
@@ -748,7 +763,7 @@ const SignUp = ({ onLoginClick }) => {
                     value={formData.password}
                   />
                   <p className="text-[9px] text-gray-400 mt-1.5">
-                    Minimum 8 characters with uppercase, lowercase, and digit
+                    Minimum 8 characters with uppercase, lowercase, number, and symbol
                   </p>
                 </div>
 

@@ -571,6 +571,9 @@ const SellerDashboard = ({ session }) => {
   const [loading, setLoading] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileData, setProfileData] = useState(null);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [editProfile, setEditProfile] = useState({ full_name: "", contact_number: "", barangay: "" });
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   const [showAchievementsModal, setShowAchievementsModal] = useState(false);
@@ -618,7 +621,27 @@ const SellerDashboard = ({ session }) => {
   const isRepairShop = user?.role === "repair_shop";
   const isHarvester = user?.role === "harvester";
 
-  const displayName = isRepairShop ? user?.business_name : user?.displayName;
+  // Profile display values must come from the profiles table because
+  // Edit Profile saves changes there. Auth user_metadata can be stale.
+  const currentProfileName =
+    profileData?.full_name ||
+    session?.user?.user_metadata?.full_name ||
+    "User Name";
+
+  const currentProfilePhone =
+    profileData?.contact_number ||
+    session?.user?.user_metadata?.contact_number ||
+    "Not set";
+
+  const currentProfileBarangay =
+    profileData?.barangay ||
+    session?.user?.user_metadata?.barangay ||
+    "Not set";
+
+  const displayName =
+    isRepairShop
+      ? profileData?.business_name || user?.business_name || currentProfileName
+      : currentProfileName;
 
   const displayRole = isRepairShop ? "Repair Shop" : "Tech Harvester";
 
@@ -1839,6 +1862,72 @@ const SellerDashboard = ({ session }) => {
     setLoading(false);
   };
 
+  const openEditProfile = () => {
+    setEditProfile({
+      full_name: profileData?.full_name || session?.user?.user_metadata?.full_name || "",
+      contact_number: profileData?.contact_number || "",
+      barangay: profileData?.barangay || "",
+    });
+    setShowEditProfile(true);
+  };
+
+  const handleSaveProfile = async (event) => {
+    event?.preventDefault?.();
+    if (!session?.user?.id) return alert("Please log in again.");
+    if (!editProfile.full_name.trim()) return alert("Please enter your full name.");
+    setProfileSaving(true);
+    try {
+      const updates = {
+        full_name: editProfile.full_name.trim(),
+        contact_number: editProfile.contact_number.trim() || null,
+        barangay: editProfile.barangay || null,
+      };
+      const { data, error } = await supabase.from("profiles")
+        .update(updates).eq("id", session.user.id).select("*").single();
+      if (error) throw error;
+
+      // Keep Supabase Auth metadata synchronized for any other component
+      // that may still read session.user.user_metadata.
+      const { error: authUpdateError } = await supabase.auth.updateUser({
+        data: {
+          full_name: updates.full_name,
+          contact_number: updates.contact_number,
+          barangay: updates.barangay,
+        },
+      });
+
+      if (authUpdateError) {
+        // The profiles table update is already successful, so do not fail
+        // the profile save just because Auth metadata could not be synced.
+        console.warn("Auth metadata sync failed:", authUpdateError.message);
+      }
+
+      setProfileData(data);
+      setUser((prev) => prev ? { ...prev, ...data, displayName: data.full_name } : data);
+      setShowEditProfile(false);
+      alert("Profile updated successfully.");
+    } catch (error) {
+      console.error("Profile update failed:", error);
+      alert(`Could not update profile: ${error.message}`);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleDeactivateAccount = async () => {
+    if (!window.confirm("Deactivate your account? You will be signed out. Contact support to reactivate it.")) return;
+    try {
+      const { error } = await supabase.from("profiles")
+        .update({ status: "deactivated" }).eq("id", session.user.id);
+      if (error) throw error;
+      await supabase.auth.signOut();
+      alert("Your account has been deactivated.");
+    } catch (error) {
+      console.error("Account deactivation failed:", error);
+      alert(`Could not deactivate account: ${error.message}`);
+    }
+  };
+
   const handleLogout = async () => {
     setShowProfileMenu(false); // Close the menu first
     const { error } = await supabase.auth.signOut();
@@ -2112,7 +2201,7 @@ const SellerDashboard = ({ session }) => {
           >
             <div className="text-right">
               <div className="text-sm font-bold truncate max-w-[120px]">
-                {session.user.user_metadata?.full_name || "User Name"}
+                {currentProfileName}
               </div>
               <div
                 className={`text-[10px] flex items-center gap-1 justify-end font-semibold ${profileData?.verification_status === "verified"
@@ -2136,7 +2225,7 @@ const SellerDashboard = ({ session }) => {
               </div>
             </div>
             <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center text-white font-bold shadow-sm">
-              {session.user.user_metadata?.full_name?.charAt(0).toUpperCase()}
+              {currentProfileName.charAt(0).toUpperCase()}
             </div>
           </div>
 
@@ -2147,14 +2236,11 @@ const SellerDashboard = ({ session }) => {
               <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-4 text-white">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-bold">
-                    {session.user.user_metadata?.full_name
-                      ?.charAt(0)
-                      .toUpperCase() ||
-                      session.user.full_name.charAt(0).toUpperCase()}
+                    {currentProfileName.charAt(0).toUpperCase()}
                   </div>
                   <div className="overflow-hidden">
                     <div className="text-sm font-bold truncate">
-                      {session.user.user_metadata?.full_name || "User Name"}
+                      {currentProfileName}
                     </div>
                     <div className="text-[10px] opacity-80 truncate">
                       {session.user.email}
@@ -3231,14 +3317,48 @@ const SellerDashboard = ({ session }) => {
           {activeTab === "repair-shops" && (
             <SellerRepairShopsTab
               session={session}
-              sellerBarangay={
-                profileData?.barangay ||
-                session?.user?.user_metadata?.barangay ||
-                ""
-              }
+              sellerBarangay={currentProfileBarangay === "Not set" ? "" : currentProfileBarangay}
             />
           )}
         </div>
+        {showEditProfile && (
+          <div className="fixed inset-0 z-[220] bg-slate-900/60 flex items-center justify-center p-4">
+            <form onSubmit={handleSaveProfile} className="w-full max-w-lg bg-white rounded-3xl p-6 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-black text-slate-800">Edit Profile</h2>
+                <button type="button" onClick={() => setShowEditProfile(false)} className="p-2 rounded-full hover:bg-slate-100" aria-label="Close"><X size={18}/></button>
+              </div>
+              <label className="block text-sm font-bold text-slate-700">Full name
+                <input required maxLength={120} value={editProfile.full_name} onChange={(e) => setEditProfile(p => ({...p, full_name:e.target.value}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" />
+              </label>
+              <label className="block text-sm font-bold text-slate-700">Email
+                <input disabled value={session?.user?.email || ""} className="mt-1 w-full border rounded-xl px-3 py-2 bg-slate-100 font-normal" />
+                <span className="text-xs text-slate-500">Email changes require a separate authentication flow.</span>
+              </label>
+              <label className="block text-sm font-bold text-slate-700">Contact number
+                <input type="tel" maxLength={30} value={editProfile.contact_number} onChange={(e) => setEditProfile(p => ({...p, contact_number:e.target.value}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" />
+              </label>
+              <label className="block text-sm font-bold text-slate-700">Barangay
+                <select value={editProfile.barangay} onChange={(e) => setEditProfile(p => ({...p, barangay:e.target.value}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">
+                  <option value="">Select barangay</option>
+                  {valenzuelaBarangays.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </label>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowEditProfile(false)} className="flex-1 border rounded-xl py-3 font-bold">Cancel</button>
+                <button disabled={profileSaving} type="submit" className="flex-1 bg-[#2d7a7f] text-white rounded-xl py-3 font-bold disabled:opacity-50">{profileSaving ? "Saving..." : "Save changes"}</button>
+              </div>
+              {/* <div className="border-t border-slate-200 pt-4 mt-2 space-y-2">
+                <h3 className="text-sm font-bold text-slate-700">Account actions</h3>
+                <p className="text-xs text-slate-500">Deactivate to disable your account, or request permanent deletion.</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={() => { if (window.confirm("Are you sure you want to deactivate your account? You will be signed out.")) { setShowEditProfile(false); handleDeactivateAccount(); } }} className="flex-1 border border-amber-300 text-amber-800 hover:bg-amber-50 rounded-xl py-2.5 text-sm font-bold">Deactivate account</button>
+                  <button type="button" onClick={() => alert("Permanent account deletion is not available here yet. It must be implemented securely using a Supabase Edge Function and the Admin API.")} className="flex-1 border border-red-300 text-red-700 hover:bg-red-50 rounded-xl py-2.5 text-sm font-bold">Delete account</button>
+                </div>
+              </div> */}
+            </form>
+          </div>
+        )}
         {/* Profile Modal Overlay */}
         {showProfileModal && (
           <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
@@ -3255,9 +3375,7 @@ const SellerDashboard = ({ session }) => {
                 <div className="flex items-center gap-4">
                   <div className="relative">
                     <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
-                      {session.user.user_metadata?.full_name
-                        ?.charAt(0)
-                        .toUpperCase()}
+                      {currentProfileName.charAt(0).toUpperCase()}
                     </div>
                     <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
                       <Camera size={12} />
@@ -3265,7 +3383,7 @@ const SellerDashboard = ({ session }) => {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold">
-                      {session.user.user_metadata?.full_name || "User Name"}
+                      {currentProfileName}
                     </h2>
                     <div className="flex items-center gap-2 mt-1">
                       <span
@@ -3280,7 +3398,7 @@ const SellerDashboard = ({ session }) => {
                       >
                         <CheckCircle size={10} />
 
-                        {profileData?.verification_status === "approved"
+                        {profileData?.verification_status === "verified"
                           ? "Verified Seller"
                           : profileData?.verification_status === "pending"
                             ? "Verification Pending"
@@ -3312,7 +3430,7 @@ const SellerDashboard = ({ session }) => {
               {/* Full-Screen Profile Content */}
               <div className="flex-1 p-6 md:p-10 space-y-6 bg-slate-50/50">
                 <div className="flex justify-end">
-                  <button className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-[#246367] transition shadow-sm">
+                  <button type="button" onClick={openEditProfile} className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-[#246367] transition shadow-sm">
                     <Edit3 size={14} /> Edit Profile
                   </button>
                 </div>
@@ -3495,7 +3613,7 @@ const SellerDashboard = ({ session }) => {
                   <div className="grid gap-4">
                     <InfoRow
                       label="Full Name"
-                      value={session.user.user_metadata?.full_name}
+                      value={currentProfileName}
                       icon={<User size={14} />}
                     />
                     <InfoRow
@@ -3505,15 +3623,12 @@ const SellerDashboard = ({ session }) => {
                     />
                     <InfoRow
                       label="Phone Number"
-                      value={
-                        session.user.user_metadata?.contact_number ||
-                        "+63 917 123 4567"
-                      }
+                      value={currentProfilePhone}
                       icon={<Phone size={14} />}
                     />
                     <InfoRow
                       label="Barangay"
-                      value={session.user.user_metadata?.barangay || "Not set"}
+                      value={currentProfileBarangay}
                       icon={<MapPin size={14} />}
                     />
                   </div>
@@ -3869,7 +3984,7 @@ const SellerDashboard = ({ session }) => {
           }}
           onConfirm={handleConfirmDonation}
           listing={listingToDonate}
-          barangay={session?.user?.user_metadata?.barangay || "Karuhatan"}
+          barangay={currentProfileBarangay === "Not set" ? "" : currentProfileBarangay}
         />
         <div className="space-y-4">
           {/* FULL NAME */}
