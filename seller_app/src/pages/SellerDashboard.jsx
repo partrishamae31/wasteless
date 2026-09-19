@@ -184,7 +184,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
   };
 
   return (
-    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/100 backdrop-blur-sm">
       <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden">
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
           <div className="flex items-start justify-between gap-4">
@@ -457,13 +457,13 @@ const MarketplaceRatingModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm">
       <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden">
         <div className="bg-gradient-to-r from-[#2d7a7f] to-[#3285a1] p-6 text-white">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-white/80 text-[10px] font-black uppercase tracking-widest">
-                <Star size={14} fill="currentColor" /> Marketplace Review
+                 Marketplace Review
               </div>
               <h2 className="text-2xl font-black mt-2">
                 Rate {isRatingBuyer ? "Buyer" : "Seller"}
