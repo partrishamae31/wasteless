@@ -136,7 +136,7 @@ const SignUp = ({ onLoginClick }) => {
     "Rincon",
     "Tagalag",
     "Ugong",
-    "Viente Reales",
+    "Veinte Reales",
     "Wawang Pulo",
   ];
 
@@ -466,7 +466,7 @@ const SignUp = ({ onLoginClick }) => {
         const { data, error } = await supabase.auth.signUp({
           email: formData.email.trim().toLowerCase(),
           password: formData.password,
-          options: { data: { role: accountType, buyer_type: accountType, is_verified: false, status: "verified" } }
+          options: { data: { role: accountType, buyer_type: accountType, is_verified: false, status: "active" } }
         });
         if (error) throw error;
         if (!data?.user) throw new Error("Could not create the account.");
@@ -632,9 +632,9 @@ const SignUp = ({ onLoginClick }) => {
             ? shopLocation[1]
             : null,
 
-        verification_status: "verified",
-        is_verified: true,
-        status: "Verified",
+        verification_status: "pending",
+        is_verified: false,
+        status: "active",
 
         average_rating: 0,
         total_reviews: 0,
@@ -1384,7 +1384,7 @@ const SignUp = ({ onLoginClick }) => {
               <h3 className="text-lg font-bold text-gray-800">Registration complete</h3>
               <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-xl">
                 <p className="text-sm text-emerald-800 leading-relaxed">
-                  Your registration details and documents were submitted. You can now log in. The app has marked this account as verified; this status does not independently confirm document authenticity.
+                  Your registration details and documents were submitted. You can now log in. Your account is active, but verification is still pending. An administrator will review your submitted documents before your account is marked as verified.
                 </p>
               </div>
             </div>

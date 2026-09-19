@@ -161,7 +161,7 @@ const UserManagement = () => {
             </h2>
 
             <p className="text-xs text-slate-500">
-              Repair shops are waiting for credential verification
+              Users are waiting for credential verification
             </p>
           </div>
         </div>
@@ -187,6 +187,11 @@ const UserManagement = () => {
                     </h3>
 
                     <p className="text-xs text-slate-500">{user.email}</p>
+                    <p className="mt-1 text-[11px] font-medium text-slate-400">
+                      {user.role === "repair_shop" || user.role === "repair shop"
+                        ? "Repair Shop"
+                        : user.role || "User"}
+                    </p>
                   </div>
                 </div>
 
@@ -241,6 +246,7 @@ const UserManagement = () => {
             <option value="All">All Roles</option>
             <option value="harvester">Harvester</option>
             <option value="seller">Seller</option>
+            <option value="repair_shop">Repair Shop</option>
           </select>
         </div>
 
@@ -351,10 +357,17 @@ const UserManagement = () => {
 
                       {/* VERIFICATION */}
                       <td className="px-2 py-5">
-                        {user.is_verified ? (
+                        {user.is_verified ||
+                        user.verification_status?.toLowerCase() === "verified" ? (
                           <div className="flex items-center gap-1 text-sm font-medium text-emerald-600">
                             <ShieldCheck size={14} />
                             Verified
+                          </div>
+                        ) : user.verification_status?.toLowerCase() ===
+                          "rejected" ? (
+                          <div className="flex items-center gap-1 text-sm font-medium text-red-500">
+                            <ShieldAlert size={14} />
+                            Rejected
                           </div>
                         ) : (
                           <div className="flex items-center gap-1 text-sm font-medium text-orange-500">

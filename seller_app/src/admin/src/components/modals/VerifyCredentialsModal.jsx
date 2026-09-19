@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../supabaseClient";
 import {
   FileText,
@@ -9,167 +9,299 @@ import {
   X,
   PartyPopper,
   ArrowRight,
+  ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 
-const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
+const EMPTY_CHECKLIST = {
+  permitValid: false,
+  certLegit: false,
+  nameMatches: false,
+  contactVerified: false,
+};
+
+const VerifyCredentialsModal = ({
+  isOpen,
+  onClose,
+  shopData,
+  onSuccess,
+}) => {
   const [isSuccess, setIsSuccess] = useState(false);
-  const [checklist, setChecklist] = useState({
-    permitValid: false,
-    certLegit: false,
-    nameMatches: false,
-    contactVerified: false,
-  });
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [checklist, setChecklist] = useState(EMPTY_CHECKLIST);
+
   const userRole = shopData?.role?.toLowerCase();
 
   const isSeller = userRole === "seller";
-
-  const isRepairShop = userRole === "repair_shop" || userRole === "repair shop";
-
+  const isRepairShop =
+    userRole === "repair_shop" || userRole === "repair shop";
   const isHarvester = userRole === "harvester";
 
-  if (!isOpen) return null;
+  // Reset the checklist whenever a different user/application is opened.
+  useEffect(() => {
+    if (isOpen) {
+      setChecklist({ ...EMPTY_CHECKLIST });
+      setIsSuccess(false);
+      setIsProcessing(false);
+    }
+  }, [isOpen, shopData?.id]);
 
   const handleCheck = (key) => {
-    setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
+    if (isProcessing) return;
+
+    setChecklist((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
   };
+
   const handleReject = async () => {
-    const reason = prompt(
-      "Please enter the reason for rejection (e.g., Expired Permit):",
+    if (!shopData?.id || isProcessing) return;
+
+    const reason = window.prompt(
+      "Please enter the reason for rejection (e.g., Expired Permit):"
     );
-    if (!reason) return; // Don't reject if no reason is given
+
+    if (!reason?.trim()) return;
 
     try {
+      setIsProcessing(true);
+
       const { error } = await supabase
         .from("profiles")
         .update({
           verification_status: "rejected",
-          rejection_reason: reason, // You'll need this column in your table
+          rejection_reason: reason.trim(),
           is_verified: false,
         })
         .eq("id", shopData.id);
 
       if (error) throw error;
-      alert("User has been notified of rejection.");
+
+      alert("The verification request has been rejected.");
+
+      if (onSuccess) {
+        await onSuccess();
+      }
+
       onClose();
-      if (onSuccess) onSuccess();
     } catch (error) {
-      alert("Error: " + error.message);
+      console.error("Rejection failed:", error);
+      alert("Rejection Error: " + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleApprove = async () => {
+    if (!shopData?.id || isProcessing || !isAllChecked) return;
+
     try {
-      const { data, error, count } = await supabase
+      setIsProcessing(true);
+
+      // Verification is intentionally done here by the admin.
+      // Document scanning during signup only extracts/pre-fills information.
+      const { data, error } = await supabase
         .from("profiles")
         .update({
           is_verified: true,
-          status: "Active",
           verification_status: "verified",
+          rejection_reason: null,
         })
         .eq("id", shopData.id)
-        .select(); // This allows us to see if a row was actually returned
+        .select("id, is_verified, verification_status");
 
       if (error) throw error;
 
-      // Check if any row was actually updated
       if (!data || data.length === 0) {
         console.error(
-          "Update executed but 0 rows affected. Check RLS policies.",
+          "Verification update returned no rows. Check Supabase RLS policies."
         );
+
         alert(
-          "Verification failed: You might not have permission to update this user.",
+          "Verification failed: the admin account may not have permission to update this user."
         );
         return;
       }
 
-      console.log("Success! Updated user:", data);
+      console.log("User successfully verified:", data[0]);
+
+      if (onSuccess) {
+        await onSuccess();
+      }
+
       setIsSuccess(true);
-      if (onSuccess) onSuccess();
     } catch (error) {
-      console.error("Verification failed:", error.message);
+      console.error("Verification failed:", error);
       alert("Verification Error: " + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleFinalClose = () => {
     setIsSuccess(false);
+    setChecklist({ ...EMPTY_CHECKLIST });
     onClose();
   };
 
-  const isAllChecked =
-  isSeller || isHarvester
-    ? checklist.permitValid &&
-      checklist.nameMatches &&
-      checklist.contactVerified
-    : checklist.permitValid &&
-      checklist.certLegit &&
-      checklist.nameMatches &&
-      checklist.contactVerified;
+  const isAllChecked = useMemo(() => {
+    if (isSeller || isHarvester) {
+      return (
+        checklist.permitValid &&
+        checklist.nameMatches &&
+        checklist.contactVerified
+      );
+    }
+
+    if (isRepairShop) {
+      return (
+        checklist.permitValid &&
+        checklist.certLegit &&
+        checklist.nameMatches &&
+        checklist.contactVerified
+      );
+    }
+
+    return false;
+  }, [isSeller, isHarvester, isRepairShop, checklist]);
+
+  const displayName = isRepairShop
+    ? shopData?.business_name || shopData?.full_name || "Repair Shop"
+    : shopData?.full_name || "User";
+
+  const roleLabel = isRepairShop
+    ? "Repair Shop"
+    : isHarvester
+      ? "Harvester"
+      : isSeller
+        ? "Seller"
+        : "User";
+
+  if (!isOpen || !shopData) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6 backdrop-blur-sm">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl animate-in fade-in zoom-in duration-200">
         {!isSuccess ? (
           <>
-            {/* Header */}
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 flex-shrink-0">
-              <h2 className="text-xl font-bold text-slate-800">
-                {isSeller
-                  ? "Verify Seller Identity"
-                  : isRepairShop
-                    ? "Verify Repair Shop Credentials"
-                    : "Verify Harvester Credentials"}
-              </h2>
+            {/* HEADER */}
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-100 p-6">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={20} className="text-emerald-600" />
+                  <h2 className="text-xl font-bold text-slate-800">
+                    {isSeller
+                      ? "Verify Seller Identity"
+                      : isRepairShop
+                        ? "Verify Repair Shop Credentials"
+                        : "Verify Harvester Credentials"}
+                  </h2>
+                </div>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Review the submitted information and documents before
+                  approving this {roleLabel.toLowerCase()}.
+                </p>
+              </div>
+
               <button
+                type="button"
                 onClick={onClose}
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                disabled={isProcessing}
+                className="rounded-full p-2 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Close verification modal"
               >
                 <X size={20} className="text-slate-500" />
               </button>
             </div>
 
-            {/* Scrollable Content */}
-            <div className="p-6 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-6 p-5 bg-slate-50 rounded-xl mb-6">
+            {/* SCROLLABLE CONTENT */}
+            <div className="overflow-y-auto p-6">
+              {/* USER SUMMARY */}
+              <div className="mb-6 grid grid-cols-1 gap-4 rounded-xl bg-slate-50 p-5 sm:grid-cols-2">
                 <div>
-                  <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
                     {isSeller
                       ? "Seller Name"
                       : isRepairShop
                         ? "Shop Name"
                         : "Harvester Name"}
                   </p>
+
                   <p className="text-sm font-medium text-slate-700">
-                    {isSeller
-                      ? shopData?.full_name || "Unknown Seller"
-                      : isRepairShop
-                        ? shopData?.business_name || "Repair Shop"
-                        : shopData?.full_name || "Harvester"}
+                    {displayName}
                   </p>
                 </div>
+
                 <div>
-                  <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
                     Contact Email
                   </p>
+
                   <p className="text-sm font-medium text-slate-700">
-                    {shopData?.email || "eparts@email.com"}
+                    {shopData?.email || "No email"}
                   </p>
                 </div>
+
+                {isRepairShop && (
+                  <>
+                    <div>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Full Name
+                      </p>
+                      <p className="text-sm font-medium text-slate-700">
+                        {shopData?.full_name || "Not provided"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Contact Number
+                      </p>
+                      <p className="text-sm font-medium text-slate-700">
+                        {shopData?.contact_number || "Not provided"}
+                      </p>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Business Address
+                      </p>
+                      <p className="text-sm font-medium text-slate-700">
+                        {shopData?.address || "Not provided"}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
 
-              {/* Document Previews Section */}
-              <div className="space-y-4 mb-8">
+              {/* DOCUMENT PREVIEWS */}
+              <div className="mb-8 space-y-4">
+                <div className="flex items-center gap-2">
+                  <FileText size={17} className="text-slate-500" />
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Submitted Documents
+                  </h3>
+                </div>
+
                 {isSeller && (
                   <DocumentPreview
                     title="Government Valid ID"
-                    url={shopData?.business_permit_url}
+                    url={
+                      shopData?.government_id_url ||
+                      shopData?.business_permit_url
+                    }
                   />
                 )}
 
                 {isHarvester && (
                   <DocumentPreview
                     title="Government Valid ID"
-                    url={shopData?.business_permit_url}
+                    url={
+                      shopData?.government_id_url ||
+                      shopData?.business_permit_url
+                    }
                   />
                 )}
 
@@ -186,13 +318,29 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
                     />
                   </>
                 )}
+
+                {!isSeller && !isHarvester && !isRepairShop && (
+                  <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-700">
+                    This account has an unsupported role and cannot be verified
+                    from this form.
+                  </div>
+                )}
               </div>
 
-              {/* Checklist */}
-              <div className="border border-blue-100 bg-blue-50/30 rounded-xl p-6">
-                <h3 className="text-sm font-bold text-slate-800 mb-4">
-                  Verification Checklist:
-                </h3>
+              {/* CHECKLIST */}
+              <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-6">
+                <div className="mb-4">
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Verification Checklist
+                  </h3>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    The admin must manually review the submitted documents.
+                    Scanning only assists with extracting registration
+                    information.
+                  </p>
+                </div>
+
                 <div className="space-y-3">
                   {isSeller && (
                     <>
@@ -253,7 +401,7 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
                       />
 
                       <CheckItem
-                        label="Shop name matches official documents"
+                        label="Shop name matches the submitted documents"
                         checked={checklist.nameMatches}
                         onChange={() => handleCheck("nameMatches")}
                       />
@@ -266,49 +414,71 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
                     </>
                   )}
                 </div>
+
+                {!isAllChecked && (
+                  <div className="mt-5 flex items-start gap-2 rounded-lg border border-blue-100 bg-white p-3 text-xs text-slate-500">
+                    <AlertTriangle
+                      size={15}
+                      className="mt-0.5 flex-shrink-0 text-blue-500"
+                    />
+                    <span>
+                      Complete all checklist items before approving the
+                      account.
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="p-6 border-t border-slate-100 flex gap-4 flex-shrink-0">
+            {/* FOOTER */}
+            <div className="flex flex-shrink-0 gap-4 border-t border-slate-100 p-6">
               <button
-                onClick={handleReject} // Changed from onClose
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-red-200 text-red-600 font-semibold hover:bg-red-50 transition-colors"
+                type="button"
+                onClick={handleReject}
+                disabled={isProcessing}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <XCircle size={18} /> Reject
+                <XCircle size={18} />
+                {isProcessing ? "Processing..." : "Reject"}
               </button>
+
               <button
-                disabled={!isAllChecked}
+                type="button"
+                disabled={!isAllChecked || isProcessing}
                 onClick={handleApprove}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold transition-all ${
-                  isAllChecked
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold transition-all ${
+                  isAllChecked && !isProcessing
                     ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                    : "cursor-not-allowed bg-slate-200 text-slate-400"
                 }`}
               >
-                <CheckCircle size={18} /> Approve & Verify
+                <CheckCircle size={18} />
+                {isProcessing ? "Processing..." : "Approve & Verify"}
               </button>
             </div>
           </>
         ) : (
           /* SUCCESS VIEW */
-          <div className="p-12 flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6">
+          <div className="flex flex-col items-center p-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
               <PartyPopper size={40} />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">
-              Shop Verified Successfully!
+
+            <h2 className="mb-2 text-2xl font-bold text-slate-800">
+              Account Verified Successfully!
             </h2>
-            <p className="text-slate-500 mb-8 max-w-sm">
+
+            <p className="mb-8 max-w-sm text-slate-500">
               <span className="font-semibold text-slate-700">
-                {shopData?.name}
+                {displayName}
               </span>{" "}
-              is now a verified partner. They can now bid on e-waste listings
-              and offer repair services.
+              is now a verified {roleLabel.toLowerCase()}.
             </p>
+
             <button
+              type="button"
               onClick={handleFinalClose}
-              className="w-full max-w-xs flex items-center justify-center gap-2 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+              className="flex w-full max-w-xs items-center justify-center gap-2 rounded-2xl bg-slate-900 py-4 font-bold text-white shadow-lg shadow-slate-200 transition-all hover:bg-slate-800"
             >
               Back to User Management
               <ArrowRight size={18} />
@@ -320,62 +490,76 @@ const VerifyCredentialsModal = ({ isOpen, onClose, shopData, onSuccess }) => {
   );
 };
 
-// Helper Components
-// Updated Helper Component
+/* =========================
+   DOCUMENT PREVIEW
+========================= */
+
 const DocumentPreview = ({ title, url }) => (
   <div>
-    <p className="text-xs font-semibold text-slate-500 mb-2">{title}</p>
-    <div className="border-2 border-dashed border-slate-200 rounded-xl overflow-hidden bg-slate-50 flex flex-col items-center justify-center min-h-[150px]">
+    <p className="mb-2 text-xs font-semibold text-slate-500">{title}</p>
+
+    <div className="flex min-h-[150px] flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50">
       {url ? (
-        <div className="w-full h-full flex flex-col items-center p-2">
-          {/* If it's an image, show it. If it's a PDF, show the icon. */}
+        <div className="flex h-full w-full flex-col items-center p-3">
           <img
             src={url}
             alt={title}
-            className="max-h-32 object-contain rounded mb-2 shadow-sm"
+            className="mb-2 max-h-40 max-w-full rounded object-contain shadow-sm"
             onError={(e) => {
-              e.target.style.display = "none";
-            }} // Fallback if not an image
+              e.currentTarget.style.display = "none";
+            }}
           />
+
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-bold text-purple-600 hover:underline flex items-center gap-1"
+            className="flex items-center gap-1 text-xs font-bold text-purple-600 hover:underline"
           >
-            <Eye size={12} /> Full Screen View
+            <Eye size={12} />
+            Open Document
           </a>
         </div>
       ) : (
         <div className="flex flex-col items-center">
-          <XCircle size={24} className="text-red-300 mb-2" />
-          <p className="text-[10px] text-red-400 font-bold">No file uploaded</p>
+          <XCircle size={24} className="mb-2 text-red-300" />
+          <p className="text-[10px] font-bold text-red-400">
+            No file uploaded
+          </p>
         </div>
       )}
     </div>
   </div>
 );
 
+/* =========================
+   CHECKLIST ITEM
+========================= */
+
 const CheckItem = ({ label, checked, onChange }) => (
-  <div
-    className="flex items-center gap-3 cursor-pointer group"
+  <button
+    type="button"
+    className="flex w-full items-center gap-3 text-left"
     onClick={onChange}
   >
-    <div
-      className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${
+    <span
+      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border transition-all ${
         checked
-          ? "bg-emerald-500 border-emerald-500"
-          : "bg-white border-slate-300"
+          ? "border-emerald-500 bg-emerald-500"
+          : "border-slate-300 bg-white"
       }`}
     >
       {checked && <Check size={14} className="text-white" />}
-    </div>
+    </span>
+
     <span
-      className={`text-sm select-none ${checked ? "text-slate-700 font-medium" : "text-slate-500"}`}
+      className={`text-sm select-none ${
+        checked ? "font-medium text-slate-700" : "text-slate-500"
+      }`}
     >
       {label}
     </span>
-  </div>
+  </button>
 );
 
 export default VerifyCredentialsModal;
