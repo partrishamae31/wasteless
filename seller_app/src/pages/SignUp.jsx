@@ -94,10 +94,15 @@ const SignUp = ({ onLoginClick }) => {
   const [accountType, setAccountType] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [scanningId, setScanningId] = useState(false);
+  const [scanningPermit, setScanningPermit] = useState(false);
+  const [scanningTechCert, setScanningTechCert] = useState(false);
+  const [scanMessage, setScanMessage] = useState("");
   const [otp, setOtp] = useState("");
   const [emailVerified, setEmailVerified] = useState(false);
   const [authUserId, setAuthUserId] = useState(null);
   const [shopLocation, setShopLocation] = useState(null);
+  const governmentIdRef = React.useRef();
   const permitRef = React.useRef();
   const techRef = React.useRef();
   const valenzuelaBarangays = [
@@ -146,10 +151,23 @@ const SignUp = ({ onLoginClick }) => {
     // Repair Shop
     businessName: "",
     address: "",
+    governmentId: null,
     businessPermit: null,
+    businessPermitNumber: "",
+    permitType: "",
+    permitIssuingLgu: "",
+    permitIssueDate: "",
+    permitExpiryDate: "",
+    businessActivity: "",
     certificationType: "",
     otherCertification: "",
     techCert: null,
+    techCertificateNumber: "",
+    techCertificateIssuer: "",
+    techCertificateTitle: "",
+    techCertificateIssueDate: "",
+    techCertificateExpiryDate: "",
+    techSpecialization: "",
   });
 
   const certificationOptions = [
@@ -220,10 +238,12 @@ const SignUp = ({ onLoginClick }) => {
       "application/pdf",
       "image/jpeg",
       "image/jpg",
+      "image/png",
+      "image/webp",
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      alert("Please upload a PDF or JPEG file.");
+      alert("Please upload a PDF, JPEG, PNG, or WebP file.");
       e.target.value = "";
       return;
     }
@@ -247,13 +267,160 @@ const SignUp = ({ onLoginClick }) => {
     }
   };
 
+  const scanGovernmentId = async () => {
+    const file = governmentIdRef.current?.files?.[0] || formData.governmentId;
+    if (!file) { alert("Please upload your government ID first."); return; }
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) && file.type !== "application/pdf") {
+      alert("Please upload a JPEG, PNG, WebP, or PDF ID."); return;
+    }
+    setScanningId(true);
+    setScanMessage("Scanning ID…");
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Could not read the selected file."));
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.readAsDataURL(file);
+      });
+      const { data, error } = await supabase.functions.invoke("scan-government-id", {
+        body: { mimeType: file.type, base64 },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Could not read the ID.");
+      const extracted = data.fields || {};
+      setFormData((prev) => ({
+        ...prev,
+        ...(typeof extracted.fullName === "string" && extracted.fullName.trim()
+          ? { fullName: extracted.fullName.trim() } : {}),
+        ...(typeof extracted.barangay === "string" && valenzuelaBarangays.includes(extracted.barangay)
+          ? { barangay: extracted.barangay } : {}),
+      }));
+      setScanMessage("Scan complete. Please review the suggested name and barangay before continuing.");
+    } catch (error) {
+  console.error("Government ID scan failed:", error);
+
+  if (error?.context) {
+    try {
+      const responseBody = await error.context.clone().text();
+      console.error("Edge Function response:", responseBody);
+    } catch (readError) {
+      console.error("Could not read Edge Function response:", readError);
+    }
+  }
+
+  alert("ID scan failed. Check the browser console and Supabase Edge Function logs.");
+} finally { setScanningId(false); }
+  };
+
+  const scanBusinessPermit = async () => {
+    const file = permitRef.current?.files?.[0] || formData.businessPermit;
+    if (!file) {
+      alert("Please upload your business permit first.");
+      return;
+    }
+
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) && file.type !== "application/pdf") {
+      alert("Please upload a PDF, JPEG, PNG, or WebP permit.");
+      return;
+    }
+
+    setScanningPermit(true);
+    setScanMessage("Scanning business permit…");
+
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Could not read the selected permit."));
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.readAsDataURL(file);
+      });
+
+      const { data, error } = await supabase.functions.invoke("scan-business-permit", {
+        body: { mimeType: file.type, base64 },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Could not read the permit.");
+
+      const extracted = data.fields || {};
+      setFormData((prev) => ({
+        ...prev,
+        ...(typeof extracted.fullName === "string" && extracted.fullName.trim() ? { fullName: extracted.fullName.trim() } : {}),
+        ...(typeof extracted.businessName === "string" && extracted.businessName.trim() ? { businessName: extracted.businessName.trim() } : {}),
+        ...(typeof extracted.address === "string" && extracted.address.trim() ? { address: extracted.address.trim() } : {}),
+        ...(typeof extracted.contactNumber === "string" && extracted.contactNumber.trim() ? { contactNumber: extracted.contactNumber.trim() } : {}),
+        ...(typeof extracted.businessPermitNumber === "string" && extracted.businessPermitNumber.trim() ? { businessPermitNumber: extracted.businessPermitNumber.trim() } : {}),
+        ...(typeof extracted.permitType === "string" && extracted.permitType.trim() ? { permitType: extracted.permitType.trim() } : {}),
+        ...(typeof extracted.permitIssuingLgu === "string" && extracted.permitIssuingLgu.trim() ? { permitIssuingLgu: extracted.permitIssuingLgu.trim() } : {}),
+        ...(typeof extracted.permitIssueDate === "string" && extracted.permitIssueDate.trim() ? { permitIssueDate: extracted.permitIssueDate.trim() } : {}),
+        ...(typeof extracted.permitExpiryDate === "string" && extracted.permitExpiryDate.trim() ? { permitExpiryDate: extracted.permitExpiryDate.trim() } : {}),
+        ...(typeof extracted.businessActivity === "string" && extracted.businessActivity.trim() ? { businessActivity: extracted.businessActivity.trim() } : {}),
+      }));
+
+      setScanMessage("Permit scan complete. Review and correct all extracted details before continuing.");
+    } catch (error) {
+      console.error("Business permit scan failed:", error);
+      alert(error?.message || "Permit scan failed. Please enter the details manually.");
+      setScanMessage("Permit scan failed. You can enter the details manually.");
+    } finally {
+      setScanningPermit(false);
+    }
+  };
+
+  const scanTechnicalCertificate = async () => {
+    const file = techRef.current?.files?.[0] || formData.techCert;
+    if (!file) {
+      alert("Please upload your technical certification first.");
+      return;
+    }
+
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) && file.type !== "application/pdf") {
+      alert("Please upload a PDF, JPEG, PNG, or WebP certificate.");
+      return;
+    }
+
+    setScanningTechCert(true);
+    setScanMessage("Scanning technical certificate…");
+
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Could not read the selected certificate."));
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.readAsDataURL(file);
+      });
+
+      const { data, error } = await supabase.functions.invoke("scan-technical-certificate", {
+        body: { mimeType: file.type, base64 },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Could not read the technical certificate.");
+
+      const extracted = data.fields || {};
+      setFormData((prev) => ({
+        ...prev,
+        ...(typeof extracted.certificateNumber === "string" && extracted.certificateNumber.trim() ? { techCertificateNumber: extracted.certificateNumber.trim() } : {}),
+        ...(typeof extracted.issuer === "string" && extracted.issuer.trim() ? { techCertificateIssuer: extracted.issuer.trim() } : {}),
+        ...(typeof extracted.certificateTitle === "string" && extracted.certificateTitle.trim() ? { techCertificateTitle: extracted.certificateTitle.trim() } : {}),
+        ...(typeof extracted.issueDate === "string" && extracted.issueDate.trim() ? { techCertificateIssueDate: extracted.issueDate.trim() } : {}),
+        ...(typeof extracted.expiryDate === "string" && extracted.expiryDate.trim() ? { techCertificateExpiryDate: extracted.expiryDate.trim() } : {}),
+        ...(typeof extracted.specialization === "string" && extracted.specialization.trim() ? { techSpecialization: extracted.specialization.trim() } : {}),
+      }));
+
+      setScanMessage("Technical certificate scan complete. Review the extracted details.");
+    } catch (error) {
+      console.error("Technical certificate scan failed:", error);
+      alert(error?.message || "Certificate scan failed. Please enter the details manually.");
+      setScanMessage("Certificate scan failed. You can enter the details manually.");
+    } finally {
+      setScanningTechCert(false);
+    }
+  };
+
   const validateStep2 = () => {
     let newErrors = {};
-    if (!formData.fullName) newErrors.fullName = "Full name is required";
     if (!formData.email) newErrors.email = "Email is required";
-    if (!formData.contactNumber)
-      newErrors.contactNumber = "Contact number is required";
-    if (!formData.barangay) newErrors.barangay = "Please select your barangay";
     if (!formData.password) {
       newErrors.password = "Password is required";
     } else {
@@ -291,18 +458,20 @@ const SignUp = ({ onLoginClick }) => {
     }
 
     if (step === 2) {
-      if (!validateStep2()) return;
+      if (!formData.email.trim() || !formData.password || !formData.confirmPassword) { alert("Please enter your email and password, then confirm your password."); return; }
+      if (formData.password !== formData.confirmPassword) { alert("Passwords do not match."); return; }
+      if (formData.password.length < 8 || !/[A-Z]/.test(formData.password) || !/[a-z]/.test(formData.password) || !/[0-9]/.test(formData.password) || !/[^A-Za-z0-9]/.test(formData.password)) { alert("Password must be at least 8 characters and include uppercase, lowercase, number, and symbol."); return; }
       setLoading(true);
       try {
         const { data, error } = await supabase.auth.signUp({
           email: formData.email.trim().toLowerCase(),
           password: formData.password,
-          options: { data: { full_name: formData.fullName, role: accountType, buyer_type: accountType, barangay: formData.barangay, contact_number: formData.contactNumber, business_name: formData.businessName || "", is_verified: false, status: "Pending" } }
+          options: { data: { role: accountType, buyer_type: accountType, is_verified: false, status: "verified" } }
         });
         if (error) throw error;
         if (!data?.user) throw new Error("Could not create the account.");
         setAuthUserId(data.user.id);
-        setStep(4);
+        setStep(3);
         alert("A verification code has been sent to your email. Check your inbox and spam folder.");
       } catch (err) {
         console.error("Signup error details:", err);
@@ -320,7 +489,7 @@ const SignUp = ({ onLoginClick }) => {
       }
     }
 
-    if (step === 4) {
+    if (step === 3) {
       if (!/^\d{6}$/.test(otp.trim())) { alert("Enter the 6-digit code sent to your email."); return; }
       setLoading(true);
       try {
@@ -329,14 +498,21 @@ const SignUp = ({ onLoginClick }) => {
         if (!data?.user?.id) throw new Error("Email verification could not be confirmed.");
         setEmailVerified(true);
         setAuthUserId(data.user.id);
-        setStep(3);
+        setStep(accountType === "repair_shop" ? 4 : 4);
         alert("Email verified! Please complete your account verification details.");
       } catch (err) { alert("Email verification failed: " + err.message); }
       finally { setLoading(false); }
       return;
     }
 
-    if (step === 3) {
+    if (step === 4) {
+      if (!formData.fullName.trim()) { alert("Please scan your ID or enter the name shown on it."); return; }
+      if (!formData.contactNumber.trim()) { alert("Please enter your contact number after scanning your ID."); return; }
+      if (!formData.barangay) { alert("Please confirm your barangay after scanning your ID."); return; }
+      if (accountType === "harvester") {
+        const idFile = governmentIdRef.current?.files?.[0] || formData.governmentId;
+        if (!idFile) { alert("Please upload your personal government ID and scan it before continuing."); return; }
+      }
       // =========================
       // REPAIR SHOP
       // =========================
@@ -379,48 +555,41 @@ const SignUp = ({ onLoginClick }) => {
           return;
         }
 
+        if (!formData.businessPermitNumber.trim()) {
+          alert("Please enter or confirm the Business Permit Number.");
+          return;
+        }
+        if (!formData.permitType.trim()) {
+          alert("Please enter or confirm the Permit Type.");
+          return;
+        }
+        if (!formData.permitIssuingLgu.trim()) {
+          alert("Please enter or confirm the Permit Issuing LGU.");
+          return;
+        }
+        if (!formData.businessActivity.trim()) {
+          alert("Please enter or confirm the Business Activity / Nature of Business.");
+          return;
+        }
+        if (!formData.techCertificateNumber.trim()) {
+          alert("Please enter or confirm the Technical Certificate Number.");
+          return;
+        }
+        if (!formData.techCertificateIssuer.trim()) {
+          alert("Please enter or confirm the Technical Certificate Issuer.");
+          return;
+        }
+        if (!formData.techCertificateTitle.trim()) {
+          alert("Please enter or confirm the Technical Certification Title.");
+          return;
+        }
+
         await handleFinalSubmit();
         return;
       }
 
-      // =========================
-      // HARVESTER
-      // =========================
-      if (accountType === "harvester") {
-        const idFile = permitRef.current?.files?.[0];
-
-        if (!idFile) {
-          alert("Please upload a Valid Government ID");
-          return;
-        }
-
-        setFormData((prev) => ({
-          ...prev,
-          businessPermit: idFile,
-        }));
-
-        setIsSubmitted(true);
-        return;
-      }
-
-      // =========================
-      // SELLER
-      // =========================
-      if (accountType === "seller") {
-        const idFile = permitRef.current?.files?.[0];
-
-        if (!idFile) {
-          alert("Please upload a Valid ID");
-          return;
-        }
-
-        setFormData((prev) => ({
-          ...prev,
-          businessPermit: idFile,
-        }));
-
-        setIsSubmitted(true);
-      }
+      await handleFinalSubmit();
+      return;
     }
   };
 
@@ -428,8 +597,6 @@ const SignUp = ({ onLoginClick }) => {
     setLoading(true);
 
     try {
-      const autoVerify = false;
-
       // =========================
       // DETERMINE FINAL ROLE
       // =========================
@@ -465,9 +632,9 @@ const SignUp = ({ onLoginClick }) => {
             ? shopLocation[1]
             : null,
 
-        verification_status: "pending",
-        is_verified: false,
-        status: "Pending",
+        verification_status: "verified",
+        is_verified: true,
+        status: "Verified",
 
         average_rating: 0,
         total_reviews: 0,
@@ -482,32 +649,44 @@ const SignUp = ({ onLoginClick }) => {
             formData.certificationType === "Other Certification"
             ? formData.otherCertification
             : null,
+
+        business_permit_number:
+          finalRole === "repair_shop" ? formData.businessPermitNumber.trim() || null : null,
+        permit_type:
+          finalRole === "repair_shop" ? formData.permitType.trim() || null : null,
+        permit_issuing_lgu:
+          finalRole === "repair_shop" ? formData.permitIssuingLgu.trim() || null : null,
+        permit_issue_date:
+          finalRole === "repair_shop" ? formData.permitIssueDate || null : null,
+        permit_expiry_date:
+          finalRole === "repair_shop" ? formData.permitExpiryDate || null : null,
+        business_activity:
+          finalRole === "repair_shop" ? formData.businessActivity.trim() || null : null,
+
+        tech_certificate_number:
+          finalRole === "repair_shop" ? formData.techCertificateNumber.trim() || null : null,
+        tech_certificate_issuer:
+          finalRole === "repair_shop" ? formData.techCertificateIssuer.trim() || null : null,
+        tech_certificate_title:
+          finalRole === "repair_shop" ? formData.techCertificateTitle.trim() || null : null,
+        tech_certificate_issue_date:
+          finalRole === "repair_shop" ? formData.techCertificateIssueDate || null : null,
+        tech_certificate_expiry_date:
+          finalRole === "repair_shop" ? formData.techCertificateExpiryDate || null : null,
+        tech_specialization:
+          finalRole === "repair_shop" ? formData.techSpecialization.trim() || null : null,
       };
 
-      // =========================
-      // SELLER ID UPLOAD
-      // =========================
-      if (
-        (accountType === "seller" || finalRole === "harvester") &&
-        formData.businessPermit
-      ) {
-        const file = formData.businessPermit;
-
-        const fileExt = file.name.split(".").pop();
-
-        const fileName = `${userId}/permit_${Date.now()}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("verifications")
-          .upload(`permits/${fileName}`, file);
-
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage
-          .from("verifications")
-          .getPublicUrl(`permits/${fileName}`);
-
-        updates.business_permit_url = data.publicUrl;
+      // PERSONAL GOVERNMENT ID — required for community users/harvesters only.
+      if (finalRole === "harvester") {
+        const file = governmentIdRef.current?.files?.[0] || formData.governmentId;
+        if (!file) throw new Error("Please upload your personal government ID.");
+        const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+        const path = `government-ids/${userId}/id_${Date.now()}.${ext}`;
+        const { error: idUploadError } = await supabase.storage.from("verifications").upload(path, file);
+        if (idUploadError) throw idUploadError;
+        const { data } = supabase.storage.from("verifications").getPublicUrl(path);
+        updates.government_id_url = data.publicUrl;
       }
 
       // =========================
@@ -567,7 +746,8 @@ const SignUp = ({ onLoginClick }) => {
 
       if (profileError) throw profileError;
 
-      alert("Registration submitted! Your email is verified. Please wait for admin approval.");
+      setIsSubmitted(true);
+      alert("Registration complete. You can now log in to your account.");
     } catch (err) {
       console.error(err);
 
@@ -576,7 +756,7 @@ const SignUp = ({ onLoginClick }) => {
       setLoading(false);
     }
   };
-  const steps = [1, 2, 3];
+  const steps = [1, 2, 3, 4];
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] flex items-center justify-center p-6 font-sans">
@@ -634,7 +814,7 @@ const SignUp = ({ onLoginClick }) => {
                   : "border-gray-100 text-gray-600 hover:border-gray-300"
                   }`}
               >
-                Community User / Tech-Harvester
+                Community User / Tech-Dealer
                 <span className="block text-[10px] font-normal text-gray-400 mt-1">
                   Buy working items or sell unused/non-working electronics
                 </span>
@@ -670,25 +850,6 @@ const SignUp = ({ onLoginClick }) => {
               <div className="space-y-4">
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1 block">
-                    Full Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    name="fullName"
-                    type="text"
-                    placeholder="Juan Dela Cruz"
-                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.fullName ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
-                    onChange={handleChange}
-                    value={formData.fullName}
-                  />
-                  {errors.fullName && (
-                    <p className="text-[10px] text-red-500 mt-1">
-                      {errors.fullName}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Email Address <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -702,50 +863,6 @@ const SignUp = ({ onLoginClick }) => {
                   {errors.email && (
                     <p className="text-[10px] text-red-500 mt-1">
                       {errors.email}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
-                    Contact Number <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    name="contactNumber"
-                    type="text"
-                    placeholder="09123456789"
-                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm transition-all focus:outline-none focus:ring-2 ${errors.contactNumber ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
-                    onChange={handleChange}
-                    value={formData.contactNumber}
-                  />
-                  {errors.contactNumber && (
-                    <p className="text-[10px] text-red-500 mt-1">
-                      {errors.contactNumber}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
-                    Barangay of Residence{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="barangay"
-                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 appearance-none ${errors.barangay ? "border-red-500 ring-red-100" : "border-gray-200 focus:ring-teal-500/20 focus:border-teal-500"}`}
-                    onChange={handleChange}
-                    value={formData.barangay}
-                  >
-                    <option value="">Select barangay...</option>
-                    {valenzuelaBarangays.map((brgy) => (
-                      <option key={brgy} value={brgy}>
-                        {brgy}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.barangay && (
-                    <p className="text-[10px] text-red-500 mt-1">
-                      {errors.barangay}
                     </p>
                   )}
                 </div>
@@ -803,7 +920,7 @@ const SignUp = ({ onLoginClick }) => {
               </div>
             </div>
           )}
-          {!isSubmitted && step === 4 && (
+          {!isSubmitted && step === 3 && (
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-lg font-bold text-gray-800">Verify your email</h3>
               <p className="text-sm text-gray-600">We sent a 6-digit code to <strong>{formData.email}</strong>. Enter it below to continue.</p>
@@ -816,7 +933,7 @@ const SignUp = ({ onLoginClick }) => {
             </div>
           )}
 
-          {!isSubmitted && step === 3 && (
+          {!isSubmitted && step === 4 && (
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-xs font-bold text-emerald-900 mb-1">
                 Professional Verification
@@ -824,29 +941,33 @@ const SignUp = ({ onLoginClick }) => {
 
               <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
                 <p className="text-[11px] text-blue-800 leading-relaxed">
-                  {accountType === "seller"
-                    ? "To maintain a secure environment for all users, we require a quick credential verification for new seller accounts."
-                    : accountType === "harvester"
-                      ? "To verify your Tech-Harvester account, please upload a valid government ID."
-                      : "Please provide your business and technical credentials for verification."}
+                  {accountType === "harvester"
+                    ? "Upload your personal government ID so Wasteless can suggest your details. Review the information before continuing."
+                    : "Provide your shop details, business registration, and technical certification. A personal government ID is not required for repair-shop registration."}
                 </p>
               </div>
 
-              {/* =========================
-        SELLER / HARVESTER
-    ========================= */}
-              {(accountType === "seller" || accountType === "harvester") && (
-                <div className="space-y-6">
-
+              {accountType === "harvester" && (
+              <div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
+                <label className="text-[11px] font-bold text-gray-700 block">Personal Government ID <span className="text-red-500">*</span></label>
+                <input type="file" ref={governmentIdRef} accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => handleFileChange(e, "governmentId")} className="block w-full text-xs" />
+                {formData.governmentId && <p className="text-xs text-emerald-700">Selected: {formData.governmentId.name}</p>}
+                <button type="button" onClick={scanGovernmentId} disabled={scanningId || !formData.governmentId} className="w-full py-2.5 rounded-lg border border-teal-600 text-teal-700 font-semibold text-sm disabled:opacity-50">{scanningId ? "Scanning ID…" : "Scan ID and autofill"}</button>
+                <p className="text-[10px] text-gray-500">Review the suggested name and barangay. Scanning assists with data entry; it does not verify ID authenticity.</p>
+                {scanMessage && <p role="status" className="text-xs text-teal-700">{scanMessage}</p>}
+              </div>
+              )}
+              {accountType === "repair_shop" && (
+                <>
                   <div>
                     <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                      Valid Government ID{" "}
+                      Business Permit / DTI Registration{" "}
                       <span className="text-red-500">*</span>
                     </label>
 
                     <div
                       onClick={() => permitRef.current?.click()}
-                      className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
+                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
                         ? "border-emerald-400 bg-emerald-50/10"
                         : "border-gray-200"
                         }`}
@@ -854,7 +975,7 @@ const SignUp = ({ onLoginClick }) => {
                       <input
                         type="file"
                         ref={permitRef}
-                        accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                         className="hidden"
                         onChange={(e) =>
                           handleFileChange(e, "businessPermit")
@@ -872,24 +993,241 @@ const SignUp = ({ onLoginClick }) => {
 
                       <span className="text-teal-600 font-semibold text-sm">
                         {formData.businessPermit
-                          ? "File uploaded successfully!"
+                          ? "Permit uploaded!"
                           : "Click to upload"}
                       </span>
 
                       <span className="text-gray-400 text-[10px] mt-1">
                         {formData.businessPermit
                           ? formData.businessPermit.name
-                          : "PDF or JPEG (max 5MB)"}
+                          : "PDF, JPEG, PNG, or WebP (max 5MB)"}
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={scanBusinessPermit}
+                      disabled={scanningPermit || scanningTechCert || !formData.businessPermit}
+                      className="w-full mt-3 py-2.5 rounded-lg border border-teal-600 text-teal-700 font-semibold text-sm disabled:opacity-50"
+                    >
+                      {scanningPermit ? "Scanning permit…" : "Scan permit and autofill details"}
+                    </button>
+                    {scanMessage && <p role="status" className="text-xs text-teal-700 mt-2">{scanMessage}</p>}
+                    <p className="text-[10px] text-gray-500 mt-1">OCR may misread details. Review the fields above. Scanning does not verify permit authenticity.</p>
                   </div>
+
+                  {/* CERTIFICATION TYPE */}
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Certification Type{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+
+                    <select
+                      name="certificationType"
+                      value={formData.certificationType}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    >
+                      <option value="">
+                        Select certification type...
+                      </option>
+
+                      {certificationOptions.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* OTHER CERTIFICATION */}
+                  {formData.certificationType === "Other Certification" && (
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                        Specify Certification{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+
+                      <input
+                        name="otherCertification"
+                        type="text"
+                        placeholder="Enter certification name"
+                        value={formData.otherCertification}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      />
+                    </div>
+                  )}
+
+                  {/* TECHNICAL CERTIFICATION */}
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      Technical Certification{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+
+                    <div
+                      onClick={() => techRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.techCert
+                        ? "border-emerald-400 bg-emerald-50/10"
+                        : "border-gray-200"
+                        }`}
+                    >
+                      <input
+                        type="file"
+                        ref={techRef}
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleFileChange(e, "techCert")
+                        }
+                      />
+
+                      <Upload
+                        className={
+                          formData.techCert
+                            ? "text-emerald-500 mb-2"
+                            : "text-gray-400 mb-2"
+                        }
+                        size={24}
+                      />
+
+                      <span className="text-teal-600 font-semibold text-sm">
+                        {formData.techCert
+                          ? "Certification uploaded!"
+                          : "Click to upload"}
+                      </span>
+
+                      <span className="text-gray-400 text-[10px] mt-1">
+                        {formData.techCert
+                          ? formData.techCert.name
+                          : "PDF, JPEG, PNG, or WebP (max 5MB)"}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={scanTechnicalCertificate}
+                      disabled={scanningTechCert || scanningPermit || !formData.techCert}
+                      className="w-full mt-3 py-2.5 rounded-lg border border-teal-600 text-teal-700 font-semibold text-sm disabled:opacity-50"
+                    >
+                      {scanningTechCert ? "Scanning certificate…" : "Scan certificate and autofill details"}
+                    </button>
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      OCR assists with data entry. Review the extracted details; scanning does not verify certificate authenticity.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 rounded-xl border border-emerald-100 bg-emerald-50/30 p-4">
+                    <p className="text-xs font-semibold text-gray-700">Business Permit Details</p>
+                    <p className="text-[10px] text-gray-500">Review the fields extracted from your business permit before submitting.</p>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Business Permit Number <span className="text-red-500">*</span></label>
+                      <input name="businessPermitNumber" type="text" value={formData.businessPermitNumber} onChange={handleChange} placeholder="Permit number" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Permit Type <span className="text-red-500">*</span></label>
+                      <input name="permitType" type="text" value={formData.permitType} onChange={handleChange} placeholder="e.g. Mayor's Permit / Business Permit" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Permit Issuing LGU <span className="text-red-500">*</span></label>
+                      <input name="permitIssuingLgu" type="text" value={formData.permitIssuingLgu} onChange={handleChange} placeholder="e.g. City Government of Valenzuela" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 block mb-2">Issue Date</label>
+                        <input name="permitIssueDate" type="date" value={formData.permitIssueDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 block mb-2">Expiry Date</label>
+                        <input name="permitExpiryDate" type="date" value={formData.permitExpiryDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Business Activity / Nature of Business <span className="text-red-500">*</span></label>
+                      <input name="businessActivity" type="text" value={formData.businessActivity} onChange={handleChange} placeholder="Nature of business" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 rounded-xl border border-blue-100 bg-blue-50/30 p-4">
+                    <p className="text-xs font-semibold text-gray-700">Technical Certification Details</p>
+                    <p className="text-[10px] text-gray-500">Review the fields extracted from your technical certificate before submitting.</p>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Certificate Number <span className="text-red-500">*</span></label>
+                      <input name="techCertificateNumber" type="text" value={formData.techCertificateNumber} onChange={handleChange} placeholder="Certificate number" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Issuing Organization <span className="text-red-500">*</span></label>
+                      <input name="techCertificateIssuer" type="text" value={formData.techCertificateIssuer} onChange={handleChange} placeholder="e.g. TESDA" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Certification / Qualification Title <span className="text-red-500">*</span></label>
+                      <input name="techCertificateTitle" type="text" value={formData.techCertificateTitle} onChange={handleChange} placeholder="Certification or qualification title" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 block mb-2">Issue Date</label>
+                        <input name="techCertificateIssueDate" type="date" value={formData.techCertificateIssueDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 block mb-2">Expiry Date</label>
+                        <input name="techCertificateExpiryDate" type="date" value={formData.techCertificateExpiryDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Specialization / Competency</label>
+                      <input name="techSpecialization" type="text" value={formData.techSpecialization} onChange={handleChange} placeholder="Specialization or competency" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* DETAILS TO REVIEW / COMPLETE AFTER ID SCAN */}
+              <div className="space-y-4 rounded-xl border border-gray-200 p-4">
+                <p className="text-xs font-semibold text-gray-700">Review your details</p>
+                {/* REVIEW NAME EXTRACTED FROM ID */}
+              <div>
+                <label className="text-[11px] font-bold text-gray-700 block mb-2">Full Name <span className="text-red-500">*</span></label>
+                <input name="fullName" type="text" value={formData.fullName} onChange={handleChange} placeholder={accountType === "repair_shop" ? "Full name of owner/contact person" : "Name as shown on your government ID"} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                {!formData.fullName.trim() && <p className="text-[10px] text-amber-700 mt-1">{accountType === "repair_shop" ? "Enter the full name shown on the business permit." : "Scan your ID first. If the name cannot be read, enter it exactly as shown on your ID."}</p>}
+              </div>
+                <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-2">Contact Number <span className="text-red-500">*</span></label>
+                  <input name="contactNumber" type="tel" value={formData.contactNumber} onChange={handleChange} placeholder="09123456789" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                  <p className="text-[10px] text-gray-500 mt-1">{accountType === "repair_shop" ? "Review the contact number extracted from the business permit." : "Enter or correct your phone number if it was not extracted from the ID."}</p>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-2">{accountType === "repair_shop" ? "Business Barangay" : "Barangay of Residence"} <span className="text-red-500">*</span></label>
+                  <select name="barangay" value={formData.barangay} onChange={handleChange} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm">
+                    <option value="">Select barangay...</option>
+                    {valenzuelaBarangays.map((brgy) => <option key={brgy} value={brgy}>{brgy}</option>)}
+                  </select>
+                  <p className="text-[10px] text-gray-500 mt-1">{accountType === "repair_shop" ? "Confirm the barangay where the repair shop is located." : "Confirm the barangay suggested by the ID scan."}</p>
+                </div>
+              </div>
+              {/* =========================
+        SELLER / HARVESTER
+    ========================= */}
+              {accountType === "harvester" && (
+                <div className="space-y-6">
 
                   {/* ROLE DESCRIPTION */}
                   <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
                     <p className="text-[10px] text-gray-500 leading-relaxed">
-                      {accountType === "harvester"
-                        ? "As a Tech-Harvester, you can buy working second-hand electronics and sell unused or non-working electronics on Wasteless."
-                        : "As a Seller, you can create listings and sell eligible electronics on Wasteless."}
+                      As a Community User / Tech-Dealer, you can buy working second-hand electronics and sell eligible electronics on Wasteless.
                     </p>
                   </div>
                 </div>
@@ -1012,146 +1350,7 @@ const SignUp = ({ onLoginClick }) => {
                     )}
                   </div>
 
-                  {/* BUSINESS PERMIT */}
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                      Business Permit / DTI Registration{" "}
-                      <span className="text-red-500">*</span>
-                    </label>
-
-                    <div
-                      onClick={() => permitRef.current?.click()}
-                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
-                        ? "border-emerald-400 bg-emerald-50/10"
-                        : "border-gray-200"
-                        }`}
-                    >
-                      <input
-                        type="file"
-                        ref={permitRef}
-                        accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
-                        className="hidden"
-                        onChange={(e) =>
-                          handleFileChange(e, "businessPermit")
-                        }
-                      />
-
-                      <Upload
-                        className={
-                          formData.businessPermit
-                            ? "text-emerald-500 mb-2"
-                            : "text-gray-400 mb-2"
-                        }
-                        size={24}
-                      />
-
-                      <span className="text-teal-600 font-semibold text-sm">
-                        {formData.businessPermit
-                          ? "Permit uploaded!"
-                          : "Click to upload"}
-                      </span>
-
-                      <span className="text-gray-400 text-[10px] mt-1">
-                        {formData.businessPermit
-                          ? formData.businessPermit.name
-                          : "PDF or JPEG (max 5MB)"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* CERTIFICATION TYPE */}
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                      Certification Type{" "}
-                      <span className="text-red-500">*</span>
-                    </label>
-
-                    <select
-                      name="certificationType"
-                      value={formData.certificationType}
-                      onChange={handleChange}
-                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    >
-                      <option value="">
-                        Select certification type...
-                      </option>
-
-                      {certificationOptions.map((option) => (
-                        <option
-                          key={option.value}
-                          value={option.value}
-                        >
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* OTHER CERTIFICATION */}
-                  {formData.certificationType === "Other Certification" && (
-                    <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                        Specify Certification{" "}
-                        <span className="text-red-500">*</span>
-                      </label>
-
-                      <input
-                        name="otherCertification"
-                        type="text"
-                        placeholder="Enter certification name"
-                        value={formData.otherCertification}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                      />
-                    </div>
-                  )}
-
-                  {/* TECHNICAL CERTIFICATION */}
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
-                      Technical Certification{" "}
-                      <span className="text-red-500">*</span>
-                    </label>
-
-                    <div
-                      onClick={() => techRef.current?.click()}
-                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.techCert
-                        ? "border-emerald-400 bg-emerald-50/10"
-                        : "border-gray-200"
-                        }`}
-                    >
-                      <input
-                        type="file"
-                        ref={techRef}
-                        accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
-                        className="hidden"
-                        onChange={(e) =>
-                          handleFileChange(e, "techCert")
-                        }
-                      />
-
-                      <Upload
-                        className={
-                          formData.techCert
-                            ? "text-emerald-500 mb-2"
-                            : "text-gray-400 mb-2"
-                        }
-                        size={24}
-                      />
-
-                      <span className="text-teal-600 font-semibold text-sm">
-                        {formData.techCert
-                          ? "Certification uploaded!"
-                          : "Click to upload"}
-                      </span>
-
-                      <span className="text-gray-400 text-[10px] mt-1">
-                        {formData.techCert
-                          ? formData.techCert.name
-                          : "PDF or JPEG (max 5MB)"}
-                      </span>
-                    </div>
-                  </div>
+                  
                 </div>
               )}
 
@@ -1181,35 +1380,12 @@ const SignUp = ({ onLoginClick }) => {
 
 
           {isSubmitted && (
-            <div className="space-y-6 animate-fadeIn text-left">
-              <h3 className="text-sm font-bold text-gray-700">
-                Complete Registration
-              </h3>
-              <div className="bg-[#fffdf0] border border-[#fdf5d3] p-8 rounded-xl flex flex-col items-center justify-center space-y-4">
-                <div className="w-10 h-10 border-2 border-orange-400 rounded-full flex items-center justify-center">
-                  <span className="text-orange-400 font-bold text-xl">!</span>
-                </div>
-                <p className="text-[11px] text-gray-600 text-center leading-relaxed max-w-[280px]">
-                  Click "Complete Registration" to submit your account for
-                  verification. Your account will be activated after
-                  administrator approval.
+            <div className="space-y-4 animate-fadeIn text-center">
+              <h3 className="text-lg font-bold text-gray-800">Registration complete</h3>
+              <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-xl">
+                <p className="text-sm text-emerald-800 leading-relaxed">
+                  Your registration details and documents were submitted. You can now log in. The app has marked this account as verified; this status does not independently confirm document authenticity.
                 </p>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setIsSubmitted(false)}
-                  className="flex-1 py-2.5 border border-gray-100 text-gray-500 rounded-lg font-medium text-xs hover:bg-gray-50"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleFinalSubmit}
-                  disabled={loading}
-                  className="flex-1 py-2.5 bg-[#6da43a] text-white rounded-lg font-medium text-xs shadow-sm hover:bg-[#5f8f32] disabled:opacity-50"
-                >
-                  {loading ? "Submitting..." : "Complete Registration"}
-                </button>
               </div>
             </div>
           )}
