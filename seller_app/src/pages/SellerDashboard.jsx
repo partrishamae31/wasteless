@@ -3,7 +3,6 @@ import { supabase } from "../supabaseClient";
 import CreateListingModal from "./CreateListingModal"; // Adjust path as needed
 import SellerMessages from "./SellerMessages"; // Ensure the filename matches
 import DonationModal from "./DonationModal";
-import RateBuyerModal from "./RateBuyerModal";
 import SellerDonationTab from "./SellerDonationTab";
 import SellerRepairShopsTab from "./SellerRepairShopsTab";
 import banner from "./assets/banner.png";
@@ -295,6 +294,268 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
           >
             <Star size={18} fill="currentColor" />
             {submitting ? "Submitting Review..." : "Submit Repair Review"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+const MarketplaceRatingModal = ({
+  isOpen,
+  transaction,
+  currentUserId,
+  ratingRole,
+  onClose,
+  onSubmitted,
+}) => {
+  const [communication, setCommunication] = useState(0);
+  const [punctuality, setPunctuality] = useState(0);
+  const [condition, setCondition] = useState(0);
+  const [overall, setOverall] = useState(0);
+  const [recommend, setRecommend] = useState("yes");
+  const [feedback, setFeedback] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCommunication(0);
+      setPunctuality(0);
+      setCondition(0);
+      setOverall(0);
+      setRecommend("yes");
+      setFeedback("");
+      setSubmitting(false);
+    }
+  }, [isOpen, transaction?.id, ratingRole]);
+
+  if (!isOpen || !transaction) return null;
+
+  const isRatingBuyer = ratingRole === "buyer";
+  const ratedProfile = isRatingBuyer ? transaction.harvester : transaction.seller;
+  const ratedName =
+    ratedProfile?.business_name ||
+    ratedProfile?.full_name ||
+    (isRatingBuyer ? "Buyer" : "Seller");
+
+  const renderStars = (value, setValue) => (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => setValue(star)}
+          className="p-1 transition-transform hover:scale-110"
+          aria-label={`${star} star${star > 1 ? "s" : ""}`}
+        >
+          <Star
+            size={26}
+            fill={star <= value ? "currentColor" : "none"}
+            className={star <= value ? "text-yellow-400" : "text-slate-300"}
+          />
+        </button>
+      ))}
+    </div>
+  );
+
+  const handleSubmit = async () => {
+    const ratedUserId = isRatingBuyer
+      ? transaction.harvester_id
+      : transaction.seller_id;
+
+    if (!currentUserId || !transaction?.id || !ratedUserId) {
+      alert("The transaction or account information is missing.");
+      return;
+    }
+
+    if (ratedUserId === currentUserId) {
+      alert("You cannot rate yourself.");
+      return;
+    }
+
+    if (!communication || !punctuality || !condition || !overall) {
+      alert("Please provide all four ratings before submitting.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const { data: existingReview, error: existingError } = await supabase
+        .from("reviews")
+        .select("id")
+        .eq("transaction_id", transaction.id)
+        .eq("reviewer_id", currentUserId)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+
+      if (existingReview) {
+        onSubmitted?.(transaction.id);
+        alert(`You have already rated this ${isRatingBuyer ? "buyer" : "seller"}.`);
+        onClose();
+        return;
+      }
+
+      const { data: insertedReview, error: insertError } = await supabase
+        .from("reviews")
+        .insert([{
+          transaction_id: transaction.id,
+          // Existing schema uses seller_id as the rated-user column.
+          seller_id: ratedUserId,
+          reviewer_id: currentUserId,
+          communication_rating: communication,
+          punctuality_rating: punctuality,
+          condition_rating: condition,
+          overall_rating: overall,
+          recommend: recommend === "yes",
+          comment: feedback.trim() || null,
+        }])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      const { data: allReviews, error: reviewsError } = await supabase
+        .from("reviews")
+        .select("overall_rating")
+        .eq("seller_id", ratedUserId);
+
+      if (reviewsError) throw reviewsError;
+
+      const validReviews = (allReviews || []).filter(
+        (review) => Number(review.overall_rating) > 0
+      );
+      const totalReviews = validReviews.length;
+      const averageRating = totalReviews
+        ? validReviews.reduce(
+            (sum, review) => sum + Number(review.overall_rating),
+            0
+          ) / totalReviews
+        : 0;
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          average_rating: averageRating,
+          total_reviews: totalReviews,
+        })
+        .eq("id", ratedUserId);
+
+      if (profileError) throw profileError;
+
+      onSubmitted?.(transaction.id, insertedReview);
+      alert(`${isRatingBuyer ? "Buyer" : "Seller"} rated successfully!`);
+      onClose();
+    } catch (error) {
+      console.error("Marketplace rating error:", error);
+      alert(`Failed to submit rating: ${error.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden">
+        <div className="bg-gradient-to-r from-[#2d7a7f] to-[#3285a1] p-6 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-white/80 text-[10px] font-black uppercase tracking-widest">
+                <Star size={14} fill="currentColor" /> Marketplace Review
+              </div>
+              <h2 className="text-2xl font-black mt-2">
+                Rate {isRatingBuyer ? "Buyer" : "Seller"}
+              </h2>
+              <p className="text-xs text-white/75 mt-1">
+                Share your experience with {ratedName}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition"
+              aria-label="Close rating modal"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-5">
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              {isRatingBuyer ? "Buyer" : "Seller"}
+            </p>
+            <p className="text-sm font-black text-slate-800 mt-1">{ratedName}</p>
+            <p className="text-xs text-slate-500 mt-1">
+              {transaction.listing?.device_model || "Electronic Item"}
+            </p>
+          </div>
+
+          {[
+            ["Communication", "How well did they communicate with you?", communication, setCommunication],
+            ["Punctuality", "How well did they follow the agreed meetup schedule?", punctuality, setPunctuality],
+            ["Transaction / Item Condition", "How would you rate the transaction and item condition?", condition, setCondition],
+            ["Overall Experience", `Overall, how would you rate this ${isRatingBuyer ? "buyer" : "seller"}?`, overall, setOverall],
+          ].map(([label, description, value, setter]) => (
+            <div key={label}>
+              <p className="text-sm font-black text-slate-700">{label}</p>
+              <p className="text-[11px] text-slate-400 mb-2">{description}</p>
+              {renderStars(value, setter)}
+            </div>
+          ))}
+
+          <div>
+            <p className="text-sm font-black text-slate-700 mb-2">
+              Would you recommend this {isRatingBuyer ? "buyer" : "seller"}?
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ["yes", "Yes, I recommend", "bg-emerald-50 border-emerald-300 text-emerald-700"],
+                ["no", "No", "bg-red-50 border-red-300 text-red-700"],
+              ].map(([value, label, activeClass]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setRecommend(value)}
+                  className={`py-3 rounded-xl text-xs font-black border ${
+                    recommend === value
+                      ? activeClass
+                      : "bg-white border-slate-200 text-slate-500"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-black text-slate-700">Write a review</label>
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              rows={4}
+              maxLength={1000}
+              placeholder={`Tell us about your experience with this ${isRatingBuyer ? "buyer" : "seller"}...`}
+              className="w-full mt-2 rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-[#2d7a7f] focus:ring-2 focus:ring-blue-100 resize-none"
+            />
+            <p className="text-[10px] text-slate-400 text-right mt-1">
+              {feedback.length}/1000
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full py-4 rounded-xl bg-[#2d7a7f] hover:bg-[#246367] disabled:opacity-50 text-white text-sm font-black flex items-center justify-center gap-2 transition"
+          >
+            <Star size={18} fill="currentColor" />
+            {submitting ? "Submitting Rating..." : `Submit ${isRatingBuyer ? "Buyer" : "Seller"} Rating`}
           </button>
         </div>
       </div>
@@ -613,6 +874,8 @@ const SellerDashboard = ({ session }) => {
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [listingToDonate, setListingToDonate] = useState(null);
   const [showRateModal, setShowRateModal] = useState(false);
+  const [ratingRole, setRatingRole] = useState(null); // "buyer" or "seller"
+  const [reviewedMarketplaceTransactions, setReviewedMarketplaceTransactions] = useState(new Set());
   const [showRepairReviewModal, setShowRepairReviewModal] = useState(false);
   const [selectedRepairReviewTransaction, setSelectedRepairReviewTransaction] = useState(null);
   const [reviewedRepairAppointments, setReviewedRepairAppointments] = useState(new Set());
@@ -708,84 +971,59 @@ const SellerDashboard = ({ session }) => {
     business_name: "",
   });
 
-  const handleSubmitRating = async ({ ratings, recommend, feedback }) => {
-    try {
-      const selectedTransaction = transactions.find(
-        (t) => t.id === selectedTxId,
-      );
+  const handleOpenMarketplaceRating = async (transaction, role) => {
+    if (!transaction?.id) {
+      alert("Transaction information is missing.");
+      return;
+    }
 
-      if (!selectedTransaction) {
-        throw new Error("Transaction not found.");
+    if (transaction.status !== "completed") {
+      alert("You can rate the other party only after the transaction is completed.");
+      return;
+    }
+
+    const ratedUserId =
+      role === "buyer" ? transaction.harvester_id : transaction.seller_id;
+
+    if (!ratedUserId || ratedUserId === session.user.id) {
+      alert("The account information for the person being rated is missing.");
+      return;
+    }
+
+    if (reviewedMarketplaceTransactions.has(transaction.id)) {
+      alert(`You have already rated this ${role}.`);
+      return;
+    }
+
+    try {
+      const { data: existingReview, error } = await supabase
+        .from("reviews")
+        .select("id")
+        .eq("transaction_id", transaction.id)
+        .eq("reviewer_id", session.user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (existingReview) {
+        setReviewedMarketplaceTransactions((prev) => {
+          const next = new Set(prev);
+          next.add(transaction.id);
+          return next;
+        });
+        alert(`You have already rated this ${role}.`);
+        return;
       }
 
-      const buyerId = selectedTransaction.harvester_id;
-
-      const averageScore =
-        (ratings.communication +
-          ratings.punctuality +
-          ratings.payment +
-          ratings.overall) /
-        4;
-
-      const { error: insertError } = await supabase.from("reviews").insert([
-        {
-          transaction_id: selectedTransaction.id,
-
-          seller_id: buyerId,
-
-          reviewer_id: session.user.id,
-
-          communication_rating: ratings.communication,
-
-          punctuality_rating: ratings.punctuality,
-
-          condition_rating: ratings.payment,
-
-          overall_rating: ratings.overall,
-
-          recommend: recommend === "yes",
-
-          comment: feedback,
-        },
-      ]);
-
-      if (insertError) throw insertError;
-
-      const { data: allReviews, error: reviewsError } = await supabase
-        .from("reviews")
-        .select("overall_rating")
-        .eq("seller_id", buyerId);
-
-      if (reviewsError) throw reviewsError;
-
-      const totalReviews = allReviews.length;
-
-      const averageRating =
-        totalReviews > 0
-          ? allReviews.reduce(
-            (sum, review) => sum + Number(review.overall_rating),
-            0,
-          ) / totalReviews
-          : 0;
-
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          average_rating: averageRating,
-          total_reviews: totalReviews,
-        })
-        .eq("id", buyerId);
-
-      if (profileError) throw profileError;
-
-      setShowRateModal(false);
-
-      alert("Buyer rated successfully!");
-    } catch (err) {
-      console.error(err);
-      alert(err.message);
+      setSelectedTxId(transaction.id);
+      setRatingRole(role);
+      setShowRateModal(true);
+    } catch (error) {
+      console.error("Error checking marketplace review:", error);
+      alert(`Unable to check the existing rating: ${error.message}`);
     }
   };
+
 
   const handleOpenDonation = (listing) => {
     setListingToDonate(listing);
@@ -3277,7 +3515,38 @@ const SellerDashboard = ({ session }) => {
                                       <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100"><Download size={18}/>{isRepair ? "View Repair Service Record" : "View Transaction Receipt"}</button>
                                       {isRepair ? (
                                         <button onClick={() => handleOpenRepairReview(tx)} disabled={reviewedRepairAppointments.has(tx.repair_appointment_id)} className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedRepairAppointments.has(tx.repair_appointment_id) ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100"}`}><Star size={18} fill="currentColor"/>{reviewedRepairAppointments.has(tx.repair_appointment_id) ? "Repair Shop Already Rated" : "Rate Repair Shop"}</button>
-                                      ) : isSeller && <button onClick={() => setShowRateModal(true)} className="w-full bg-[#FF4D2D] hover:bg-[#e64528] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"><Star size={18} fill="currentColor"/> Rate Buyer</button>}
+                                      ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
+                                          {isSeller && (
+                                            <button
+                                              onClick={() => handleOpenMarketplaceRating(tx, "buyer")}
+                                              disabled={reviewedMarketplaceTransactions.has(tx.id)}
+                                              className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                                                reviewedMarketplaceTransactions.has(tx.id)
+                                                  ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                                  : "bg-[#FF4D2D] hover:bg-[#e64528] text-white shadow-orange-200"
+                                              }`}
+                                            >
+                                              <Star size={18} fill="currentColor" />
+                                              {reviewedMarketplaceTransactions.has(tx.id) ? "Buyer Already Rated" : "Rate Buyer"}
+                                            </button>
+                                          )}
+                                          {isBuyer && (
+                                            <button
+                                              onClick={() => handleOpenMarketplaceRating(tx, "seller")}
+                                              disabled={reviewedMarketplaceTransactions.has(tx.id)}
+                                              className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                                                reviewedMarketplaceTransactions.has(tx.id)
+                                                  ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                                  : "bg-[#2d7a7f] hover:bg-[#246367] text-white shadow-blue-200"
+                                              }`}
+                                            >
+                                              <Star size={18} fill="currentColor" />
+                                              {reviewedMarketplaceTransactions.has(tx.id) ? "Seller Already Rated" : "Rate Seller"}
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   ) : isRepair ? (
                                     <div className="space-y-3"><div className="bg-purple-50 border border-purple-100 rounded-xl p-4"><p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p><p className="text-xs text-purple-600 mt-1">The repair shop will mark the repair service as completed after the device has been repaired.</p></div></div>
@@ -3967,14 +4236,24 @@ const SellerDashboard = ({ session }) => {
             if (appointmentId) setReviewedRepairAppointments((prev) => new Set(prev).add(appointmentId));
           }}
         />
-        <RateBuyerModal
+        <MarketplaceRatingModal
           isOpen={showRateModal}
-          onClose={() => setShowRateModal(false)}
-          buyerName={
-            transactions.find((t) => t.id === selectedTxId)?.harvester
-              ?.full_name
-          }
-          onConfirm={handleSubmitRating}
+          transaction={transactions.find((t) => t.id === selectedTxId)}
+          currentUserId={session.user.id}
+          ratingRole={ratingRole}
+          onClose={() => {
+            setShowRateModal(false);
+            setRatingRole(null);
+          }}
+          onSubmitted={(transactionId) => {
+            if (transactionId) {
+              setReviewedMarketplaceTransactions((prev) => {
+                const next = new Set(prev);
+                next.add(transactionId);
+                return next;
+              });
+            }
+          }}
         />
         <DonationModal
           isOpen={isDonationModalOpen}
