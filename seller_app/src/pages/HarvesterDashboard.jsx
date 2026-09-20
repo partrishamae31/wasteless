@@ -99,6 +99,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     co2_recovered_kg: 0,
 
     assigned_area: "",
+    barangay: "",
     average_rating: 0,
     total_reviews: 0,
   });
@@ -268,6 +269,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           total_reviews: profile?.total_reviews || 0,
 
           // LOCATION
+          barangay: profile?.barangay || "",
           assigned_area: profile?.barangay || "Not assigned",
 
           eco_points: (pickupsCount || 0) * 150,
@@ -1213,7 +1215,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 <>
                   <div
                     className="fixed inset-0 z-10"
-                    onClick={() => setIsProfileOpen(false)}
+                    onClick={() => setShowProfileDropdown(false)}
                   ></div>
                   <div className="absolute right-0 mt-3 w-64 bg-white rounded-[2rem] shadow-2xl border border-slate-50 z-20 overflow-hidden">
                     <div className="bg-gradient-to-br from-[#4a7c59] to-[#769c2d] p-5 text-white">
@@ -2164,7 +2166,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         ) : activeTab === "donation" ? (
           <DonationTab
             profileData={profileData}
-            onOpenDonationModal={() => setDonationModalOpen(true)}
+            session={session}
           />
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-slate-300 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
