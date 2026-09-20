@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import valenzuelaMap from "./assets/valenzuela-map.png";
+
 import {
   MapPin,
   ArrowRight,
@@ -8,10 +9,13 @@ import {
   Smartphone,
   TrendingUp,
   Coins,
-  X,
 } from "lucide-react";
 
 const HIGH_VALUE_THRESHOLD = 5000;
+
+/* =========================================================
+   VALENZUELA BARANGAY MAP POSITIONS
+   ========================================================= */
 
 const BARANGAY_POSITIONS = {
   "Wawang Pulo": { top: "17%", left: "5%" },
@@ -53,11 +57,147 @@ const BARANGAY_POSITIONS = {
   Marulas: { top: "90%", left: "60%" },
 };
 
+/* =========================================================
+   BARANGAY NAME NORMALIZATION
+   =========================================================
+   This prevents active barangays from disappearing because
+   of capitalization, spaces, punctuation, or small naming
+   differences between the database and the map.
+   ========================================================= */
+
+const normalizeBarangayName = (value) => {
+  if (!value) return "";
+
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[.,]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, "-");
+};
+
+/* =========================================================
+   BARANGAY ALIASES
+   ========================================================= */
+
+const BARANGAY_ALIASES = {
+  "gen t de leon": "Gen. T. de Leon",
+  "gen t. de leon": "Gen. T. de Leon",
+  "gen t de leon": "Gen. T. de Leon",
+  "general t de leon": "Gen. T. de Leon",
+  "general t. de leon": "Gen. T. de Leon",
+
+  "lawang bato": "Lawang Bato",
+  "lawang-bato": "Lawang Bato",
+
+  "canumay east": "Canumay East",
+  "canumay west": "Canumay West",
+
+  "paso de blas": "Paso de Blas",
+  "mapulang lupa": "Mapulang Lupa",
+
+  "veinte reales": "Veinte Reales",
+  "arkong bato": "Arkong Bato",
+
+  "wawang pulo": "Wawang Pulo",
+};
+
+const getCanonicalBarangayName = (value) => {
+  if (!value) return null;
+
+  const normalized = normalizeBarangayName(value);
+
+  /* First check exact normalized names */
+  const exactMatch = Object.keys(BARANGAY_POSITIONS).find(
+    (name) => normalizeBarangayName(name) === normalized,
+  );
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  /* Then check known aliases */
+  if (BARANGAY_ALIASES[normalized]) {
+    return BARANGAY_ALIASES[normalized];
+  }
+
+  /*
+   * If the database has a barangay that is not configured
+   * in the map, preserve its original name instead of
+   * silently deleting it.
+   */
+  return String(value).trim();
+};
+
+/* =========================================================
+   FALLBACK POSITION
+   =========================================================
+   If a new/unknown active barangay exists in Supabase but
+   does not yet have a manual position, give it a visible
+   position instead of returning null.
+   ========================================================= */
+
+const FALLBACK_POSITIONS = [
+  { top: "12%", left: "48%" },
+  { top: "18%", left: "88%" },
+  { top: "25%", left: "45%" },
+  { top: "32%", left: "88%" },
+  { top: "40%", left: "88%" },
+  { top: "48%", left: "12%" },
+  { top: "56%", left: "91%" },
+  { top: "65%", left: "12%" },
+  { top: "76%", left: "87%" },
+  { top: "86%", left: "25%" },
+  { top: "86%", left: "80%" },
+];
+
+const getFallbackPosition = (barangayName, index) => {
+  /*
+   * Generate a stable fallback index from the barangay name
+   * so the marker does not randomly move every render.
+   */
+  const name = String(barangayName || "");
+
+  let hash = 0;
+
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+
+  const positionIndex =
+    Math.abs(hash + Number(index || 0)) % FALLBACK_POSITIONS.length;
+
+  return FALLBACK_POSITIONS[positionIndex];
+};
+
+/* =========================================================
+   GET BARANGAY POSITION
+   ========================================================= */
+
+const getBarangayPosition = (barangayName, index = 0) => {
+  const canonicalName = getCanonicalBarangayName(barangayName);
+
+  if (BARANGAY_POSITIONS[canonicalName]) {
+    return BARANGAY_POSITIONS[canonicalName];
+  }
+
+  return getFallbackPosition(canonicalName, index);
+};
+
+/* =========================================================
+   URBAN MINE MAP
+   ========================================================= */
+
 const UrbanMineMap = ({ isVerified }) => {
   const [mapData, setMapData] = useState([]);
   const [filter, setFilter] = useState("All Listings");
   const [loading, setLoading] = useState(true);
   const [selectedBarangay, setSelectedBarangay] = useState(null);
+
+  /* =======================================================
+     FETCH MAP DATA
+     ======================================================= */
 
   useEffect(() => {
     fetchMapData();
@@ -66,83 +206,128 @@ const UrbanMineMap = ({ isVerified }) => {
   const fetchMapData = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("listings")
-      .select(
-        `
-        asking_price,
-        status,
-        profiles:seller_id (
-          barangay
+    try {
+      const { data, error } = await supabase
+        .from("listings")
+        .select(
+          `
+            asking_price,
+            status,
+            profiles:seller_id (
+              barangay
+            )
+          `,
         )
-      `,
-      )
-      .eq("status", "active");
+        .eq("status", "active");
 
-    if (error) {
-      console.error("Error loading Urban Mine Map:", error);
-      setMapData([]);
-      setLoading(false);
-      return;
-    }
-
-    if (!data) {
-      setMapData([]);
-      setLoading(false);
-      return;
-    }
-
-    const barangayGroups = data.reduce((acc, item) => {
-      const barangay = item.profiles?.barangay;
-
-      if (!barangay) return acc;
-
-      if (!acc[barangay]) {
-        acc[barangay] = {
-          count: 0,
-          totalValue: 0,
-          highValue: 0,
-        };
+      if (error) {
+        console.error("Error loading Urban Mine Map:", error);
+        setMapData([]);
+        setLoading(false);
+        return;
       }
 
-      const price = Number(item.asking_price || 0);
-
-      acc[barangay].count += 1;
-      acc[barangay].totalValue += price;
-
-      if (price > HIGH_VALUE_THRESHOLD) {
-        acc[barangay].highValue += 1;
+      if (!data) {
+        setMapData([]);
+        setLoading(false);
+        return;
       }
 
-      return acc;
-    }, {});
+      /* ===================================================
+         GROUP ACTIVE LISTINGS BY BARANGAY
+         =================================================== */
 
-    let formattedData = Object.entries(barangayGroups).map(
-      ([name, values]) => ({
-        name,
-        ...values,
-      }),
-    );
+      const barangayGroups = data.reduce((acc, item) => {
+        const rawBarangay = item?.profiles?.barangay;
 
-    if (filter === "High Value") {
-      formattedData = formattedData
-        .filter((barangay) => barangay.highValue > 0)
-        .sort((a, b) => b.totalValue - a.totalValue);
+        if (!rawBarangay) {
+          return acc;
+        }
+
+        const barangay = getCanonicalBarangayName(rawBarangay);
+
+        if (!barangay) {
+          return acc;
+        }
+
+        if (!acc[barangay]) {
+          acc[barangay] = {
+            count: 0,
+            totalValue: 0,
+            highValue: 0,
+          };
+        }
+
+        const price = Number(item?.asking_price || 0);
+
+        acc[barangay].count += 1;
+        acc[barangay].totalValue += price;
+
+        if (price > HIGH_VALUE_THRESHOLD) {
+          acc[barangay].highValue += 1;
+        }
+
+        return acc;
+      }, {});
+
+      /* ===================================================
+         FORMAT DATA
+         =================================================== */
+
+      let formattedData = Object.entries(barangayGroups).map(
+        ([name, values]) => ({
+          name,
+          ...values,
+        }),
+      );
+
+      /* ===================================================
+         HIGH VALUE FILTER
+         =================================================== */
+
+      if (filter === "High Value") {
+        formattedData = formattedData
+          .filter((barangay) => barangay.highValue > 0)
+          .sort((a, b) => b.totalValue - a.totalValue);
+      }
+
+      /* ===================================================
+         NEARBY FILTER
+         ===================================================
+         Keep the existing behavior: show the top 8
+         highest-activity barangays.
+         =================================================== */
+
+      if (filter === "Nearby") {
+        formattedData = formattedData
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 8);
+      }
+
+      /* ===================================================
+         ALL LISTINGS
+         ===================================================
+         Sort all active barangays by number of devices.
+         =================================================== */
+
+      if (filter === "All Listings") {
+        formattedData.sort((a, b) => b.count - a.count);
+      }
+
+      console.log("Urban Mine Map active barangays:", formattedData);
+
+      setMapData(formattedData);
+    } catch (err) {
+      console.error("Unexpected Urban Mine Map error:", err);
+      setMapData([]);
+    } finally {
+      setLoading(false);
     }
-
-    if (filter === "Nearby") {
-      // Keeps the barangays closest to the center of the map.
-      // Replace this later with browser geolocation if desired.
-      formattedData = formattedData
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 8);
-    }
-
-    formattedData.sort((a, b) => b.count - a.count);
-
-    setMapData(formattedData);
-    setLoading(false);
   };
+
+  /* =======================================================
+     STATS
+     ======================================================= */
 
   const stats = useMemo(() => {
     const totalDevices = mapData.reduce(
@@ -167,6 +352,10 @@ const UrbanMineMap = ({ isVerified }) => {
       totalValue,
     };
   }, [mapData]);
+
+  /* =======================================================
+     DENSITY
+     ======================================================= */
 
   const getDensity = (count) => {
     if (count >= 20) {
@@ -200,9 +389,16 @@ const UrbanMineMap = ({ isVerified }) => {
     };
   };
 
+  /* =======================================================
+     RENDER
+     ======================================================= */
+
   return (
     <div className="w-full space-y-4 animate-in fade-in duration-500">
-      {/* ================= HEADER ================= */}
+      {/* ===================================================
+          HEADER
+          =================================================== */}
+
       <div className="bg-white rounded-xl border border-slate-200 px-5 py-4">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -215,11 +411,16 @@ const UrbanMineMap = ({ isVerified }) => {
             </p>
           </div>
 
+          {/* FILTERS */}
+
           <div className="flex items-center gap-2">
             {["All Listings", "High Value", "Nearby"].map((option) => (
               <button
                 key={option}
-                onClick={() => setFilter(option)}
+                onClick={() => {
+                  setSelectedBarangay(null);
+                  setFilter(option);
+                }}
                 className={`px-4 py-2 rounded-lg text-[10px] font-bold border transition-all ${
                   filter === option
                     ? "bg-[#769c2d] border-[#769c2d] text-white shadow-sm"
@@ -232,7 +433,10 @@ const UrbanMineMap = ({ isVerified }) => {
           </div>
         </div>
 
-        {/* ================= STATS ================= */}
+        {/* =================================================
+            STATS
+            ================================================= */}
+
         <div className="grid grid-cols-4 gap-3 mt-4">
           <MapStat
             icon={<LayoutGrid />}
@@ -260,13 +464,19 @@ const UrbanMineMap = ({ isVerified }) => {
         </div>
       </div>
 
-      {/* ================= MAP ================= */}
+      {/* =====================================================
+          MAP
+          ===================================================== */}
+
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div
           className="relative h-[560px] overflow-hidden flex items-center justify-center"
           onClick={() => setSelectedBarangay(null)}
         >
-          {/* Actual Valenzuela Barangay Map */}
+          {/* =================================================
+              ACTUAL VALENZUELA MAP
+              ================================================= */}
+
           <div className="relative w-[700px] max-w-[90%] aspect-[429/350]">
             <img
               src={valenzuelaMap}
@@ -274,7 +484,10 @@ const UrbanMineMap = ({ isVerified }) => {
               className="absolute inset-0 w-full h-full object-contain"
             />
 
-            {/* Loading */}
+            {/* =================================================
+                LOADING
+                ================================================= */}
+
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-sm z-40">
                 <div className="bg-white px-5 py-3 rounded-xl shadow-lg">
@@ -285,23 +498,21 @@ const UrbanMineMap = ({ isVerified }) => {
               </div>
             )}
 
-            {/* Dynamic Barangay Markers */}
-            {!loading &&
-              mapData.map((barangay) => {
-                const position = BARANGAY_POSITIONS[barangay.name];
+            {/* =================================================
+                DYNAMIC BARANGAY MARKERS
+                ================================================= */}
 
-                // Don't display a marker if its barangay
-                // doesn't have a configured position yet.
-                if (!position) {
-                  console.warn(
-                    `No map position configured for barangay: ${barangay.name}`,
-                  );
-                  return null;
-                }
+            {!loading &&
+              mapData.map((barangay, index) => {
+                const position = getBarangayPosition(
+                  barangay.name,
+                  index,
+                );
 
                 const density = getDensity(barangay.count);
 
-                const isSelected = selectedBarangay?.name === barangay.name;
+                const isSelected =
+                  selectedBarangay?.name === barangay.name;
 
                 return (
                   <div
@@ -317,21 +528,34 @@ const UrbanMineMap = ({ isVerified }) => {
                       onClick={(e) => {
                         e.stopPropagation();
 
-                        setSelectedBarangay(isSelected ? null : barangay);
+                        setSelectedBarangay(
+                          isSelected ? null : barangay,
+                        );
                       }}
                       className="group relative"
+                      aria-label={`View ${barangay.name} barangay details`}
                     >
-                      {/* Colored Density Marker */}
+                      {/* =================================================
+                          COLORED DENSITY MARKER
+                          ================================================= */}
+
                       <div
                         className="w-7 h-7 rounded-full border-[3px] border-white shadow-lg flex items-center justify-center transition-all duration-200 group-hover:scale-125"
                         style={{
                           backgroundColor: density.color,
                         }}
                       >
-                        <MapPin size={14} className="text-white" fill="white" />
+                        <MapPin
+                          size={14}
+                          className="text-white"
+                          fill="white"
+                        />
                       </div>
 
-                      {/* Popup */}
+                      {/* =================================================
+                          POPUP
+                          ================================================= */}
+
                       {isSelected && (
                         <div
                           className="absolute bottom-10 left-1/2 -translate-x-1/2 w-48 bg-white rounded-xl border border-slate-200 shadow-2xl p-4 z-[100]"
@@ -352,7 +576,8 @@ const UrbanMineMap = ({ isVerified }) => {
                               </span>
 
                               <span className="text-[9px] font-bold text-[#3285a1]">
-                                ₱{barangay.totalValue.toLocaleString()}
+                                ₱
+                                {barangay.totalValue.toLocaleString()}
                               </span>
                             </div>
 
@@ -381,11 +606,17 @@ const UrbanMineMap = ({ isVerified }) => {
                 );
               })}
 
-            {/* No data */}
+            {/* =================================================
+                NO DATA
+                ================================================= */}
+
             {!loading && mapData.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center z-30">
                 <div className="bg-white rounded-xl shadow-lg border border-slate-200 px-8 py-6 text-center">
-                  <MapPin size={28} className="mx-auto text-slate-300 mb-2" />
+                  <MapPin
+                    size={28}
+                    className="mx-auto text-slate-300 mb-2"
+                  />
 
                   <p className="text-sm font-bold text-slate-600">
                     No active listings found
@@ -399,7 +630,10 @@ const UrbanMineMap = ({ isVerified }) => {
             )}
           </div>
 
-          {/* LOCATION CATEGORY KEY */}
+          {/* =================================================
+              LOCATION CATEGORY KEY
+              ================================================= */}
+
           <div className="absolute bottom-5 left-5 bg-white rounded-lg border-2 border-[#163d73] shadow-lg overflow-hidden z-30">
             <div className="bg-[#163d73] px-3 py-2">
               <p className="text-[10px] font-black text-white uppercase tracking-wide">
@@ -419,21 +653,41 @@ const UrbanMineMap = ({ isVerified }) => {
           </div>
         </div>
 
-        {/* DENSITY LEGEND */}
+        {/* =====================================================
+            DENSITY LEGEND
+            ===================================================== */}
+
         <div className="border-t border-slate-200 px-5 py-3 flex items-center gap-7">
-          <span className="text-[9px] font-bold text-slate-400">Density:</span>
+          <span className="text-[9px] font-bold text-slate-400">
+            Density:
+          </span>
 
-          <LegendItem color="bg-green-500" label="Low (1-5)" />
+          <LegendItem
+            color="bg-green-500"
+            label="Low (1-5)"
+          />
 
-          <LegendItem color="bg-orange-500" label="Medium (6-10)" />
+          <LegendItem
+            color="bg-orange-500"
+            label="Medium (6-10)"
+          />
 
-          <LegendItem color="bg-red-500" label="High (11-20)" />
+          <LegendItem
+            color="bg-red-500"
+            label="High (11-20)"
+          />
 
-          <LegendItem color="bg-purple-500" label="Very High (20+)" />
+          <LegendItem
+            color="bg-purple-500"
+            label="Very High (20+)"
+          />
         </div>
       </div>
 
-      {/* ================= BARANGAY CARDS ================= */}
+      {/* =====================================================
+          BARANGAY CARDS
+          ===================================================== */}
+
       <div className="grid grid-cols-3 gap-3">
         {mapData.length > 0 ? (
           mapData.map((barangay) => (
@@ -445,7 +699,10 @@ const UrbanMineMap = ({ isVerified }) => {
           ))
         ) : (
           <div className="col-span-3 py-16 text-center bg-white rounded-xl border border-slate-200">
-            <MapPin size={28} className="mx-auto text-slate-300 mb-3" />
+            <MapPin
+              size={28}
+              className="mx-auto text-slate-300 mb-3"
+            />
 
             <p className="text-sm font-bold text-slate-500">
               No active listings found for the Urban Mine Map.
@@ -459,7 +716,7 @@ const UrbanMineMap = ({ isVerified }) => {
 
 /* =========================================================
    STAT CARD
-========================================================= */
+   ========================================================= */
 
 const MapStat = ({ icon, label, value }) => {
   return (
@@ -469,9 +726,13 @@ const MapStat = ({ icon, label, value }) => {
       </div>
 
       <div>
-        <p className="text-[9px] font-bold text-slate-400">{label}</p>
+        <p className="text-[9px] font-bold text-slate-400">
+          {label}
+        </p>
 
-        <p className="text-xl font-black text-slate-800 mt-0.5">{value}</p>
+        <p className="text-xl font-black text-slate-800 mt-0.5">
+          {value}
+        </p>
       </div>
     </div>
   );
@@ -479,7 +740,7 @@ const MapStat = ({ icon, label, value }) => {
 
 /* =========================================================
    MAP KEY
-========================================================= */
+   ========================================================= */
 
 const MapKeyItem = ({ color, label }) => {
   return (
@@ -489,28 +750,32 @@ const MapKeyItem = ({ color, label }) => {
         style={{ backgroundColor: color }}
       />
 
-      <span className="text-[8px] font-black text-slate-600">{label}</span>
+      <span className="text-[8px] font-black text-slate-600">
+        {label}
+      </span>
     </div>
   );
 };
 
 /* =========================================================
    DENSITY LEGEND
-========================================================= */
+   ========================================================= */
 
 const LegendItem = ({ color, label }) => {
   return (
     <div className="flex items-center gap-2">
       <div className={`w-2.5 h-2.5 rounded-full ${color}`} />
 
-      <span className="text-[9px] font-bold text-slate-500">{label}</span>
+      <span className="text-[9px] font-bold text-slate-500">
+        {label}
+      </span>
     </div>
   );
 };
 
 /* =========================================================
    BARANGAY CARD
-========================================================= */
+   ========================================================= */
 
 const BarangayCard = ({ barangay, onView }) => {
   const density =

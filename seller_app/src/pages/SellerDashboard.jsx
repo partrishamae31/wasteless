@@ -184,7 +184,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
   };
 
   return (
-    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/100 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 pt-100">
       <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden">
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
           <div className="flex items-start justify-between gap-4">
@@ -1030,62 +1030,103 @@ const SellerDashboard = ({ session }) => {
     setIsDonationModalOpen(true);
   };
 
-  const handleConfirmDonation = async (listingId) => {
-    try {
-      if (!listingId) {
-        alert("No listing selected for donation.");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("listings")
-        .update({
-          status: "donated",
-          drop_off_point_id: null,
-        })
-        .eq("id", listingId)
-        .eq("seller_id", session.user.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      console.log("Donation saved:", data);
-
-      // Update the listing in the UI
-      setMyListings((prev) =>
-        prev.map((listing) =>
-          listing.id === listingId
-            ? {
-              ...listing,
-              status: "donated",
-              drop_off_point_id: null,
-            }
-            : listing,
-        ),
-      );
-
-      setMyDonations((prev) => [
-        ...prev,
-        {
-          ...listingToDonate,
-          status: "donated",
-          drop_off_point_id: null,
-        },
-      ]);
-
-      // Close modal
-      setIsDonationModalOpen(false);
-      setListingToDonate(null);
-
-      alert(
-        "Thank you for donating! Your device is now waiting for an admin to assign a drop-off point.",
-      );
-    } catch (err) {
-      console.error("Donation error:", err);
-      alert(`Failed to process donation: ${err.message}`);
+  const handleConfirmDonation = async (
+  listingId,
+  dropOffPointId = null,
+  savedListing = null
+) => {
+  try {
+    if (!listingId) {
+      alert("No listing selected for donation.");
+      return;
     }
-  };
+
+    // If SellerDonationTab already selected a drop-off point,
+    // preserve that exact point instead of resetting it to null.
+    const selectedDropOffPointId =
+      dropOffPointId ||
+      savedListing?.drop_off_point_id ||
+      null;
+
+    if (!selectedDropOffPointId) {
+      alert(
+        "Please select a drop-off point before confirming the donation."
+      );
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("listings")
+      .update({
+        status: "donated",
+        drop_off_point_id: selectedDropOffPointId,
+      })
+      .eq("id", listingId)
+      .eq("seller_id", session.user.id)
+      .select(`
+        id,
+        seller_id,
+        status,
+        drop_off_point_id,
+        device_model,
+        category,
+        created_at,
+        asking_price
+      `)
+      .single();
+
+    if (error) throw error;
+
+    if (!data?.drop_off_point_id) {
+      throw new Error(
+        "The donation was saved, but the drop-off point was not returned by the database."
+      );
+    }
+
+    console.log("Donation saved successfully:", data);
+
+    // Preserve the complete listing information in local state.
+    setMyListings((prev) =>
+      prev.map((listing) =>
+        listing.id === listingId
+          ? {
+              ...listing,
+              ...data,
+              status: "donated",
+              drop_off_point_id: data.drop_off_point_id,
+            }
+          : listing
+      )
+    );
+
+    // Update donation history without losing the drop-off point.
+    setMyDonations((prev) => {
+      const existing = prev.find((item) => item.id === listingId);
+
+      const updatedDonation = {
+        ...(existing || listingToDonate || {}),
+        ...data,
+        status: "donated",
+        drop_off_point_id: data.drop_off_point_id,
+      };
+
+      const filtered = prev.filter((item) => item.id !== listingId);
+
+      return [updatedDonation, ...filtered];
+    });
+
+    // Close donation modal if it is open.
+    setIsDonationModalOpen(false);
+    setListingToDonate(null);
+
+    alert(
+      "Thank you for donating! Your selected drop-off point has been saved."
+    );
+  } catch (err) {
+    console.error("Donation error:", err);
+    alert(`Failed to process donation: ${err.message}`);
+  }
+};
 
   const handleOpenRepairReview = async (transaction) => {
     if (!transaction?.repair_appointment_id) return alert("Repair appointment information is missing.");
