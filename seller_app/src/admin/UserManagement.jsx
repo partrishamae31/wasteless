@@ -24,6 +24,7 @@ const UserManagement = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
+  const [verificationFilter, setVerificationFilter] = useState("All");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -54,22 +55,92 @@ const UserManagement = () => {
   }, []);
 
   useEffect(() => {
-    let result = users;
+    let result = [...users];
 
-    if (searchQuery) {
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+
       result = result.filter(
         (u) =>
-          u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          u.email?.toLowerCase().includes(searchQuery.toLowerCase()),
+          u.full_name?.toLowerCase().includes(query) ||
+          u.email?.toLowerCase().includes(query),
       );
     }
 
     if (roleFilter !== "All") {
-      result = result.filter((u) => u.role === roleFilter);
+      result = result.filter(
+        (u) => u.role?.toLowerCase() === roleFilter.toLowerCase(),
+      );
+    }
+
+    if (verificationFilter !== "All") {
+      result = result.filter((u) => {
+        const status = u.is_verified
+          ? "verified"
+          : (u.verification_status || "pending").toLowerCase();
+
+        return status === verificationFilter.toLowerCase();
+      });
     }
 
     setFilteredUsers(result);
-  }, [searchQuery, roleFilter, users]);
+  }, [searchQuery, roleFilter, verificationFilter, users]);
+
+  const getVerificationState = (user) => {
+    if (user?.is_verified || user?.verification_status?.toLowerCase() === "verified") {
+      return "verified";
+    }
+
+    if (user?.verification_status?.toLowerCase() === "rejected") {
+      return "rejected";
+    }
+
+    return "pending";
+  };
+
+  const getVerificationBadge = (user) => {
+    const state = getVerificationState(user);
+
+    if (state === "verified") {
+      return {
+        label: "Verified",
+        className: "bg-emerald-50 text-emerald-700 border-emerald-100",
+        icon: <ShieldCheck size={12} />,
+      };
+    }
+
+    if (state === "rejected") {
+      return {
+        label: "Unverified",
+        className: "bg-red-50 text-red-600 border-red-100",
+        icon: <ShieldAlert size={12} />,
+      };
+    }
+
+    return {
+      label: "New User",
+      className: "bg-orange-50 text-orange-700 border-orange-100",
+      icon: <ShieldAlert size={12} />,
+    };
+  };
+
+  const getRoleLabel = (role) => {
+    const normalizedRole = role?.toLowerCase();
+
+    if (normalizedRole === "repair_shop" || normalizedRole === "repair shop") {
+      return "Repair Shop";
+    }
+
+    if (normalizedRole === "harvester") {
+      return "Tech Harvester";
+    }
+
+    if (normalizedRole === "seller") {
+      return "Seller";
+    }
+
+    return role || "User";
+  };
 
   const handleSuspendToggle = async (user) => {
     const currentStatus = (user.status || "").toLowerCase();
@@ -118,9 +189,21 @@ const UserManagement = () => {
   const pendingUsers = users.filter((u) => u.verification_status === "pending");
 
   const handleDismiss = async (user) => {
-    if (
-      !window.confirm(`Dismiss verification request for ${user.full_name}?`)
-    ) {
+    const reason = window.prompt(
+      `Reason for rejecting ${user.full_name || "this user's"} verification request (optional):`,
+      "",
+    );
+
+    if (reason === null) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Reject verification for ${user.full_name || "this user"}?\n\n` +
+        `The account will remain unverified and can be reviewed again after the user corrects their credentials.`,
+    );
+
+    if (!confirmed) {
       return;
     }
 
@@ -134,9 +217,19 @@ const UserManagement = () => {
 
     if (error) {
       alert(error.message);
-    } else {
-      fetchUsers();
+      return;
     }
+
+    // The reason is intentionally not written to a guessed database column.
+    // If a verification_rejection_reason column is added later, this handler
+    // can persist `reason` there and the email workflow can use the same value.
+    console.info("Verification rejection reason:", reason);
+
+    await fetchUsers();
+    alert(
+      "Verification rejected. The account remains unverified. " +
+        "A correction/resubmission workflow can use the rejection reason once the email/notification service is connected.",
+    );
   };
 
   return (
@@ -161,7 +254,7 @@ const UserManagement = () => {
             </h2>
 
             <p className="text-xs text-slate-500">
-              Users are waiting for credential verification
+              New accounts remain unverified until their credentials are reviewed.
             </p>
           </div>
         </div>
@@ -187,11 +280,17 @@ const UserManagement = () => {
                     </h3>
 
                     <p className="text-xs text-slate-500">{user.email}</p>
-                    <p className="mt-1 text-[11px] font-medium text-slate-400">
-                      {user.role === "repair_shop" || user.role === "repair shop"
-                        ? "Repair Shop"
-                        : user.role || "User"}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-[11px] font-medium text-slate-400">
+                        {getRoleLabel(user.role)}
+                      </p>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getVerificationBadge(user).className}`}
+                      >
+                        {getVerificationBadge(user).icon}
+                        {getVerificationBadge(user).label}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -250,23 +349,65 @@ const UserManagement = () => {
           </select>
         </div>
 
-        {/* FILTER BUTTONS */}
+        {/* FILTERS */}
         <div className="mt-4 flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600">
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
             <Filter size={14} />
-            All Verification Status
-          </button>
+            <select
+              value={verificationFilter}
+              onChange={(e) => setVerificationFilter(e.target.value)}
+              className="bg-transparent outline-none"
+              aria-label="Filter by verification status"
+            >
+              <option value="All">All Verification Status</option>
+              <option value="pending">New User / Pending</option>
+              <option value="verified">Verified</option>
+              <option value="rejected">Unverified / Rejected</option>
+            </select>
+          </label>
 
-          <button className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600">
+          <button
+            type="button"
+            onClick={() =>
+              setUsers((current) =>
+                [...current].sort(
+                  (a, b) =>
+                    new Date(b.created_at || 0) - new Date(a.created_at || 0),
+                ),
+              )
+            }
+            className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100"
+          >
             Date: Newest First
           </button>
 
-          <button className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600">
-            Transactions: Default
+          <button
+            type="button"
+            onClick={() =>
+              setUsers((current) =>
+                [...current].sort(
+                  (a, b) =>
+                    (b.transactions_count || 0) - (a.transactions_count || 0),
+                ),
+              )
+            }
+            className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Transactions: Highest First
           </button>
 
-          <button className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600">
-            Rating: Default
+          <button
+            type="button"
+            onClick={() =>
+              setUsers((current) =>
+                [...current].sort(
+                  (a, b) => (b.rating || 0) - (a.rating || 0),
+                ),
+              )
+            }
+            className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Rating: Highest First
           </button>
         </div>
 
@@ -344,7 +485,7 @@ const UserManagement = () => {
                             <User size={14} className="text-sky-500" />
                           )}
 
-                          <span>{user.role || "User"}</span>
+                          <span>{getRoleLabel(user.role)}</span>
                         </div>
                       </td>
 
@@ -355,26 +496,14 @@ const UserManagement = () => {
                           : "—"}
                       </td>
 
-                      {/* VERIFICATION */}
+                      {/* VERIFICATION / USER BADGE */}
                       <td className="px-2 py-5">
-                        {user.is_verified ||
-                        user.verification_status?.toLowerCase() === "verified" ? (
-                          <div className="flex items-center gap-1 text-sm font-medium text-emerald-600">
-                            <ShieldCheck size={14} />
-                            Verified
-                          </div>
-                        ) : user.verification_status?.toLowerCase() ===
-                          "rejected" ? (
-                          <div className="flex items-center gap-1 text-sm font-medium text-red-500">
-                            <ShieldAlert size={14} />
-                            Rejected
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-sm font-medium text-orange-500">
-                            <ShieldAlert size={14} />
-                            Pending
-                          </div>
-                        )}
+                        <div
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${getVerificationBadge(user).className}`}
+                        >
+                          {getVerificationBadge(user).icon}
+                          {getVerificationBadge(user).label}
+                        </div>
                       </td>
 
                       {/* TRANSACTIONS */}
@@ -402,12 +531,14 @@ const UserManagement = () => {
                       <td className="px-2 py-5">
                         <div className="flex justify-end gap-2">
                           {(isRepairShop || isHarvester || isSeller) &&
-                            !user.is_verified && (
+                            getVerificationState(user) !== "verified" && (
                               <button
                                 onClick={() => handleVerifyClick(user)}
                                 className="rounded-lg bg-emerald-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
                               >
-                                Verify
+                                {getVerificationState(user) === "rejected"
+                                  ? "Review Again"
+                                  : "Verify"}
                               </button>
                             )}
 
@@ -452,7 +583,10 @@ const UserManagement = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         shopData={selectedUser}
-        onSuccess={fetchUsers}
+        onSuccess={async () => {
+          await fetchUsers();
+          setIsModalOpen(false);
+        }}
       />
 
       <UserDetailsModal
