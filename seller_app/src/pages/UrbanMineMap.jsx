@@ -83,7 +83,6 @@ const normalizeBarangayName = (value) => {
 const BARANGAY_ALIASES = {
   "gen t de leon": "Gen. T. de Leon",
   "gen t. de leon": "Gen. T. de Leon",
-  "gen t de leon": "Gen. T. de Leon",
   "general t de leon": "Gen. T. de Leon",
   "general t. de leon": "Gen. T. de Leon",
 

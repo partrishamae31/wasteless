@@ -92,6 +92,10 @@ const LocationSelector = ({ position, onChange }) => {
 const SignUp = ({ onLoginClick }) => {
   const [step, setStep] = useState(1);
   const [accountType, setAccountType] = useState("");
+  const [privacyConsent, setPrivacyConsent] = useState(false);
+  const [idScanCompleted, setIdScanCompleted] = useState(false);
+  const [permitScanCompleted, setPermitScanCompleted] = useState(false);
+  const [registrationSummaryReady, setRegistrationSummaryReady] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [scanningId, setScanningId] = useState(false);
@@ -259,6 +263,9 @@ const SignUp = ({ onLoginClick }) => {
       [field]: file,
     }));
 
+    if (field === "governmentId") setIdScanCompleted(false);
+    if (field === "businessPermit") setPermitScanCompleted(false);
+
     if (errors[field]) {
       setErrors((prev) => ({
         ...prev,
@@ -288,15 +295,24 @@ const SignUp = ({ onLoginClick }) => {
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Could not read the ID.");
       const extracted = data.fields || {};
+      const hasName = typeof extracted.fullName === "string" && extracted.fullName.trim();
+      const hasAddress = typeof extracted.address === "string" && extracted.address.trim();
+      const hasBarangay = typeof extracted.barangay === "string" && valenzuelaBarangays.includes(extracted.barangay);
+
+      if (!hasName) {
+        throw new Error("The ID could not be read clearly. Please provide a valid, legible government ID in PDF, JPEG, PNG, or WebP format.");
+      }
+
       setFormData((prev) => ({
         ...prev,
-        ...(typeof extracted.fullName === "string" && extracted.fullName.trim()
-          ? { fullName: extracted.fullName.trim() } : {}),
-        ...(typeof extracted.barangay === "string" && valenzuelaBarangays.includes(extracted.barangay)
-          ? { barangay: extracted.barangay } : {}),
+        ...(hasName ? { fullName: extracted.fullName.trim() } : {}),
+        ...(hasAddress ? { address: extracted.address.trim() } : {}),
+        ...(hasBarangay ? { barangay: extracted.barangay } : {}),
       }));
-      setScanMessage("Scan complete. Please review the suggested name and barangay before continuing.");
+      setIdScanCompleted(true);
+      setScanMessage("Scan complete. Review the extracted name, address, and barangay before continuing.");
     } catch (error) {
+  setIdScanCompleted(false);
   console.error("Government ID scan failed:", error);
 
   if (error?.context) {
@@ -357,8 +373,10 @@ const SignUp = ({ onLoginClick }) => {
         ...(typeof extracted.businessActivity === "string" && extracted.businessActivity.trim() ? { businessActivity: extracted.businessActivity.trim() } : {}),
       }));
 
+      setPermitScanCompleted(true);
       setScanMessage("Permit scan complete. Review and correct all extracted details before continuing.");
     } catch (error) {
+      setPermitScanCompleted(false);
       console.error("Business permit scan failed:", error);
       alert(error?.message || "Permit scan failed. Please enter the details manually.");
       setScanMessage("Permit scan failed. You can enter the details manually.");
@@ -452,7 +470,15 @@ const SignUp = ({ onLoginClick }) => {
   };
 
   const handleContinue = async () => {
-    if (step === 1 && accountType) {
+    if (step === 1) {
+      if (!accountType) {
+        alert("Please select an account type.");
+        return;
+      }
+      if (!privacyConsent) {
+        alert("You must consent to data collection to proceed.");
+        return;
+      }
       setStep(2);
       return;
     }
@@ -466,7 +492,7 @@ const SignUp = ({ onLoginClick }) => {
         const { data, error } = await supabase.auth.signUp({
           email: formData.email.trim().toLowerCase(),
           password: formData.password,
-          options: { data: { role: accountType, buyer_type: accountType, is_verified: false, status: "active" } }
+          options: { data: { role: accountType, buyer_type: accountType, is_verified: false, status: "active", verification_badge: "New User" } }
         });
         if (error) throw error;
         if (!data?.user) throw new Error("Could not create the account.");
@@ -512,6 +538,8 @@ const SignUp = ({ onLoginClick }) => {
       if (accountType === "harvester") {
         const idFile = governmentIdRef.current?.files?.[0] || formData.governmentId;
         if (!idFile) { alert("Please upload your personal government ID and scan it before continuing."); return; }
+        if (!idScanCompleted) { alert("Please scan your government ID successfully before continuing."); return; }
+        if (!formData.address.trim()) { alert("Please confirm or enter your address after the ID scan."); return; }
       }
       // =========================
       // REPAIR SHOP
@@ -584,10 +612,30 @@ const SignUp = ({ onLoginClick }) => {
           return;
         }
 
-        await handleFinalSubmit();
+        setRegistrationSummaryReady(true);
+        setStep(5);
         return;
       }
 
+      if (!idScanCompleted) {
+        alert("Please scan your government ID successfully before continuing. If the ID is unreadable, upload a clear valid ID and try again.");
+        return;
+      }
+      if (!formData.address.trim()) {
+        alert("Please confirm or enter your address before continuing.");
+        return;
+      }
+
+      setRegistrationSummaryReady(true);
+      setStep(5);
+      return;
+    }
+
+    if (step === 5) {
+      if (!registrationSummaryReady) {
+        alert("Please review your registration details before creating the account.");
+        return;
+      }
       await handleFinalSubmit();
       return;
     }
@@ -617,10 +665,7 @@ const SignUp = ({ onLoginClick }) => {
         business_name: formData.businessName || null,
 
         // Repair Shop location
-        address:
-          finalRole === "repair_shop"
-            ? formData.address.trim()
-            : null,
+        address: formData.address.trim() || null,
 
         latitude:
           finalRole === "repair_shop" && shopLocation
@@ -746,8 +791,23 @@ const SignUp = ({ onLoginClick }) => {
 
       if (profileError) throw profileError;
 
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: {
+          role: finalRole,
+          verification_badge: "New User",
+          verification_status: "pending",
+        },
+      });
+      if (metadataError) {
+        console.warn("Could not update signup metadata:", metadataError);
+      }
+
+      // The registration is complete, but the user must authenticate normally
+      // through the Login screen rather than being silently logged in after signup.
+      await supabase.auth.signOut();
+
       setIsSubmitted(true);
-      alert("Registration complete. You can now log in to your account.");
+      alert("Account created successfully. Your badge is New User while verification is pending. Please log in with your email and password.");
     } catch (err) {
       console.error(err);
 
@@ -756,7 +816,7 @@ const SignUp = ({ onLoginClick }) => {
       setLoading(false);
     }
   };
-  const steps = [1, 2, 3, 4];
+  const steps = [1, 2, 3, 4, 5];
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] flex items-center justify-center p-6 font-sans">
@@ -832,10 +892,26 @@ const SignUp = ({ onLoginClick }) => {
                   Buy items for parts or request repair services
                 </span>
               </button>
+              <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={privacyConsent}
+                  onChange={(e) => setPrivacyConsent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-[#2d7a7f]"
+                />
+                <span className="text-[10px] leading-relaxed text-gray-600">
+                  I consent to the collection and processing of my registration and verification information for Wasteless account creation and verification.
+                </span>
+              </label>
+
+              {!privacyConsent && accountType && (
+                <p className="text-[10px] text-red-500 -mt-2">You must consent to data collection to proceed.</p>
+              )}
+
               <button
-                disabled={!accountType}
+                disabled={!accountType || !privacyConsent}
                 onClick={handleContinue}
-                className={`w-full mt-6 py-3 rounded-lg font-bold text-sm transition-all ${accountType ? "bg-[#2d7a7f] text-white hover:opacity-90" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                className={`w-full mt-6 py-3 rounded-lg font-bold text-sm transition-all ${accountType && privacyConsent ? "bg-[#2d7a7f] text-white hover:opacity-90" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
               >
                 Continue
               </button>
@@ -1205,6 +1281,11 @@ const SignUp = ({ onLoginClick }) => {
                 {!formData.fullName.trim() && <p className="text-[10px] text-amber-700 mt-1">{accountType === "repair_shop" ? "Enter the full name shown on the business permit." : "Scan your ID first. If the name cannot be read, enter it exactly as shown on your ID."}</p>}
               </div>
                 <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-2">Address <span className="text-red-500">*</span></label>
+                  <textarea name="address" rows={2} value={formData.address} onChange={handleChange} placeholder={accountType === "repair_shop" ? "Complete shop address" : "Address as shown on your government ID"} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm resize-none" />
+                  <p className="text-[10px] text-gray-500 mt-1">Review or correct the address before creating your account.</p>
+                </div>
+                <div>
                   <label className="text-[11px] font-bold text-gray-700 block mb-2">Contact Number <span className="text-red-500">*</span></label>
                   <input name="contactNumber" type="tel" value={formData.contactNumber} onChange={handleChange} placeholder="09123456789" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                   <p className="text-[10px] text-gray-500 mt-1">{accountType === "repair_shop" ? "Review the contact number extracted from the business permit." : "Enter or correct your phone number if it was not extracted from the ID."}</p>
@@ -1372,12 +1453,58 @@ const SignUp = ({ onLoginClick }) => {
                   disabled={loading}
                   className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90 disabled:opacity-50"
                 >
-                  {loading ? "Submitting..." : "Continue"}
+                  {loading ? "Saving..." : "Review Summary"}
                 </button>
               </div>
             </div>
           )}
 
+
+          {!isSubmitted && step === 5 && (
+            <div className="space-y-4 animate-fadeIn text-left">
+              <h3 className="text-lg font-bold text-gray-800">Registration Summary</h3>
+              <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
+                <p className="text-[11px] text-emerald-800 leading-relaxed">Review all information carefully. You can edit any field by going back before creating your account.</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden text-sm">
+                {[
+                  ["Account Type", accountType === "harvester" ? "Community User / Tech-Dealer" : "Repair Shop"],
+                  ["Email", formData.email],
+                  ["Full Name", formData.fullName],
+                  ["Address", formData.address],
+                  ["Contact Number", formData.contactNumber],
+                  [accountType === "repair_shop" ? "Business Barangay" : "Barangay of Residence", formData.barangay],
+                  ...(accountType === "repair_shop" ? [
+                    ["Business / Shop Name", formData.businessName],
+                    ["Business Permit Number", formData.businessPermitNumber],
+                    ["Permit Type", formData.permitType],
+                    ["Permit Issuing LGU", formData.permitIssuingLgu],
+                    ["Business Activity", formData.businessActivity],
+                    ["Certification", formData.certificationType === "Other Certification" ? formData.otherCertification : formData.certificationType],
+                    ["Certificate Number", formData.techCertificateNumber],
+                    ["Certificate Issuer", formData.techCertificateIssuer],
+                    ["Certificate Title", formData.techCertificateTitle],
+                  ] : []),
+                ].map(([label, value]) => (
+                  <div key={label} className="p-3 flex flex-col gap-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
+                    <span className="text-gray-800 break-words">{value || "—"}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+                <p className="text-xs font-bold text-gray-700">Verification status</p>
+                <p className="text-[11px] text-gray-600">New User - verification pending. Your role privileges are applied after account creation, while document verification remains pending.</p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setStep(4)} className="flex-1 py-3 border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50">Back / Edit</button>
+                <button type="button" onClick={handleContinue} disabled={loading} className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm hover:opacity-90 disabled:opacity-50">{loading ? "Creating Account..." : "Create Account"}</button>
+              </div>
+            </div>
+          )}
 
           {isSubmitted && (
             <div className="space-y-4 animate-fadeIn text-center">
