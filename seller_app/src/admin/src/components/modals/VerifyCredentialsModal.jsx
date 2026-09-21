@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
 const EMPTY_CHECKLIST = {
@@ -29,6 +30,8 @@ const VerifyCredentialsModal = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [checklist, setChecklist] = useState(EMPTY_CHECKLIST);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [showRejectForm, setShowRejectForm] = useState(false);
 
   const userRole = shopData?.role?.toLowerCase();
 
@@ -37,12 +40,31 @@ const VerifyCredentialsModal = ({
     userRole === "repair_shop" || userRole === "repair shop";
   const isHarvester = userRole === "harvester";
 
-  // Reset the checklist whenever a different user/application is opened.
+  const validIdUrl =
+    shopData?.valid_id_url ||
+    shopData?.government_id_url ||
+    shopData?.id_url ||
+    null;
+
+  const businessPermitUrl =
+    shopData?.business_permit_url ||
+    shopData?.business_permit ||
+    null;
+
+  const techCertUrl =
+    shopData?.tech_cert_url ||
+    shopData?.technical_certification_url ||
+    shopData?.tech_certification_url ||
+    null;
+
+  // Reset the form whenever a different application is opened.
   useEffect(() => {
     if (isOpen) {
       setChecklist({ ...EMPTY_CHECKLIST });
       setIsSuccess(false);
       setIsProcessing(false);
+      setRejectionReason("");
+      setShowRejectForm(false);
     }
   }, [isOpen, shopData?.id]);
 
@@ -55,14 +77,63 @@ const VerifyCredentialsModal = ({
     }));
   };
 
+  const requiredDocumentsPresent = useMemo(() => {
+    if (isRepairShop) {
+      return Boolean(businessPermitUrl && techCertUrl);
+    }
+
+    if (isSeller || isHarvester) {
+      return Boolean(validIdUrl);
+    }
+
+    return false;
+  }, [
+    isRepairShop,
+    isSeller,
+    isHarvester,
+    businessPermitUrl,
+    techCertUrl,
+    validIdUrl,
+  ]);
+
+  const isAllChecked = useMemo(() => {
+    if (!requiredDocumentsPresent) return false;
+
+    if (isSeller || isHarvester) {
+      return (
+        checklist.permitValid &&
+        checklist.nameMatches &&
+        checklist.contactVerified
+      );
+    }
+
+    if (isRepairShop) {
+      return (
+        checklist.permitValid &&
+        checklist.certLegit &&
+        checklist.nameMatches &&
+        checklist.contactVerified
+      );
+    }
+
+    return false;
+  }, [
+    isSeller,
+    isHarvester,
+    isRepairShop,
+    checklist,
+    requiredDocumentsPresent,
+  ]);
+
   const handleReject = async () => {
     if (!shopData?.id || isProcessing) return;
 
-    const reason = window.prompt(
-      "Please enter the reason for rejection (e.g., Expired Permit):"
-    );
-
-    if (!reason?.trim()) return;
+    if (!rejectionReason.trim()) {
+      alert(
+        "Please provide a reason for rejection so the applicant knows what needs to be corrected."
+      );
+      return;
+    }
 
     try {
       setIsProcessing(true);
@@ -71,14 +142,16 @@ const VerifyCredentialsModal = ({
         .from("profiles")
         .update({
           verification_status: "rejected",
-          rejection_reason: reason.trim(),
+          rejection_reason: rejectionReason.trim(),
           is_verified: false,
         })
         .eq("id", shopData.id);
 
       if (error) throw error;
 
-      alert("The verification request has been rejected.");
+      alert(
+        "The verification request has been rejected. The applicant can use the rejection reason to correct and resubmit their documents."
+      );
 
       if (onSuccess) {
         await onSuccess();
@@ -99,8 +172,20 @@ const VerifyCredentialsModal = ({
     try {
       setIsProcessing(true);
 
-      // Verification is intentionally done here by the admin.
-      // Document scanning during signup only extracts/pre-fills information.
+      /*
+       * The admin is the final verifier.
+       * Gemini/document scanning during signup only assists with
+       * extracting registration information.
+       *
+       * We intentionally use the existing profiles fields here:
+       * - is_verified
+       * - verification_status
+       * - rejection_reason
+       *
+       * The UI derives the visible "Verified Repair Shop" badge
+       * from verification_status + role, so this does not require
+       * inventing another database column.
+       */
       const { data, error } = await supabase
         .from("profiles")
         .update({
@@ -109,7 +194,7 @@ const VerifyCredentialsModal = ({
           rejection_reason: null,
         })
         .eq("id", shopData.id)
-        .select("id, is_verified, verification_status");
+        .select("id, role, is_verified, verification_status");
 
       if (error) throw error;
 
@@ -142,29 +227,10 @@ const VerifyCredentialsModal = ({
   const handleFinalClose = () => {
     setIsSuccess(false);
     setChecklist({ ...EMPTY_CHECKLIST });
+    setRejectionReason("");
+    setShowRejectForm(false);
     onClose();
   };
-
-  const isAllChecked = useMemo(() => {
-    if (isSeller || isHarvester) {
-      return (
-        checklist.permitValid &&
-        checklist.nameMatches &&
-        checklist.contactVerified
-      );
-    }
-
-    if (isRepairShop) {
-      return (
-        checklist.permitValid &&
-        checklist.certLegit &&
-        checklist.nameMatches &&
-        checklist.contactVerified
-      );
-    }
-
-    return false;
-  }, [isSeller, isHarvester, isRepairShop, checklist]);
 
   const displayName = isRepairShop
     ? shopData?.business_name || shopData?.full_name || "Repair Shop"
@@ -173,10 +239,18 @@ const VerifyCredentialsModal = ({
   const roleLabel = isRepairShop
     ? "Repair Shop"
     : isHarvester
-      ? "Harvester"
+      ? "Tech Harvester"
       : isSeller
         ? "Seller"
         : "User";
+
+  const verificationBadge = isRepairShop
+    ? "Verified Repair Shop"
+    : isHarvester
+      ? "Verified Harvester"
+      : isSeller
+        ? "Verified Seller"
+        : "Verified User";
 
   if (!isOpen || !shopData) return null;
 
@@ -239,7 +313,7 @@ const VerifyCredentialsModal = ({
                     Contact Email
                   </p>
 
-                  <p className="text-sm font-medium text-slate-700">
+                  <p className="text-sm font-medium text-slate-700 break-all">
                     {shopData?.email || "No email"}
                   </p>
                 </div>
@@ -248,7 +322,7 @@ const VerifyCredentialsModal = ({
                   <>
                     <div>
                       <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Full Name
+                        Owner's Name
                       </p>
                       <p className="text-sm font-medium text-slate-700">
                         {shopData?.full_name || "Not provided"}
@@ -260,7 +334,10 @@ const VerifyCredentialsModal = ({
                         Contact Number
                       </p>
                       <p className="text-sm font-medium text-slate-700">
-                        {shopData?.contact_number || "Not provided"}
+                        {shopData?.contact_number ||
+                          shopData?.phone ||
+                          shopData?.phone_number ||
+                          "Not provided"}
                       </p>
                     </div>
 
@@ -269,7 +346,18 @@ const VerifyCredentialsModal = ({
                         Business Address
                       </p>
                       <p className="text-sm font-medium text-slate-700">
-                        {shopData?.address || "Not provided"}
+                        {shopData?.address ||
+                          shopData?.shop_address ||
+                          "Not provided"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Barangay
+                      </p>
+                      <p className="text-sm font-medium text-slate-700">
+                        {shopData?.barangay || "Not provided"}
                       </p>
                     </div>
                   </>
@@ -288,33 +376,27 @@ const VerifyCredentialsModal = ({
                 {isSeller && (
                   <DocumentPreview
                     title="Government Valid ID"
-                    url={
-                      shopData?.government_id_url ||
-                      shopData?.business_permit_url
-                    }
+                    url={validIdUrl}
                   />
                 )}
 
                 {isHarvester && (
                   <DocumentPreview
                     title="Government Valid ID"
-                    url={
-                      shopData?.government_id_url ||
-                      shopData?.business_permit_url
-                    }
+                    url={validIdUrl}
                   />
                 )}
 
                 {isRepairShop && (
                   <>
                     <DocumentPreview
-                      title="Business Permit / DTI Registration"
-                      url={shopData?.business_permit_url}
+                      title="Business Permit"
+                      url={businessPermitUrl}
                     />
 
                     <DocumentPreview
                       title="Technical Certification"
-                      url={shopData?.tech_cert_url}
+                      url={techCertUrl}
                     />
                   </>
                 )}
@@ -326,6 +408,28 @@ const VerifyCredentialsModal = ({
                   </div>
                 )}
               </div>
+
+              {/* DOCUMENT REQUIREMENT WARNING */}
+              {!requiredDocumentsPresent && (
+                <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  <AlertTriangle
+                    size={18}
+                    className="mt-0.5 flex-shrink-0 text-red-500"
+                  />
+
+                  <div>
+                    <p className="font-semibold">
+                      Required verification document missing
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5">
+                      {isRepairShop
+                        ? "A Business Permit and at least one Technical Certification must be uploaded before this Repair Shop can be approved."
+                        : "A government-issued valid ID must be uploaded before this account can be approved."}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* CHECKLIST */}
               <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-6">
@@ -401,7 +505,7 @@ const VerifyCredentialsModal = ({
                       />
 
                       <CheckItem
-                        label="Shop name matches the submitted documents"
+                        label="Business/owner information matches the submitted documents"
                         checked={checklist.nameMatches}
                         onChange={() => handleCheck("nameMatches")}
                       />
@@ -422,40 +526,92 @@ const VerifyCredentialsModal = ({
                       className="mt-0.5 flex-shrink-0 text-blue-500"
                     />
                     <span>
-                      Complete all checklist items before approving the
-                      account.
+                      Complete all checklist items and make sure all required
+                      documents are uploaded before approving the account.
                     </span>
                   </div>
                 )}
               </div>
+
+              {/* REJECTION FORM */}
+              {showRejectForm && (
+                <div className="mt-6 rounded-xl border border-red-200 bg-red-50/50 p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <AlertTriangle size={17} className="text-red-500" />
+                    <h3 className="text-sm font-bold text-red-700">
+                      Request Correction / Reject Verification
+                    </h3>
+                  </div>
+
+                  <p className="mb-3 text-xs leading-5 text-slate-600">
+                    Enter the discrepancy or reason that the Repair Shop needs
+                    to correct before resubmitting its verification documents.
+                  </p>
+
+                  <textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    disabled={isProcessing}
+                    rows={4}
+                    placeholder="Example: Business permit is expired. Please upload a current permit and resubmit the verification request."
+                    className="w-full resize-none rounded-lg border border-red-200 bg-white p-3 text-sm text-slate-700 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:bg-slate-100"
+                  />
+
+                  <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowRejectForm(false);
+                        setRejectionReason("");
+                      }}
+                      disabled={isProcessing}
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleReject}
+                      disabled={isProcessing || !rejectionReason.trim()}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-xs font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <XCircle size={15} />
+                      {isProcessing ? "Processing..." : "Reject & Request Resubmission"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* FOOTER */}
-            <div className="flex flex-shrink-0 gap-4 border-t border-slate-100 p-6">
-              <button
-                type="button"
-                onClick={handleReject}
-                disabled={isProcessing}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <XCircle size={18} />
-                {isProcessing ? "Processing..." : "Reject"}
-              </button>
+            {!showRejectForm && (
+              <div className="flex flex-shrink-0 gap-4 border-t border-slate-100 p-6">
+                <button
+                  type="button"
+                  onClick={() => setShowRejectForm(true)}
+                  disabled={isProcessing}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <XCircle size={18} />
+                  Reject / Request Correction
+                </button>
 
-              <button
-                type="button"
-                disabled={!isAllChecked || isProcessing}
-                onClick={handleApprove}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold transition-all ${
-                  isAllChecked && !isProcessing
-                    ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600"
-                    : "cursor-not-allowed bg-slate-200 text-slate-400"
-                }`}
-              >
-                <CheckCircle size={18} />
-                {isProcessing ? "Processing..." : "Approve & Verify"}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  disabled={!isAllChecked || isProcessing}
+                  onClick={handleApprove}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold transition-all ${
+                    isAllChecked && !isProcessing
+                      ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600"
+                      : "cursor-not-allowed bg-slate-200 text-slate-400"
+                  }`}
+                >
+                  <CheckCircle size={18} />
+                  {isProcessing ? "Processing..." : "Approve & Verify"}
+                </button>
+              </div>
+            )}
           </>
         ) : (
           /* SUCCESS VIEW */
@@ -468,11 +624,15 @@ const VerifyCredentialsModal = ({
               Account Verified Successfully!
             </h2>
 
+            <div className="mb-3 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
+              {verificationBadge}
+            </div>
+
             <p className="mb-8 max-w-sm text-slate-500">
               <span className="font-semibold text-slate-700">
                 {displayName}
               </span>{" "}
-              is now a verified {roleLabel.toLowerCase()}.
+              is now a {verificationBadge.toLowerCase()}.
             </p>
 
             <button
@@ -494,43 +654,63 @@ const VerifyCredentialsModal = ({
    DOCUMENT PREVIEW
 ========================= */
 
-const DocumentPreview = ({ title, url }) => (
-  <div>
-    <p className="mb-2 text-xs font-semibold text-slate-500">{title}</p>
+const DocumentPreview = ({ title, url }) => {
+  const isPdf = typeof url === "string" && /\.pdf(?:$|\?)/i.test(url);
 
-    <div className="flex min-h-[150px] flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50">
-      {url ? (
-        <div className="flex h-full w-full flex-col items-center p-3">
-          <img
-            src={url}
-            alt={title}
-            className="mb-2 max-h-40 max-w-full rounded object-contain shadow-sm"
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
-          />
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-slate-500">{title}</p>
 
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs font-bold text-purple-600 hover:underline"
-          >
-            <Eye size={12} />
-            Open Document
-          </a>
-        </div>
-      ) : (
-        <div className="flex flex-col items-center">
-          <XCircle size={24} className="mb-2 text-red-300" />
-          <p className="text-[10px] font-bold text-red-400">
-            No file uploaded
-          </p>
-        </div>
-      )}
+        {url && (
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            {isPdf ? "PDF" : "Image"}
+          </span>
+        )}
+      </div>
+
+      <div className="flex min-h-[150px] flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50">
+        {url ? (
+          <div className="flex h-full w-full flex-col items-center p-3">
+            {isPdf ? (
+              <iframe
+                src={url}
+                title={title}
+                className="mb-2 h-40 w-full rounded border border-slate-200 bg-white"
+              />
+            ) : (
+              <img
+                src={url}
+                alt={title}
+                className="mb-2 max-h-40 max-w-full rounded object-contain shadow-sm"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            )}
+
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs font-bold text-purple-600 hover:underline"
+            >
+              <Eye size={12} />
+              Open Document
+            </a>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center">
+            <XCircle size={24} className="mb-2 text-red-300" />
+            <p className="text-[10px] font-bold text-red-400">
+              No file uploaded
+            </p>
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* =========================
    CHECKLIST ITEM

@@ -1042,7 +1042,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     <div className="min-h-screen bg-[#f1f5f9] font-sans text-slate-900">
       {/* ===== TOP BANNER ===== */}
       <div
-        className="relative overflow-hidden min-h-[380px] px-6 pt-6 pb-10 bg-cover bg-center"
+        className="relative overflow-hidden min-h-[380px] px-6 pt-6 pb-8 bg-cover bg-center"
         style={{
           backgroundImage: `linear-gradient(
           rgba(255, 255, 255, 0.09),
@@ -1956,7 +1956,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           </div>
 
           {/* --- NAVIGATION --- */}
-          <div className="bg-white/90 backdrop-blur-md rounded-[2rem] border border-white/50 shadow-lg px-9 py-6 flex flex-wrap gap-12 items-center">
+          <div className="bg-white/90 backdrop-blur-md rounded-[2rem] border border-white/50 shadow-lg px-9 py-6 flex flex-wrap gap-16 items-center">
             <NavBtn
               active={activeTab === "browse"}
               onClick={() => setActiveTab("browse")}
@@ -3343,7 +3343,7 @@ const NavBtn = ({ active, onClick, icon, label, disabled }) => (
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-black text-xs transition-all ${active
+    className={`flex items-center gap-2 px-11 py-4 rounded-2xl font-black text-xs transition-all ${active
       ? "bg-[#769c2d] text-white shadow-md"
       : "bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 border border-white/50"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}

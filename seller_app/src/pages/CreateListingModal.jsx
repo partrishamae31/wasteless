@@ -112,7 +112,7 @@ const ConditionSection = ({ selected, onChange }) => {
     },
     {
       id: "Defective",
-      label: "Defective",
+      label: "Not Working",
       sub: "Some components not working",
       activeStyles: "border-blue-500 bg-blue-50/30 text-blue-700",
     },
@@ -892,12 +892,19 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     issues.functional.length > 0 ||
     issues.cosmetic.length > 0;
 
+  const hasMandatoryListingFields =
+    Boolean(formData.model?.trim()) &&
+    Boolean(formData.condition) &&
+    Boolean(formData.last_working_date) &&
+    formData.price !== "" &&
+    Number(formData.price) > 0;
+
   const isStep3Complete =
+    hasMandatoryListingFields &&
     checklist.factoryReset &&
     checklist.accountsRemoved &&
     checklist.simRemoved &&
     checklist.filesDeleted &&
-    // Only require hazard check if the warning is actually shown
     (showHazardWarning ? checklist.hazardAcknowledged : true) &&
     checklist.valuationAcknowledged;
 
@@ -930,9 +937,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const hasAttachments = formData.attachments.length > 0;
 
   const canProceedToStep3 =
+    Boolean(formData.model?.trim()) &&
+    Boolean(formData.condition) &&
     isAssessmentComplete &&
     hasAttachments &&
-    (formData.condition === "Working" || !!formData.last_working_date);
+    Boolean(formData.last_working_date);
 
   {
     formData.condition === "Defective" && !formData.last_working_date && (
@@ -1062,8 +1071,21 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
       const finalDescription =
         `${problemSummary} ${formData.description}`.trim();
-      const finalPrice =
-        formData.price === "" ? reusableValue : parseFloat(formData.price);
+      if (
+        !formData.model?.trim() ||
+        !formData.condition ||
+        !formData.last_working_date ||
+        formData.price === "" ||
+        Number(formData.price) <= 0
+      ) {
+        alert("Mandatory fields missing.");
+        return;
+      }
+
+      const finalPrice = parseFloat(formData.price);
+      // Default bidding period: 7 days. Change this constant if your
+      // approved project specification uses a different duration.
+      const biddingEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
       const { data: insertedData, error } = await supabase
         .from("listings")
@@ -1073,6 +1095,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
             device_model: formData.model.trim().replace(/\s+/g, " "),
             condition: formData.condition,
             asking_price: finalPrice,
+            last_working_date: formData.last_working_date,
+            expires_at: biddingEndsAt,
             scrap_value: scrapValue,
             images: uploadedMediaUrls, // Pass all combined assets here
             status: "active",
@@ -1367,7 +1391,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 }
               />
 
-              {formData.condition === "Defective" && (
+              {formData.condition && (
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700 block text-left">
                     When was this device last working?
@@ -1396,7 +1420,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
                   {!formData.last_working_date && (
                     <p className="text-[10px] text-red-500 font-medium">
-                      Please specify when the device was last working.
+                      Please specify the device's last-used/last-working date.
                     </p>
                   )}
                 </div>
@@ -2060,8 +2084,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
                 {!isStep3Complete && (
                   <p className="text-center text-[10px] text-red-500 font-bold px-6">
-                    Please complete all required data sanitization and hazardous
-                    acknowledgments to create your listing.
+                    Mandatory fields missing. Complete the device model, condition,
+                    last-used date, asking price, and required sanitization checks.
                   </p>
                 )}
 
