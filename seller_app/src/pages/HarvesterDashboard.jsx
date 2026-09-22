@@ -72,6 +72,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showAchievementsModal, setShowAchievementsModal] = useState(false);
 
   const [dashboardStats, setDashboardStats] = useState({
     activeAlerts: 0,
@@ -1250,10 +1251,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         icon={<Settings size={15} />}
                         label="Settings"
                       />
-                      {/* Added Achievements to match mockup */}
+                      {/* Achievements */}
                       <MenuLink
                         icon={<Award size={15} />}
                         label="Achievements"
+                        onClick={() => {
+                          setShowProfileDropdown(false);
+                          setShowAchievementsModal(true);
+                        }}
                       />
 
                       {/* Logout section with border-t and specific styling from image_085a5b.jpg */}
@@ -2175,6 +2180,15 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               Section Coming Soon
             </p>
           </div>
+        )}
+
+        {showAchievementsModal && (
+          <AchievementsModal
+            profileData={profileData}
+            verificationStatus={verificationStatus}
+            currentTrustTier={currentTrustTier}
+            onClose={() => setShowAchievementsModal(false)}
+          />
         )}
 
         {selectedListing && (
@@ -3353,11 +3367,207 @@ const NavBtn = ({ active, onClick, icon, label, disabled }) => (
   </button>
 );
 
-const MenuLink = ({ icon, label }) => (
-  <button className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-2xl transition-colors text-xs font-bold">
+const MenuLink = ({ icon, label, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-2xl transition-colors text-xs font-bold"
+  >
     <span className="text-slate-400">{icon}</span> {label}
   </button>
 );
+
+const AchievementsModal = ({
+  profileData,
+  verificationStatus,
+  currentTrustTier,
+  onClose,
+}) => {
+  const recovered = Number(profileData?.recovered_devices || profileData?.completed_pickups || 0);
+  const co2 = Number(profileData?.co2_recovered_kg || 0);
+  const reviews = Number(profileData?.total_reviews || 0);
+  const rating = Number(profileData?.average_rating || 0);
+
+  const achievements = [
+    {
+      title: "Verified Partner",
+      description: "Complete account verification and become a verified Wasteless partner.",
+      icon: <Shield size={22} />,
+      unlocked: verificationStatus === "verified",
+      progress: verificationStatus === "verified" ? 1 : 0,
+      target: 1,
+      progressLabel: verificationStatus === "verified" ? "Verified" : "Verification required",
+    },
+    {
+      title: "First Recovery",
+      description: "Complete your first e-waste recovery transaction.",
+      icon: <Package size={22} />,
+      unlocked: recovered >= 1,
+      progress: Math.min(recovered, 1),
+      target: 1,
+      progressLabel: `${Math.min(recovered, 1)}/1 recovery`,
+    },
+    {
+      title: "Eco Harvester",
+      description: "Recover at least 5 electronic devices through completed transactions.",
+      icon: <Leaf size={22} />,
+      unlocked: recovered >= 5,
+      progress: Math.min(recovered, 5),
+      target: 5,
+      progressLabel: `${Math.min(recovered, 5)}/5 devices`,
+    },
+    {
+      title: "Carbon Saver",
+      description: "Contribute at least 5 kg of estimated CO₂e recovery.",
+      icon: <Gift size={22} />,
+      unlocked: co2 >= 5,
+      progress: Math.min(co2, 5),
+      target: 5,
+      progressLabel: `${co2.toFixed(2)}/5.00 kg CO₂e`,
+    },
+    {
+      title: "Community Trusted",
+      description: "Receive at least 5 completed reviews from the Wasteless community.",
+      icon: <MessageSquareText size={22} />,
+      unlocked: reviews >= 5,
+      progress: Math.min(reviews, 5),
+      target: 5,
+      progressLabel: `${Math.min(reviews, 5)}/5 reviews`,
+    },
+    {
+      title: "Highly Rated",
+      description: "Maintain a rating of at least 4.5 with at least 5 reviews.",
+      icon: <Star size={22} />,
+      unlocked: rating >= 4.5 && reviews >= 5,
+      progress: reviews >= 5 ? Math.min(rating, 4.5) : Math.min((reviews / 5) * 4.5, 4.5),
+      target: 4.5,
+      progressLabel: reviews < 5 ? `${reviews}/5 reviews` : `${rating.toFixed(1)}/4.5 rating`,
+    },
+    {
+      title: "Trust Tier Partner",
+      description: "Progress beyond the NEWCOMER trust tier through completed transactions and ratings.",
+      icon: <Trophy size={22} />,
+      unlocked: Boolean(currentTrustTier?.name && currentTrustTier.name !== "NEWCOMER"),
+      progress: currentTrustTier?.name && currentTrustTier.name !== "NEWCOMER" ? 1 : 0,
+      target: 1,
+      progressLabel: currentTrustTier?.name || "NEWCOMER",
+    },
+  ];
+
+  const unlockedCount = achievements.filter((achievement) => achievement.unlocked).length;
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in duration-200 max-h-[90vh] flex flex-col"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#4a7c59] via-[#5f8f45] to-[#769c2d] px-6 py-7 text-white">
+          <Trophy className="absolute -right-2 -bottom-6 opacity-10" size={130} />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close achievements"
+            className="absolute right-4 top-4 rounded-full p-2 text-white/80 hover:bg-white/15 hover:text-white transition"
+          >
+            <XCircle size={21} />
+          </button>
+
+          <div className="relative z-10 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center shadow-sm">
+              <Trophy size={28} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/70">
+                Wasteless Achievements
+              </p>
+              <h2 className="text-2xl font-black mt-1">Your Achievements</h2>
+              <p className="text-[11px] text-white/80 mt-1">
+                {unlockedCount} of {achievements.length} achievements unlocked
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 overflow-y-auto bg-slate-50/70">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {achievements.map((achievement) => {
+              const percent = Math.max(0, Math.min(100, (achievement.progress / achievement.target) * 100));
+
+              return (
+                <div
+                  key={achievement.title}
+                  className={`rounded-2xl border p-4 transition-all ${
+                    achievement.unlocked
+                      ? "bg-white border-emerald-100 shadow-sm"
+                      : "bg-slate-100/80 border-slate-200 opacity-75"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                        achievement.unlocked
+                          ? "bg-emerald-100 text-emerald-600"
+                          : "bg-slate-200 text-slate-400"
+                      }`}
+                    >
+                      {achievement.icon}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-sm font-black text-slate-800">{achievement.title}</h3>
+                        {achievement.unlocked ? (
+                          <CheckCircle2 size={17} className="text-emerald-500 shrink-0" />
+                        ) : (
+                          <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">Locked</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-slate-500 mt-1">
+                        {achievement.description}
+                      </p>
+
+                      <div className="mt-3">
+                        <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              achievement.unlocked ? "bg-emerald-500" : "bg-slate-400"
+                            }`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <span className="text-[8px] font-bold text-slate-400">
+                            {achievement.progressLabel}
+                          </span>
+                          {achievement.unlocked && (
+                            <span className="text-[8px] font-black uppercase text-emerald-600">Unlocked</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-white border border-slate-100 p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-lime-50 text-[#769c2d] flex items-center justify-center shrink-0">
+              <Award size={18} />
+            </div>
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              Keep completing transactions, recovering devices, building community trust, and maintaining your rating to unlock more achievements.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
   const [activeIndex, setActiveIndex] = React.useState(0);

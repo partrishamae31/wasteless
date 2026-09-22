@@ -295,12 +295,81 @@ const SellerRepairShopsTab = ({
   sellerBarangay = "",
 }) => {
   const userId = session?.user?.id;
-  const userRole =
+
+  /* =========================================================
+     CURRENT USER ROLE
+     Seller and Tech Harvester accounts both use SellerDashboard.
+     The profiles table is the source of truth for the role, while
+     auth metadata is kept as a fallback for existing accounts.
+  ========================================================= */
+
+  const [profileRole, setProfileRole] = useState("");
+  const [loadingProfileRole, setLoadingProfileRole] = useState(false);
+
+  const authRole =
     session?.user?.user_metadata?.role ||
     session?.user?.user_metadata?.buyer_type ||
     "";
 
-  // Only Tech-Harvester accounts can request repair appointments.
+  useEffect(() => {
+    let mounted = true;
+
+    const loadCurrentUserRole = async () => {
+      if (!userId) {
+        if (mounted) {
+          setProfileRole("");
+          setLoadingProfileRole(false);
+        }
+        return;
+      }
+
+      setLoadingProfileRole(true);
+
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("role, buyer_type")
+          .eq("id", userId)
+          .maybeSingle();
+
+        if (error) {
+          console.warn(
+            "Could not load current user role from profiles:",
+            error
+          );
+
+          if (mounted) setProfileRole("");
+          return;
+        }
+
+        if (mounted) {
+          setProfileRole(
+            String(data?.role || data?.buyer_type || "")
+              .trim()
+              .toLowerCase()
+          );
+        }
+      } catch (error) {
+        console.warn("Error loading current user role:", error);
+        if (mounted) setProfileRole("");
+      } finally {
+        if (mounted) setLoadingProfileRole(false);
+      }
+    };
+
+    loadCurrentUserRole();
+
+    return () => {
+      mounted = false;
+    };
+  }, [userId]);
+
+  const userRole = String(profileRole || authRole || "")
+    .trim()
+    .toLowerCase();
+
+  // Seller and Tech Harvester both use SellerDashboard.
+  // Only Tech Harvester accounts can request repair appointments.
   // Seller accounts remain sell-only.
   const canRequestRepair = userRole === "harvester";
 
@@ -962,9 +1031,14 @@ const SellerRepairShopsTab = ({
       return;
     }
 
+    if (loadingProfileRole) {
+      alert("Please wait while your account role is being verified.");
+      return;
+    }
+
     if (!canRequestRepair) {
       alert(
-        "Only Harvester accounts can request repair appointments from repair shops."
+        "Only Tech Harvester accounts can request repair appointments from repair shops."
       );
       return;
     }
