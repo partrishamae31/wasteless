@@ -2572,6 +2572,10 @@ const MessagesView = ({ session }) => {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [updatingAppointmentId, setUpdatingAppointmentId] = useState(null);
+
+  const normalizeAppointmentStatus = (status) =>
+    String(status || "pending").trim().toLowerCase();
 
   // Load every message where this repair shop is either sender OR receiver.
   // We intentionally use two simple queries instead of a PostgREST OR expression.
@@ -2878,172 +2882,207 @@ const MessagesView = ({ session }) => {
     };
   }, [selectedChat, userId]);
 
-  const updateAppointment = async (id, status) => {
-  if (!userId) return;
+  const updateAppointment = async (id, nextStatus) => {
+    if (!userId || !id || !nextStatus) return;
 
-  try {
-    // First, find the appointment
-    const { data: appointment, error: appointmentFetchError } =
-      await supabase
-        .from("repair_appointments")
-        .select("*")
-        .eq("id", id)
-        .eq("repair_shop_id", userId)
-        .single();
+    if (updatingAppointmentId === id) return;
 
-    if (appointmentFetchError) throw appointmentFetchError;
+    setUpdatingAppointmentId(id);
 
-    // ---------------------------------------------------------
-    // CONFIRM APPOINTMENT
-    // Create a transaction for the repair service.
-    // No repair fee, so amount = 0.
-    // ---------------------------------------------------------
-    if (status === "confirmed") {
-      // Get customer's profile for barangay
-      const { data: customerProfile, error: profileError } =
+    try {
+      // Always verify that this appointment belongs to the currently logged-in
+      // repair shop before changing anything.
+      const { data: appointment, error: appointmentFetchError } =
         await supabase
-          .from("profiles")
-          .select("id, full_name, barangay")
-          .eq("id", appointment.harvester_id)
+          .from("repair_appointments")
+          .select("*")
+          .eq("id", id)
+          .eq("repair_shop_id", userId)
           .single();
 
-      if (profileError) throw profileError;
+      if (appointmentFetchError) throw appointmentFetchError;
+      if (!appointment) throw new Error("Repair appointment was not found.");
 
-      // Check whether a transaction already exists.
-      // This prevents duplicate transactions if Confirm is clicked
-      // more than once or the function is triggered again.
-      const { data: existingTransaction, error: existingError } =
-        await supabase
-          .from("transactions")
-          .select("id")
-          .eq("repair_appointment_id", appointment.id)
-          .maybeSingle();
+      const currentStatus = normalizeAppointmentStatus(appointment.status);
+      const targetStatus = normalizeAppointmentStatus(nextStatus);
 
-      if (existingError) throw existingError;
+      // Prevent accidental/repeated transitions.
+      const allowedTransitions = {
+        pending: ["accepted", "declined"],
+        requested: ["accepted", "declined"],
+        accepted: ["confirmed", "declined"],
+        confirmed: ["completed", "cancelled"],
+        declined: [],
+        cancelled: [],
+        completed: [],
+      };
 
-      let transaction = existingTransaction;
+      if (
+        currentStatus !== targetStatus &&
+        !allowedTransitions[currentStatus]?.includes(targetStatus)
+      ) {
+        throw new Error(
+          `This appointment cannot be changed from ${currentStatus || "pending"} to ${targetStatus}.`
+        );
+      }
 
-      // Create transaction only if one does not already exist
-      if (!transaction) {
-        const { data: newTransaction, error: transactionError } =
+      // ---------------------------------------------------------
+      // CONFIRM APPOINTMENT
+      // Create a transaction for the repair service only once.
+      // Repair service has no fee, so amount = 0.
+      // ---------------------------------------------------------
+      if (targetStatus === "confirmed") {
+        const { data: customerProfile, error: profileError } =
           await supabase
-            .from("transactions")
-            .insert({
-              seller_id: appointment.harvester_id,
-              harvester_id: appointment.repair_shop_id,
-
-              // Repair service has no fee
-              amount: 0,
-
-              barangay: customerProfile?.barangay || "N/A",
-
-              // Same transaction status used by the marketplace
-              status: "meetup_scheduled",
-
-              meetup_date: appointment.preferred_date,
-              meetup_time: appointment.preferred_time
-                ? String(appointment.preferred_time).slice(0, 5)
-                : null,
-
-              notes: [
-                "Repair Service",
-                `Device: ${appointment.device_model || "N/A"}`,
-                `Category: ${appointment.category || "N/A"}`,
-                `Issue: ${appointment.issue_description || "N/A"}`,
-                appointment.notes
-                  ? `Customer Notes: ${appointment.notes}`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join("\n"),
-
-              listing_id: null,
-
-              // Links the transaction directly to this repair appointment
-              repair_appointment_id: appointment.id,
-            })
-            .select("*")
+            .from("profiles")
+            .select("id, full_name, barangay")
+            .eq("id", appointment.harvester_id)
             .single();
 
-        if (transactionError) throw transactionError;
+        if (profileError) throw profileError;
 
-        transaction = newTransaction;
+        const { data: existingTransaction, error: existingError } =
+          await supabase
+            .from("transactions")
+            .select("id")
+            .eq("repair_appointment_id", appointment.id)
+            .maybeSingle();
+
+        if (existingError) throw existingError;
+
+        if (!existingTransaction) {
+          const { data: newTransaction, error: transactionError } =
+            await supabase
+              .from("transactions")
+              .insert({
+                seller_id: appointment.harvester_id,
+                harvester_id: appointment.repair_shop_id,
+                amount: 0,
+                barangay: customerProfile?.barangay || "N/A",
+                status: "meetup_scheduled",
+                meetup_date: appointment.preferred_date,
+                meetup_time: appointment.preferred_time
+                  ? String(appointment.preferred_time).slice(0, 5)
+                  : null,
+                notes: [
+                  "Repair Service",
+                  `Device: ${appointment.device_model || "N/A"}`,
+                  `Category: ${appointment.category || "N/A"}`,
+                  `Issue: ${appointment.issue_description || "N/A"}`,
+                  appointment.notes
+                    ? `Customer Notes: ${appointment.notes}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+                listing_id: null,
+                repair_appointment_id: appointment.id,
+              })
+              .select("*")
+              .single();
+
+          if (transactionError) throw transactionError;
+
+          console.log("REPAIR TRANSACTION CREATED:", newTransaction);
+        }
       }
 
-      console.log("REPAIR TRANSACTION CREATED:", transaction);
-    }
-
-    // ---------------------------------------------------------
-    // UPDATE APPOINTMENT STATUS
-    // ---------------------------------------------------------
-    const { data, error } = await supabase
-      .from("repair_appointments")
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .eq("repair_shop_id", userId)
-      .select("*")
-      .single();
-
-    if (error) throw error;
-
-    setAppointments((previous) =>
-      previous.map((appointment) =>
-        appointment.id === id ? data : appointment
-      )
-    );
-
-    // ---------------------------------------------------------
-    // IF MARKED COMPLETED
-    // Also complete the corresponding transaction.
-    // ---------------------------------------------------------
-    if (status === "completed") {
-      const { data: completedTransaction, error: transactionError } =
+      // ---------------------------------------------------------
+      // UPDATE APPOINTMENT STATUS
+      // ---------------------------------------------------------
+      const { data: updatedAppointment, error: updateError } =
         await supabase
-          .from("transactions")
+          .from("repair_appointments")
           .update({
-            status: "completed",
+            status: targetStatus,
             updated_at: new Date().toISOString(),
-            completed_at: new Date().toISOString(),
           })
-          .eq("repair_appointment_id", id)
-          .select("*");
+          .eq("id", id)
+          .eq("repair_shop_id", userId)
+          .select("*")
+          .single();
 
-      if (transactionError) {
-        console.error(
-          "REPAIR TRANSACTION COMPLETION ERROR:",
-          transactionError
-        );
-      } else {
-        console.log(
-          "REPAIR TRANSACTION COMPLETED:",
-          completedTransaction
-        );
+      if (updateError) throw updateError;
+
+      setAppointments((previous) =>
+        previous.map((item) =>
+          item.id === id ? updatedAppointment : item
+        )
+      );
+
+      // ---------------------------------------------------------
+      // IF MARKED COMPLETED
+      // Also complete the corresponding repair transaction.
+      // ---------------------------------------------------------
+      if (targetStatus === "completed") {
+        const { data: completedTransactions, error: transactionError } =
+          await supabase
+            .from("transactions")
+            .update({
+              status: "completed",
+              updated_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+            })
+            .eq("repair_appointment_id", id)
+            .select("*");
+
+        if (transactionError) {
+          console.error(
+            "REPAIR TRANSACTION COMPLETION ERROR:",
+            transactionError
+          );
+        } else {
+          console.log(
+            "REPAIR TRANSACTION COMPLETED:",
+            completedTransactions
+          );
+        }
       }
+
+      // Notify the harvester through the existing messages system.
+      const readableStatus = targetStatus.replaceAll("_", " ");
+
+      const { error: messageError } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: userId,
+          receiver_id: updatedAppointment.harvester_id,
+          listing_id: null,
+          content: `Repair appointment update\nStatus: ${readableStatus}`,
+          is_read: false,
+        });
+
+      if (messageError) {
+        // The appointment status was already changed successfully, so do not
+        // roll it back just because the optional notification failed.
+        console.error("REPAIR APPOINTMENT MESSAGE ERROR:", messageError);
+      }
+
+      await loadConversations();
+
+      // Keep the currently selected chat visible and refresh its appointments.
+      if (selectedChat?.other_party_id === updatedAppointment.harvester_id) {
+        const { data: refreshedAppointments, error: refreshError } =
+          await supabase
+            .from("repair_appointments")
+            .select(
+              "id,harvester_id,repair_shop_id,device_model,category,issue_description,preferred_date,preferred_time,notes,status,created_at,updated_at"
+            )
+            .eq("harvester_id", updatedAppointment.harvester_id)
+            .eq("repair_shop_id", userId)
+            .order("created_at", { ascending: true });
+
+        if (!refreshError) {
+          setAppointments(refreshedAppointments || []);
+        }
+      }
+    } catch (error) {
+      console.error("UPDATE APPOINTMENT ERROR:", error);
+      alert(error?.message || "Unable to update appointment.");
+    } finally {
+      setUpdatingAppointmentId(null);
     }
-
-    // ---------------------------------------------------------
-    // SEND STATUS MESSAGE
-    // ---------------------------------------------------------
-    await supabase.from("messages").insert({
-      sender_id: userId,
-      receiver_id: data.harvester_id,
-      listing_id: null,
-      content: `Repair appointment update\nStatus: ${status.replaceAll(
-        "_",
-        " "
-      )}`,
-      is_read: false,
-    });
-
-    await loadConversations();
-  } catch (error) {
-    console.error("UPDATE APPOINTMENT ERROR:", error);
-    alert(error?.message || "Unable to update appointment.");
-  }
-};
+  };
 
   const sendMessage = async () => {
     const content = messageText.trim();
@@ -3204,7 +3243,7 @@ const MessagesView = ({ session }) => {
                         </div>
 
                         <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[9px] font-bold uppercase h-fit">
-                          {appointment.status || "pending"}
+                          {normalizeAppointmentStatus(appointment.status)}
                         </span>
                       </div>
 
@@ -3229,52 +3268,86 @@ const MessagesView = ({ session }) => {
                         </p>
                       )}
 
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        {(appointment.status === "pending" ||
-                          !appointment.status) && (
-                          <>
-                            <button
-                              onClick={() =>
-                                updateAppointment(appointment.id, "accepted")
-                              }
-                              className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold"
-                            >
-                              Accept Request
-                            </button>
+                      {(() => {
+                        const status = normalizeAppointmentStatus(
+                          appointment.status
+                        );
+                        const isUpdating = updatingAppointmentId === appointment.id;
 
-                            <button
-                              onClick={() =>
-                                updateAppointment(appointment.id, "declined")
-                              }
-                              className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-[10px] font-bold"
-                            >
-                              Decline
-                            </button>
-                          </>
-                        )}
+                        return (
+                          <div className="flex flex-wrap gap-2 mt-4">
+                            {(status === "pending" || status === "requested") && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={isUpdating}
+                                  onClick={() =>
+                                    updateAppointment(appointment.id, "accepted")
+                                  }
+                                  className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {isUpdating ? "Updating..." : "Accept Request"}
+                                </button>
 
-                        {appointment.status === "accepted" && (
-                          <button
-                            onClick={() =>
-                              updateAppointment(appointment.id, "confirmed")
-                            }
-                            className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold"
-                          >
-                            Confirm Appointment
-                          </button>
-                        )}
+                                <button
+                                  type="button"
+                                  disabled={isUpdating}
+                                  onClick={() =>
+                                    updateAppointment(appointment.id, "declined")
+                                  }
+                                  className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-[10px] font-bold hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  Decline
+                                </button>
+                              </>
+                            )}
 
-                        {appointment.status === "confirmed" && (
-                          <button
-                            onClick={() =>
-                              updateAppointment(appointment.id, "completed")
-                            }
-                            className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold"
-                          >
-                            Mark Completed
-                          </button>
-                        )}
-                      </div>
+                            {status === "accepted" && (
+                              <button
+                                type="button"
+                                disabled={isUpdating}
+                                onClick={() =>
+                                  updateAppointment(appointment.id, "confirmed")
+                                }
+                                className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isUpdating ? "Confirming..." : "Confirm Appointment"}
+                              </button>
+                            )}
+
+                            {status === "confirmed" && (
+                              <button
+                                type="button"
+                                disabled={isUpdating}
+                                onClick={() =>
+                                  updateAppointment(appointment.id, "completed")
+                                }
+                                className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isUpdating ? "Completing..." : "Mark Completed"}
+                              </button>
+                            )}
+
+                            {status === "declined" && (
+                              <span className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-[10px] font-bold uppercase">
+                                Request Declined
+                              </span>
+                            )}
+
+                            {status === "cancelled" && (
+                              <span className="px-4 py-2 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-bold uppercase">
+                                Appointment Cancelled
+                              </span>
+                            )}
+
+                            {status === "completed" && (
+                              <span className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase">
+                                Appointment Completed
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
 

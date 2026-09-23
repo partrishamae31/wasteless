@@ -1,6 +1,11 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
 import { Upload, MapPin } from "lucide-react";
+import { createWorker } from "tesseract.js";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 import {
   MapContainer,
@@ -89,6 +94,635 @@ const LocationSelector = ({ position, onChange }) => {
   );
 };
 
+
+const OCR_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const OCR_MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+const cleanOcrText = (value = "") =>
+  String(value)
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const findLabelValue = (text, labels = []) => {
+  const lines = cleanOcrText(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const labelPattern = labels.map(escapeRegex).join("|");
+  const regex = new RegExp(`^(?:${labelPattern})\\s*(?:[:#-]|No\\.?\\s*)?\\s*(.*)$`, "i");
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const match = line.match(regex);
+    if (match && match[1]?.trim()) return match[1].trim();
+
+    const inline = new RegExp(`(?:${labelPattern})\\s*[:#-]\\s*(.+)$`, "i").exec(line);
+    if (inline?.[1]?.trim()) return inline[1].trim();
+
+    if (new RegExp(`^(?:${labelPattern})$`, "i").test(line) && lines[i + 1]) {
+      return lines[i + 1].trim();
+    }
+  }
+
+  return "";
+};
+
+const findDateValue = (text, labels = []) => {
+  const value = findLabelValue(text, labels);
+  if (value) {
+    const match = value.match(/\b(?:\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\b/);
+    if (match) return match[0];
+  }
+
+  const lines = cleanOcrText(text).split("\n");
+  const labelRegex = new RegExp(`(?:${labels.map(escapeRegex).join("|")})`, "i");
+  for (const line of lines) {
+    if (!labelRegex.test(line)) continue;
+    const match = line.match(/\b(?:\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\b/);
+    if (match) return match[0];
+  }
+  return "";
+};
+
+const findContactNumber = (text) => {
+  const match = cleanOcrText(text).match(/(?:\+63|0)9\d{9}|(?:\+63|0)\d{2}[ -]?\d{3}[ -]?\d{4}/);
+  return match ? match[0].replace(/\s+/g, " ").trim() : "";
+};
+
+const normalizeOcrForMatching = (value) => String(value || "")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+
+const findBarangay = (text, barangays) => {
+  const normalized = normalizeOcrForMatching(text);
+  const lines = String(text || "").split(/\r?\n/).map((x) => normalizeOcrForMatching(x)).filter(Boolean);
+  const aliases = {
+    "GEN. T. DE LEON": ["GEN T DE LEON", "GEN T DE LEON", "GEN T DELEON", "GEN T DE LEON"],
+    "PARIANCILLO VILLA": ["PARIANCILLO VILLA", "PARIANCILLOVILLA"],
+    "PASO DE BLAS": ["PASO DE BLAS", "PASODEBLAS"],
+    "CANUMAY EAST": ["CANUMAY EAST", "CANUMAYEAST"],
+    "CANUMAY WEST": ["CANUMAY WEST", "CANUMAYWEST"],
+    "VEINTE REALES": ["VEINTE REALES", "VEINTEREALES"],
+    "WAWANG PULO": ["WAWANG PULO", "WAWANGPULO"],
+  };
+  const ordered = [...barangays].sort((a, b) => b.length - a.length);
+  for (const barangay of ordered) {
+    const key = normalizeOcrForMatching(barangay);
+    const candidates = [key, ...(aliases[barangay] || []).map(normalizeOcrForMatching)];
+    if (candidates.some((candidate) => candidate && (normalized.includes(candidate) || lines.some((line) => line.includes(candidate))))) {
+      return barangay;
+    }
+  }
+
+  // Common Tesseract confusions in the Valenzuela barangay names.
+  const fuzzy = [
+    ["MALINTA", ["MALINTA", "MALINIA", "MALINTA"]],
+    ["MALANDAY", ["MALANDAY", "MALANDA", "MALANDAV"]],
+    ["KARUHATAN", ["KARUHATAN", "KARUHATAN", "KARUHATAN"]],
+    ["MAYSAN", ["MAYSAN", "MAY5AN", "MAY SAN"]],
+    ["MARULAS", ["MARULAS", "MARULA5"]],
+    ["DALANDANAN", ["DALANDANAN", "DALANDANAN"]],
+  ];
+  for (const [barangay, variants] of fuzzy) {
+    if (variants.some((v) => normalized.includes(normalizeOcrForMatching(v)))) return barangay;
+  }
+  return "";
+};
+
+const cleanNamePart = (value) => {
+  if (!value) return "";
+
+  return String(value)
+    .replace(/[|_\[\]{}<>~`\\]/g, " ")
+    .replace(/\b(?:MGA|PANGALAN|GIVEN|NAMES?|GITNANG|MIDDLE|APELYIDO|LAST|NAME)\b/gi, " ")
+    .replace(/[^A-Za-zÀ-ÿ.'\- ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const isLikelyNameValue = (value) => {
+  const cleaned = cleanNamePart(value);
+  if (!cleaned) return false;
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 6) return false;
+
+  const noise = new Set([
+    "PH", "PHL", "NG", "IB", "IA", "ID", "DIGITAL", "NUMBER",
+    "DATE", "BIRTH", "REPUBLIKA", "PILIPINAS", "REPUBLIC",
+    "OF", "THE", "PHILIPPINES", "CARD", "IDENTIFICATION",
+  ]);
+
+  const useful = words.filter((word) => !noise.has(word.toUpperCase()));
+  if (!useful.length) return false;
+
+  // Reject obvious OCR garbage, but allow normal mixed-case names.
+  const alphaCount = useful.reduce((count, word) =>
+    count + (word.match(/[A-Za-zÀ-ÿ]/g) || []).length, 0);
+  if (alphaCount < 2) return false;
+
+  return useful.every((word) => /^[A-Za-zÀ-ÿ.'-]+$/.test(word));
+};
+
+const getOcrLines = (text) =>
+  cleanOcrText(text)
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+// OCR from Philippine National IDs frequently damages the bilingual labels.
+// These patterns intentionally tolerate common Tesseract mistakes such as:
+// "Apelydo", "Apetydol", "Fangatan", "Goren Nemes", "Meddie Nose", etc.
+const NAME_LABEL_PATTERNS = {
+  last: [
+    // Normal: APELYIDO / LAST NAME
+    /(?:APELYIDO|APELYDO|APETLYIDO|APETYDO|APRTYDO|APRTPRT|APETPRT|APEL[I1]Y?DO)/i,
+    // OCR example: "Aprtprtuyiant Ruse" (intended: Apelyido/Last Name)
+    /(?:APR|AP[ER]T|APEL)[A-Z]{2,}.*(?:RUSE|NAME|RUSE?)/i,
+    /LAST\s*NAME?/i,
+  ],
+  given: [
+    // Normal: MGA PANGALAN / GIVEN NAMES
+    /(?:MGA\s*)?(?:PANGALAN|FANGALAN|PANGATAN|FANGATAN)/i,
+    /(?:GIVEN|GOREN|G[O0]VEN)\s*NAME?/i,
+    // OCR example: "Fang 7 aren Numes"
+    /FANG[A-Z0-9 ._-]*(?:GIVEN|GOREN|AREN|NUME|NAME)/i,
+  ],
+  middle: [
+    // Normal and common OCR variants of GITNANG APELYIDO / MIDDLE NAME
+    /(?:GITNANG|TTNANG|TINNANG|GITNAG)/i,
+    /(?:MIDDLE|MEDDIE|MIDDIE|M[EI]DDLE|MADDIE)\s*NAME?/i,
+  ],
+};
+const isNameLabelLine = (line) =>
+  NAME_LABEL_PATTERNS.last.some((re) => re.test(line)) ||
+  NAME_LABEL_PATTERNS.given.some((re) => re.test(line)) ||
+  NAME_LABEL_PATTERNS.middle.some((re) => re.test(line));
+
+const findNameValueAfterPatterns = (lines, patterns, maxLookAhead = 6) => {
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const pattern = patterns.find((re) => re.test(line));
+    if (!pattern) continue;
+
+    // First try text remaining on the same line after the label.
+    const match = line.match(pattern);
+    if (match) {
+      const sameLine = line
+        .slice((match.index ?? 0) + match[0].length)
+        .replace(/^[:\-\s]+/, "")
+        .trim();
+      if (isLikelyNameValue(sameLine)) return cleanNamePart(sameLine);
+    }
+
+    // Then inspect the next several lines. OCR often puts the field value
+    // one or two lines below the damaged label.
+    for (let j = i + 1; j <= Math.min(lines.length - 1, i + maxLookAhead); j += 1) {
+      const candidate = cleanNamePart(lines[j]);
+      if (!candidate || isNameLabelLine(lines[j])) continue;
+      if (/^(?:PETSA|DATE|TIRAHAN|ADDRESS|DIGITAL|NUMBER|SIGNATURE|JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\b/i.test(candidate)) continue;
+      if (isLikelyNameValue(candidate)) return candidate;
+    }
+  }
+  return "";
+};
+
+const findGovernmentIdNameParts = (text) => {
+  const lines = getOcrLines(text);
+
+  const lastName = findNameValueAfterPatterns(lines, NAME_LABEL_PATTERNS.last, 6);
+  const givenNames = findNameValueAfterPatterns(lines, NAME_LABEL_PATTERNS.given, 6);
+  const middleName = findNameValueAfterPatterns(lines, NAME_LABEL_PATTERNS.middle, 6);
+
+  return {
+    givenNames: cleanNamePart(givenNames),
+    middleName: cleanNamePart(middleName),
+    lastName: cleanNamePart(lastName),
+  };
+};
+
+const normalizeNameForComparison = (value) =>
+  cleanNamePart(value)
+    .toUpperCase()
+    .replace(/\bSTA\s*\.?\s*ANA\b/g, "STA.ANA")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const buildGovernmentIdFullName = (parts, text) => {
+  let { givenNames, middleName, lastName } = parts;
+  const lines = getOcrLines(text);
+
+  // Recover a surname when the label is readable but its value was separated
+  // by OCR noise. This is especially useful for one-token surnames.
+  if (!lastName) {
+    const lastIndex = lines.findIndex((line) =>
+      NAME_LABEL_PATTERNS.last.some((re) => re.test(line)),
+    );
+    if (lastIndex >= 0) {
+      for (let i = lastIndex + 1; i <= Math.min(lines.length - 1, lastIndex + 7); i += 1) {
+        const candidate = cleanNamePart(lines[i]);
+        if (!candidate || isNameLabelLine(lines[i])) continue;
+        if (/^(?:PETSA|DATE|TIRAHAN|ADDRESS|DIGITAL|NUMBER|SIGNATURE)\b/i.test(candidate)) continue;
+        if (isLikelyNameValue(candidate)) {
+          lastName = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  // Remove tiny OCR noise tokens that commonly appear beside given names.
+  givenNames = givenNames
+    .split(/\s+/)
+    .filter((word) => !/^(NG|PH|PHL|IB|IA)$/i.test(word))
+    .join(" ");
+
+  const normalizePart = (value) =>
+    cleanNamePart(value)
+      .replace(/\bSTA\s+ANA\b/gi, "Sta.Ana")
+      .replace(/\bSTA\.\s*ANA\b/gi, "Sta.Ana")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const ordered = [givenNames, middleName, lastName]
+    .map(normalizePart)
+    .filter(Boolean);
+
+  const unique = [];
+  for (const part of ordered) {
+    const key = normalizeNameForComparison(part);
+    if (key && !unique.some((existing) => normalizeNameForComparison(existing) === key)) {
+      unique.push(part);
+    }
+  }
+
+  return unique.join(" ").replace(/\s+/g, " ").trim();
+};
+
+const findNameFallback = (text) => {
+  const value = findLabelValue(text, [
+    "FULL NAME",
+    "FULLNAME",
+    "NAME OF OWNER",
+    "REGISTERED OWNER",
+    "OWNER'S NAME",
+    "OWNER",
+    "APPLICANT NAME",
+    "APPLICANT",
+    "NAME",
+  ]);
+  if (!value) return "";
+  return cleanNamePart(value);
+};
+
+const findAddressFallback = (text) => {
+  const labeled = findLabelValue(text, [
+    "BUSINESS ADDRESS",
+    "BUSINESS/SHOP ADDRESS",
+    "SHOP ADDRESS",
+    "PRINCIPAL ADDRESS",
+    "RESIDENTIAL ADDRESS",
+    "HOME ADDRESS",
+    "ADDRESS",
+    "LOCATION",
+  ]);
+
+  if (labeled) return labeled;
+
+  // Philippine National ID OCR frequently loses the "ADDRESS" label but
+  // retains the long address itself. Recover a line containing the street
+  // and Valenzuela location, then join the following continuation lines.
+  const lines = getOcrLines(text);
+  const addressStart = lines.findIndex((line) =>
+    /(?:MERCEDES|ST\.?|STREET|ROAD|RD\.?|CITY|VALENZUELA|NCR|PHILIPPINES|PHL|1442)/i.test(line),
+  );
+
+  if (addressStart >= 0) {
+    const collected = [];
+    for (let i = addressStart; i < Math.min(lines.length, addressStart + 5); i += 1) {
+      const line = lines[i];
+      if (/^(?:PETA|PETSA|DATE OF BIRTH|DIGITAL ID|SIGNATURE)/i.test(line)) break;
+      if (/\b(?:VALENZUELA|NCR|PHILIPPINES|PHL)\b/i.test(line) || /\d{3,}/.test(line) || /\b(?:ST|STREET|ROAD|RD)\b/i.test(line)) {
+        collected.push(line);
+      }
+    }
+    if (collected.length) {
+      return collected
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .replace(/\bCITY OF PHL\b/gi, "CITY OF VALENZUELA")
+        .trim();
+    }
+  }
+
+  return "";
+};
+
+const parseGovernmentIdOcr = (text, barangays) => {
+  const parts = findGovernmentIdNameParts(text);
+  const fullName = buildGovernmentIdFullName(parts, text);
+
+  // Last-resort generic name extraction. This prevents the scanner from
+  // failing completely when the ID labels are distorted.
+  const fallbackName = findNameFallback(text);
+
+  return {
+    fullName: fullName || fallbackName,
+    address: findAddressFallback(text),
+    barangay: findBarangay(text, barangays),
+  };
+};
+
+const parseBusinessPermitOcr = (text) => ({
+  fullName: findLabelValue(text, ["OWNER", "OWNER NAME", "PROPRIETOR", "REGISTERED OWNER", "APPLICANT", "APPLICANT NAME"]),
+  businessName: findLabelValue(text, ["BUSINESS NAME", "NAME OF BUSINESS", "TRADE NAME", "REGISTERED BUSINESS NAME"]),
+  address: findAddressFallback(text),
+  contactNumber: findContactNumber(text),
+  businessPermitNumber: findLabelValue(text, ["BUSINESS PERMIT NO", "BUSINESS PERMIT NUMBER", "PERMIT NO", "PERMIT NUMBER", "MAYOR'S PERMIT NO", "MAYORS PERMIT NO"]),
+  permitType: findLabelValue(text, ["PERMIT TYPE", "TYPE OF PERMIT"]),
+  permitIssuingLgu: findLabelValue(text, ["ISSUING LGU", "ISSUING AUTHORITY", "LOCAL GOVERNMENT UNIT", "CITY/MUNICIPALITY", "CITY OF"]),
+  permitIssueDate: findDateValue(text, ["ISSUE DATE", "DATE ISSUED", "DATE OF ISSUE"]),
+  permitExpiryDate: findDateValue(text, ["EXPIRY DATE", "EXPIRATION DATE", "VALID UNTIL", "VALIDITY"]),
+  businessActivity: findLabelValue(text, ["BUSINESS ACTIVITY", "NATURE OF BUSINESS", "BUSINESS NATURE", "ACTIVITY"]),
+});
+
+const parseTechnicalCertificateOcr = (text) => ({
+  certificateNumber: findLabelValue(text, ["CERTIFICATE NO", "CERTIFICATE NUMBER", "CERTIFICATION NO", "CERTIFICATION NUMBER", "CERT NO", "CERT NO."]),
+  issuer: findLabelValue(text, ["ISSUER", "ISSUED BY", "ISSUING ORGANIZATION", "ISSUING BODY", "CERTIFYING BODY"]),
+  certificateTitle: findLabelValue(text, ["CERTIFICATE TITLE", "CERTIFICATION TITLE", "TITLE OF CERTIFICATE", "CERTIFICATION"]),
+  issueDate: findDateValue(text, ["ISSUE DATE", "DATE ISSUED", "DATE OF ISSUE"]),
+  expiryDate: findDateValue(text, ["EXPIRY DATE", "EXPIRATION DATE", "VALID UNTIL", "VALID THROUGH"]),
+  specialization: findLabelValue(text, ["SPECIALIZATION", "SPECIALTY", "FIELD OF SPECIALIZATION", "COMPETENCY", "QUALIFICATION"]),
+});
+
+const loadImageForOcr = async (file) => {
+  if (!file || file.size > OCR_MAX_FILE_SIZE) {
+    throw new Error("File size must not exceed 5MB.");
+  }
+
+  if (OCR_IMAGE_TYPES.includes(file.type)) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(2, Math.max(1, 1800 / Math.max(bitmap.width, bitmap.height)));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+      data[i] = gray;
+      data[i + 1] = gray;
+      data[i + 2] = gray;
+    }
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+  }
+
+  if (file.type === "application/pdf") {
+    const buffer = await file.arrayBuffer();
+    const pdf = await getDocument({ data: buffer }).promise;
+    if (!pdf.numPages) throw new Error("The PDF does not contain a readable page.");
+
+    // Tesseract.js does not read PDFs directly. Render the first page locally
+    // with pdf.js, then send the rendered image to Tesseract.
+    const page = await pdf.getPage(1);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.min(2.5, Math.max(1.5, 1800 / Math.max(baseViewport.width, baseViewport.height)));
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas;
+  }
+
+  throw new Error("Please upload a PDF, JPEG, PNG, or WebP file.");
+};
+
+const createOcrVariants = (sourceCanvas) => {
+  const variants = [sourceCanvas];
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+
+  // Variant 1: high-contrast grayscale.
+  const grayCanvas = document.createElement("canvas");
+  grayCanvas.width = width;
+  grayCanvas.height = height;
+  const grayCtx = grayCanvas.getContext("2d", { willReadFrequently: true });
+  grayCtx.drawImage(sourceCanvas, 0, 0);
+  const imageData = grayCtx.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const gray = Math.round(pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114);
+    const boosted = Math.max(0, Math.min(255, Math.round((gray - 128) * 1.45 + 128)));
+    pixels[i] = boosted;
+    pixels[i + 1] = boosted;
+    pixels[i + 2] = boosted;
+  }
+  grayCtx.putImageData(imageData, 0, 0);
+  variants.push(grayCanvas);
+
+  // Variant 2: thresholded document. This often recovers small surnames
+  // that Tesseract misses in the normal grayscale pass.
+  const thresholdCanvas = document.createElement("canvas");
+  thresholdCanvas.width = width;
+  thresholdCanvas.height = height;
+  const thresholdCtx = thresholdCanvas.getContext("2d", { willReadFrequently: true });
+  thresholdCtx.drawImage(sourceCanvas, 0, 0);
+  const thresholdData = thresholdCtx.getImageData(0, 0, width, height);
+  const thresholdPixels = thresholdData.data;
+  for (let i = 0; i < thresholdPixels.length; i += 4) {
+    const gray = thresholdPixels[i] * 0.299 + thresholdPixels[i + 1] * 0.587 + thresholdPixels[i + 2] * 0.114;
+    const value = gray > 155 ? 255 : 0;
+    thresholdPixels[i] = value;
+    thresholdPixels[i + 1] = value;
+    thresholdPixels[i + 2] = value;
+  }
+  thresholdCtx.putImageData(thresholdData, 0, 0);
+  variants.push(thresholdCanvas);
+
+  return variants;
+};
+
+const runLocalOcr = async (file, onProgress, options = {}) => {
+  const image = await loadImageForOcr(file);
+  const variants = options.multiPass ? createOcrVariants(image) : [image];
+  const worker = await createWorker("eng", 1, { logger: (message) => onProgress?.(message) });
+
+  try {
+    await worker.setParameters({
+      preserve_interword_spaces: "1",
+      user_defined_dpi: "300",
+      tessedit_pageseg_mode: "6",
+    });
+
+    const results = [];
+    for (let i = 0; i < variants.length; i += 1) {
+      onProgress?.({ status: `OCR pass ${i + 1}/${variants.length}` });
+      const { data } = await worker.recognize(variants[i]);
+      const text = cleanOcrText(data?.text || "");
+      if (text) results.push(text);
+    }
+
+    const text = cleanOcrText(
+      results
+        .join("\n")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .filter((line, index, array) => array.indexOf(line) === index)
+        .join("\n"),
+    );
+
+    if (!text) throw new Error("No readable text was found in the document.");
+    return text;
+  } finally {
+    await worker.terminate();
+  }
+};
+
+// =====================================================================
+// GEMINI SCAN (via Supabase Edge Function "scan-document")
+// The API key stays on the server. If Gemini is busy / over its free
+// quota / offline, we automatically fall back to the local Tesseract
+// scan above so the user is never blocked.
+// =====================================================================
+const MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+
+// <input type="date"> needs YYYY-MM-DD. Gemini already returns that; this
+// also cleans up the raw strings produced by the local OCR fallback.
+const toIsoDate = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  const valid = (y, m, d) => y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+
+  let m = raw.match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/);
+  if (m && valid(+m[1], +m[2], +m[3])) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+
+  m = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (m) {
+    let [a, b, y] = [+m[1], +m[2], +m[3]];
+    if (y < 100) y += 2000;
+    // Philippine documents are normally MM/DD/YYYY; flip only if that is impossible.
+    const [month, day] = a > 12 ? [b, a] : [a, b];
+    if (valid(y, month, day)) return `${y}-${pad(month)}-${pad(day)}`;
+  }
+
+  m = raw.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (m) {
+    const month = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase()) + 1;
+    if (month && valid(+m[3], month, +m[2])) return `${m[3]}-${pad(month)}-${pad(m[2])}`;
+  }
+  return "";
+};
+
+const fileToBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
+
+const scanWithGemini = async (file, documentType, barangays) => {
+  const data = await fileToBase64(file);
+  const { data: result, error } = await supabase.functions.invoke("scan-document", {
+    body: {
+      documentType,
+      mimeType: file.type === "image/jpg" ? "image/jpeg" : file.type,
+      data,
+      barangays,
+    },
+  });
+  if (error) {
+    let detail = error.message;
+    try {
+      const body = await error.context?.clone?.().json();
+      detail = body?.reason || body?.error || detail;
+    } catch {
+      // Body was not JSON (e.g. function not deployed -> 404/"Failed to send a request").
+    }
+    throw new Error(detail);
+  }
+  if (!result?.fields) throw new Error(result?.error || "The scanner returned no data.");
+  return result.fields;
+};
+
+// Tesseract often returns scrambled letters for names. When the offline scan is
+// the source, only auto-fill a name that looks like a real one; otherwise leave
+// the field empty so the user types it instead of correcting garbage.
+const looksLikeRealName = (value) => {
+  const tokens = String(value || "").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return false;
+  return tokens.every((token) => {
+    if (!/^[A-Za-z][A-Za-z.'-]*$/.test(token)) return false; // digits/symbols
+    if (/^[A-Za-z]\.?$/.test(token)) return true; // middle initial
+    if (/^(?:Jr|Sr|II|III|IV|Mc|Mac)\.?$/i.test(token)) return true; // suffixes / prefixes
+    if (token.length < 2 || token.length > 20) return false;
+    if (!/[aeiouAEIOU]/.test(token)) return false; // no vowel
+    if (/[^aeiouAEIOU\W\d_]{5,}/.test(token)) return false; // 5+ consonants in a row
+    return true;
+  });
+};
+
+// Tries Gemini first, falls back to local OCR. Always returns the same
+// shape the rest of the form already expects.
+const extractDocument = async ({ file, documentType, barangays, onStatus, localParser, localOptions }) => {
+  let extracted;
+  let source = "gemini";
+  let localText = "";
+
+  try {
+    onStatus?.("Reading document with AI…");
+    extracted = await scanWithGemini(file, documentType, barangays);
+  } catch (error) {
+    console.warn("[scan] Gemini failed, using offline OCR. Reason:", error?.message || error);
+    source = "local";
+    localText = await runLocalOcr(
+      file,
+      (message) => message?.status && onStatus?.(`AI scan unavailable, using offline scan… ${message.status}`),
+      localOptions,
+    );
+    console.log("Local OCR text:", localText);
+    extracted = localParser(localText);
+    if (extracted.fullName && !looksLikeRealName(extracted.fullName)) {
+      console.warn("[scan] Offline OCR name looked scrambled, leaving it empty:", extracted.fullName);
+      extracted = { ...extracted, fullName: "" };
+    }
+  }
+
+  // Only accept a barangay that really exists in the dropdown list.
+  const barangay =
+    findBarangay(extracted.barangay || "", barangays) ||
+    findBarangay(extracted.address || "", barangays) ||
+    (localText ? findBarangay(localText, barangays) : "");
+
+  return {
+    source,
+    extracted: {
+      ...extracted,
+      barangay,
+      permitIssueDate: toIsoDate(extracted.permitIssueDate),
+      permitExpiryDate: toIsoDate(extracted.permitExpiryDate),
+      issueDate: toIsoDate(extracted.issueDate),
+      expiryDate: toIsoDate(extracted.expiryDate),
+    },
+  };
+};
+
 const SignUp = ({ onLoginClick }) => {
   const [step, setStep] = useState(1);
   const [accountType, setAccountType] = useState("");
@@ -109,6 +743,7 @@ const SignUp = ({ onLoginClick }) => {
   const governmentIdRef = React.useRef();
   const permitRef = React.useRef();
   const techRef = React.useRef();
+  const scanInFlightRef = React.useRef(false);
   const valenzuelaBarangays = [
     "Arkong Bato",
     "Bagbaguin",
@@ -207,6 +842,53 @@ const SignUp = ({ onLoginClick }) => {
 
   const [errors, setErrors] = useState({});
 
+  // =========================
+  // Turn a raw Supabase/Auth error into something a
+  // non-technical user can actually understand and act on.
+  // Nothing from err.code / err.status / err.name / stack
+  // traces should ever reach the UI — only these messages.
+  // =========================
+  const getFriendlyErrorMessage = (err, fallback = "Something went wrong. Please try again in a moment.") => {
+    const raw = `${err?.message || ""} ${err?.error_description || err?.msg || ""}`.toLowerCase();
+
+    // Supabase can fail signup with a generic 500 "Database error saving
+    // new user" when a backend trigger hits the unique email constraint
+    // instead of returning its normal "already registered" error.
+    if (
+      raw.includes("already registered") ||
+      raw.includes("already exists") ||
+      raw.includes("duplicate") ||
+      raw.includes("database error saving new user")
+    ) {
+      return "An account with this email already exists. Please log in instead, or use a different email address.";
+    }
+    if (raw.includes("invalid login credentials")) {
+      return "Incorrect email or password.";
+    }
+    if (raw.includes("expired") || (raw.includes("otp") && raw.includes("invalid")) || raw.includes("token is invalid")) {
+      return "That verification code is invalid or has expired. Please request a new one.";
+    }
+    if (raw.includes("rate limit") || raw.includes("too many requests")) {
+      return "Too many attempts. Please wait a few minutes and try again.";
+    }
+    if (raw.includes("password")) {
+      return "Your password doesn't meet the requirements. Please check and try again.";
+    }
+    if (raw.includes("network") || raw.includes("fetch") || raw.includes("failed to fetch")) {
+      return "We couldn't reach the server. Please check your internet connection and try again.";
+    }
+    return fallback;
+  };
+
+  // Edge Function scan errors are sometimes genuinely useful to the user
+  // ("Could not read the ID clearly") and sometimes raw backend/runtime
+  // noise (stack traces, SQL/HTTP errors). Only pass through the former.
+  const isUserFacingScanMessage = (message) => {
+    if (!message || typeof message !== "string") return false;
+    const technicalMarkers = /(error|exception|traceback|at\s+\w+\s*\(|status code|5\d{2}|unexpected_failure|sql|stack)/i;
+    return !technicalMarkers.test(message) && message.length < 160;
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -274,33 +956,53 @@ const SignUp = ({ onLoginClick }) => {
     }
   };
 
+  const getScanErrorMessage = async (error, fallback) => {
+    if (error?.context) {
+      try {
+        const response = error.context.clone();
+        const text = await response.text();
+        if (text) {
+          try {
+            const body = JSON.parse(text);
+            if (typeof body?.error === "string" && body.error.trim()) return body.error.trim();
+          } catch {
+            // Ignore non-JSON response bodies.
+          }
+        }
+      } catch {
+        // Fall through to the existing friendly fallback.
+      }
+    }
+    return isUserFacingScanMessage(error?.message) ? error.message : fallback;
+  };
+
   const scanGovernmentId = async () => {
     const file = governmentIdRef.current?.files?.[0] || formData.governmentId;
     if (!file) { alert("Please upload your government ID first."); return; }
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type) && file.type !== "application/pdf") {
-      alert("Please upload a JPEG, PNG, WebP, or PDF ID."); return;
+    if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") {
+      alert("Please upload a PDF, JPEG, PNG, or WebP ID."); return;
     }
+    if (file.size > OCR_MAX_FILE_SIZE) {
+      alert("File size must not exceed 5MB."); return;
+    }
+
     setScanningId(true);
     setScanMessage("Scanning ID…");
     try {
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error("Could not read the selected file."));
-        reader.onload = () => resolve(String(reader.result).split(",")[1]);
-        reader.readAsDataURL(file);
+      const { extracted, source } = await extractDocument({
+        file,
+        documentType: "government_id",
+        barangays: valenzuelaBarangays,
+        onStatus: setScanMessage,
+        localParser: (text) => parseGovernmentIdOcr(text, valenzuelaBarangays),
+        localOptions: { multiPass: true },
       });
-      const { data, error } = await supabase.functions.invoke("scan-government-id", {
-        body: { mimeType: file.type, base64 },
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Could not read the ID.");
-      const extracted = data.fields || {};
-      const hasName = typeof extracted.fullName === "string" && extracted.fullName.trim();
-      const hasAddress = typeof extracted.address === "string" && extracted.address.trim();
-      const hasBarangay = typeof extracted.barangay === "string" && valenzuelaBarangays.includes(extracted.barangay);
+      const hasName = Boolean(extracted.fullName?.trim());
+      const hasAddress = Boolean(extracted.address?.trim());
+      const hasBarangay = Boolean(extracted.barangay);
 
-      if (!hasName) {
-        throw new Error("The ID could not be read clearly. Please provide a valid, legible government ID in PDF, JPEG, PNG, or WebP format.");
+      if (!hasName && !hasAddress && !hasBarangay) {
+        throw new Error("The ID text could not be identified. Please upload a clearer, well-lit ID or enter the details manually.");
       }
 
       setFormData((prev) => ({
@@ -310,22 +1012,19 @@ const SignUp = ({ onLoginClick }) => {
         ...(hasBarangay ? { barangay: extracted.barangay } : {}),
       }));
       setIdScanCompleted(true);
-      setScanMessage("Scan complete. Review the extracted name, address, and barangay before continuing.");
+      setScanMessage(
+        source === "gemini"
+          ? "Scan complete. Review the extracted name, address, and barangay before continuing."
+          : "Offline scan complete (less accurate). Please double-check the name, address, and barangay.",
+      );
     } catch (error) {
-  setIdScanCompleted(false);
-  console.error("Government ID scan failed:", error);
-
-  if (error?.context) {
-    try {
-      const responseBody = await error.context.clone().text();
-      console.error("Edge Function response:", responseBody);
-    } catch (readError) {
-      console.error("Could not read Edge Function response:", readError);
+      setIdScanCompleted(false);
+      console.error("Government ID local OCR failed:", error);
+      setScanMessage("Scan failed. You can enter your details manually.");
+      alert(error?.message || "We couldn't read the ID. Please use a clearer image or enter the details manually.");
+    } finally {
+      setScanningId(false);
     }
-  }
-
-  alert("ID scan failed. Check the browser console and Supabase Edge Function logs.");
-} finally { setScanningId(false); }
   };
 
   const scanBusinessPermit = async () => {
@@ -334,52 +1033,56 @@ const SignUp = ({ onLoginClick }) => {
       alert("Please upload your business permit first.");
       return;
     }
-
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type) && file.type !== "application/pdf") {
+    if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") {
       alert("Please upload a PDF, JPEG, PNG, or WebP permit.");
+      return;
+    }
+    if (file.size > OCR_MAX_FILE_SIZE) {
+      alert("File size must not exceed 5MB.");
       return;
     }
 
     setScanningPermit(true);
     setScanMessage("Scanning business permit…");
-
     try {
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error("Could not read the selected permit."));
-        reader.onload = () => resolve(String(reader.result).split(",")[1]);
-        reader.readAsDataURL(file);
+      const { extracted, source } = await extractDocument({
+        file,
+        documentType: "business_permit",
+        barangays: valenzuelaBarangays,
+        onStatus: setScanMessage,
+        localParser: parseBusinessPermitOcr,
       });
+      const nonEmpty = Object.values(extracted).some((value) => String(value || "").trim());
+      if (!nonEmpty) {
+        throw new Error("The permit text could not be identified. Please upload a clearer document or enter the details manually.");
+      }
 
-      const { data, error } = await supabase.functions.invoke("scan-business-permit", {
-        body: { mimeType: file.type, base64 },
-      });
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Could not read the permit.");
-
-      const extracted = data.fields || {};
       setFormData((prev) => ({
         ...prev,
-        ...(typeof extracted.fullName === "string" && extracted.fullName.trim() ? { fullName: extracted.fullName.trim() } : {}),
-        ...(typeof extracted.businessName === "string" && extracted.businessName.trim() ? { businessName: extracted.businessName.trim() } : {}),
-        ...(typeof extracted.address === "string" && extracted.address.trim() ? { address: extracted.address.trim() } : {}),
-        ...(typeof extracted.contactNumber === "string" && extracted.contactNumber.trim() ? { contactNumber: extracted.contactNumber.trim() } : {}),
-        ...(typeof extracted.businessPermitNumber === "string" && extracted.businessPermitNumber.trim() ? { businessPermitNumber: extracted.businessPermitNumber.trim() } : {}),
-        ...(typeof extracted.permitType === "string" && extracted.permitType.trim() ? { permitType: extracted.permitType.trim() } : {}),
-        ...(typeof extracted.permitIssuingLgu === "string" && extracted.permitIssuingLgu.trim() ? { permitIssuingLgu: extracted.permitIssuingLgu.trim() } : {}),
-        ...(typeof extracted.permitIssueDate === "string" && extracted.permitIssueDate.trim() ? { permitIssueDate: extracted.permitIssueDate.trim() } : {}),
-        ...(typeof extracted.permitExpiryDate === "string" && extracted.permitExpiryDate.trim() ? { permitExpiryDate: extracted.permitExpiryDate.trim() } : {}),
-        ...(typeof extracted.businessActivity === "string" && extracted.businessActivity.trim() ? { businessActivity: extracted.businessActivity.trim() } : {}),
+        ...(extracted.fullName?.trim() ? { fullName: extracted.fullName.trim() } : {}),
+        ...(extracted.businessName?.trim() ? { businessName: extracted.businessName.trim() } : {}),
+        ...(extracted.address?.trim() ? { address: extracted.address.trim() } : {}),
+        ...(extracted.contactNumber?.trim() ? { contactNumber: extracted.contactNumber.trim() } : {}),
+        ...(extracted.businessPermitNumber?.trim() ? { businessPermitNumber: extracted.businessPermitNumber.trim() } : {}),
+        ...(extracted.permitType?.trim() ? { permitType: extracted.permitType.trim() } : {}),
+        ...(extracted.permitIssuingLgu?.trim() ? { permitIssuingLgu: extracted.permitIssuingLgu.trim() } : {}),
+        ...(extracted.permitIssueDate?.trim() ? { permitIssueDate: extracted.permitIssueDate.trim() } : {}),
+        ...(extracted.permitExpiryDate?.trim() ? { permitExpiryDate: extracted.permitExpiryDate.trim() } : {}),
+        ...(extracted.businessActivity?.trim() ? { businessActivity: extracted.businessActivity.trim() } : {}),
+        ...(extracted.barangay ? { barangay: extracted.barangay } : {}),
       }));
 
       setPermitScanCompleted(true);
-      setScanMessage("Permit scan complete. Review and correct all extracted details before continuing.");
+      setScanMessage(
+        source === "gemini"
+          ? "Permit scan complete. Review and correct all extracted details before continuing."
+          : "Offline scan complete (less accurate). Please check every extracted detail carefully.",
+      );
     } catch (error) {
       setPermitScanCompleted(false);
-      console.error("Business permit scan failed:", error);
-      alert(error?.message || "Permit scan failed. Please enter the details manually.");
+      console.error("Business permit local OCR failed:", error);
       setScanMessage("Permit scan failed. You can enter the details manually.");
+      alert(error?.message || "We couldn't read the permit. Please use a clearer image or enter the details manually.");
     } finally {
       setScanningPermit(false);
     }
@@ -391,46 +1094,49 @@ const SignUp = ({ onLoginClick }) => {
       alert("Please upload your technical certification first.");
       return;
     }
-
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type) && file.type !== "application/pdf") {
+    if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") {
       alert("Please upload a PDF, JPEG, PNG, or WebP certificate.");
+      return;
+    }
+    if (file.size > OCR_MAX_FILE_SIZE) {
+      alert("File size must not exceed 5MB.");
       return;
     }
 
     setScanningTechCert(true);
     setScanMessage("Scanning technical certificate…");
-
     try {
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error("Could not read the selected certificate."));
-        reader.onload = () => resolve(String(reader.result).split(",")[1]);
-        reader.readAsDataURL(file);
+      const { extracted, source } = await extractDocument({
+        file,
+        documentType: "technical_certificate",
+        barangays: valenzuelaBarangays,
+        onStatus: setScanMessage,
+        localParser: parseTechnicalCertificateOcr,
       });
+      const nonEmpty = Object.values(extracted).some((value) => String(value || "").trim());
+      if (!nonEmpty) {
+        throw new Error("The certificate text could not be identified. Please upload a clearer document or enter the details manually.");
+      }
 
-      const { data, error } = await supabase.functions.invoke("scan-technical-certificate", {
-        body: { mimeType: file.type, base64 },
-      });
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Could not read the technical certificate.");
-
-      const extracted = data.fields || {};
       setFormData((prev) => ({
         ...prev,
-        ...(typeof extracted.certificateNumber === "string" && extracted.certificateNumber.trim() ? { techCertificateNumber: extracted.certificateNumber.trim() } : {}),
-        ...(typeof extracted.issuer === "string" && extracted.issuer.trim() ? { techCertificateIssuer: extracted.issuer.trim() } : {}),
-        ...(typeof extracted.certificateTitle === "string" && extracted.certificateTitle.trim() ? { techCertificateTitle: extracted.certificateTitle.trim() } : {}),
-        ...(typeof extracted.issueDate === "string" && extracted.issueDate.trim() ? { techCertificateIssueDate: extracted.issueDate.trim() } : {}),
-        ...(typeof extracted.expiryDate === "string" && extracted.expiryDate.trim() ? { techCertificateExpiryDate: extracted.expiryDate.trim() } : {}),
-        ...(typeof extracted.specialization === "string" && extracted.specialization.trim() ? { techSpecialization: extracted.specialization.trim() } : {}),
+        ...(extracted.certificateNumber?.trim() ? { techCertificateNumber: extracted.certificateNumber.trim() } : {}),
+        ...(extracted.issuer?.trim() ? { techCertificateIssuer: extracted.issuer.trim() } : {}),
+        ...(extracted.certificateTitle?.trim() ? { techCertificateTitle: extracted.certificateTitle.trim() } : {}),
+        ...(extracted.issueDate?.trim() ? { techCertificateIssueDate: extracted.issueDate.trim() } : {}),
+        ...(extracted.expiryDate?.trim() ? { techCertificateExpiryDate: extracted.expiryDate.trim() } : {}),
+        ...(extracted.specialization?.trim() ? { techSpecialization: extracted.specialization.trim() } : {}),
       }));
 
-      setScanMessage("Technical certificate scan complete. Review the extracted details.");
+      setScanMessage(
+        source === "gemini"
+          ? "Technical certificate scan complete. Review the extracted details."
+          : "Offline scan complete (less accurate). Please check the extracted details.",
+      );
     } catch (error) {
-      console.error("Technical certificate scan failed:", error);
-      alert(error?.message || "Certificate scan failed. Please enter the details manually.");
+      console.error("Technical certificate local OCR failed:", error);
       setScanMessage("Certificate scan failed. You can enter the details manually.");
+      alert(error?.message || "We couldn't read the certificate. Please use a clearer image or enter the details manually.");
     } finally {
       setScanningTechCert(false);
     }
@@ -500,16 +1206,10 @@ const SignUp = ({ onLoginClick }) => {
         setStep(3);
         alert("A verification code has been sent to your email. Check your inbox and spam folder.");
       } catch (err) {
+        // Full technical detail stays in the console for debugging;
+        // the user only ever sees the friendly translation.
         console.error("Signup error details:", err);
-
-        const details = [
-          err?.message,
-          err?.code,
-          err?.status,
-          err?.name,
-        ].filter(Boolean).join(" | ");
-
-        alert("Could not send verification code: " + (details || String(err)));
+        alert(getFriendlyErrorMessage(err, "We couldn't create your account right now. Please try again in a moment."));
       } finally {
         setLoading(false);
       }
@@ -526,7 +1226,10 @@ const SignUp = ({ onLoginClick }) => {
         setAuthUserId(data.user.id);
         setStep(accountType === "repair_shop" ? 4 : 4);
         alert("Email verified! Please complete your account verification details.");
-      } catch (err) { alert("Email verification failed: " + err.message); }
+      } catch (err) {
+        console.error("OTP verification error:", err);
+        alert(getFriendlyErrorMessage(err, "We couldn't verify that code. Please try again."));
+      }
       finally { setLoading(false); }
       return;
     }
@@ -809,9 +1512,8 @@ const SignUp = ({ onLoginClick }) => {
       setIsSubmitted(true);
       alert("Account created successfully. Your badge is New User while verification is pending. Please log in with your email and password.");
     } catch (err) {
-      console.error(err);
-
-      alert("Registration Error: " + err.message);
+      console.error("Final registration submit error:", err);
+      alert(getFriendlyErrorMessage(err, "We couldn't finish creating your account. Please try again in a moment."));
     } finally {
       setLoading(false);
     }
@@ -1005,7 +1707,7 @@ const SignUp = ({ onLoginClick }) => {
                 <button type="button" onClick={() => setStep(2)} className="flex-1 py-3 border rounded-xl text-sm">Back</button>
                 <button type="button" onClick={handleContinue} disabled={loading || otp.length !== 6} className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Verifying..." : "Verify code"}</button>
               </div>
-              <button type="button" disabled={loading} onClick={async () => { setLoading(true); try { const { error } = await supabase.auth.resend({ type: "signup", email: formData.email.trim().toLowerCase() }); if (error) throw error; alert("A new verification code has been sent."); } catch (err) { alert("Could not resend code: " + err.message); } finally { setLoading(false); } }} className="w-full text-sm text-teal-700 font-semibold disabled:opacity-50">Resend code</button>
+              <button type="button" disabled={loading} onClick={async () => { setLoading(true); try { const { error } = await supabase.auth.resend({ type: "signup", email: formData.email.trim().toLowerCase() }); if (error) throw error; alert("A new verification code has been sent."); } catch (err) { console.error("Resend code error:", err); alert(getFriendlyErrorMessage(err, "We couldn't resend the code. Please try again shortly.")); } finally { setLoading(false); } }} className="w-full text-sm text-teal-700 font-semibold disabled:opacity-50">Resend code</button>
             </div>
           )}
 
