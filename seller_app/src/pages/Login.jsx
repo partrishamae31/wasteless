@@ -253,7 +253,7 @@ if (isForgotPasswordView) {
       // Check whether selected role matches database role
       const roleNames = {
         seller: "Seller",
-        harvester: "Harvester",
+        harvester: "Tech-Owner/Dealer",
         repair_shop: "Repair Shop",
       };
 
@@ -335,7 +335,7 @@ localStorage.setItem("wasteless_login_role", role);
   const roles = [
     {
       id: "harvester",
-      title: "Harvester",
+      title: "Tech-Owner/Dealer",
       desc: "Buy and sell electronic items.",
       icon: <Recycle size={20} />,
     },

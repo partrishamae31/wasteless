@@ -43,6 +43,7 @@ import {
   Gift,
   Leaf,
   CalendarDays,
+  Upload,
 } from "lucide-react";
 
 const HAZARDOUS_DIAGNOSIS_KEYWORDS = [
@@ -107,6 +108,13 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [verificationStatus, setVerificationStatus] = useState("verified");
   const isVerified = verificationStatus === "verified";
   const [rejectionReason, setRejectionReason] = useState("");
+
+  // Repair Shop verification resubmission
+  const [resubmissionPermitFile, setResubmissionPermitFile] = useState(null);
+  const [resubmissionTechCertFile, setResubmissionTechCertFile] = useState(null);
+  const [resubmittingVerification, setResubmittingVerification] = useState(false);
+  const resubmissionPermitRef = React.useRef(null);
+  const resubmissionTechCertRef = React.useRef(null);
 
   // Trust Tier — loaded from the admin-configured trust_tiers table.
   const [trustTiers, setTrustTiers] = useState([]);
@@ -192,9 +200,27 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   role,
   created_at,
   verification_status,
+  rejection_reason,
   average_rating,
   total_reviews,
-  barangay
+  barangay,
+  address,
+  certification_type,
+  other_certification,
+  business_permit_number,
+  permit_type,
+  permit_issuing_lgu,
+  permit_issue_date,
+  permit_expiry_date,
+  business_activity,
+  tech_certificate_number,
+  tech_certificate_issuer,
+  tech_certificate_title,
+  tech_certificate_issue_date,
+  tech_certificate_expiry_date,
+  tech_specialization,
+  business_permit_url,
+  tech_cert_url
 `,
           )
           .eq("id", session.user.id)
@@ -250,6 +276,25 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           contact_number: profile?.contact_number || "",
           role: profile?.role || "Harvester",
 
+          // Repair Shop verification/document details
+          address: profile?.address || "",
+          certification_type: profile?.certification_type || "",
+          other_certification: profile?.other_certification || "",
+          business_permit_number: profile?.business_permit_number || "",
+          permit_type: profile?.permit_type || "",
+          permit_issuing_lgu: profile?.permit_issuing_lgu || "",
+          permit_issue_date: profile?.permit_issue_date || "",
+          permit_expiry_date: profile?.permit_expiry_date || "",
+          business_activity: profile?.business_activity || "",
+          tech_certificate_number: profile?.tech_certificate_number || "",
+          tech_certificate_issuer: profile?.tech_certificate_issuer || "",
+          tech_certificate_title: profile?.tech_certificate_title || "",
+          tech_certificate_issue_date: profile?.tech_certificate_issue_date || "",
+          tech_certificate_expiry_date: profile?.tech_certificate_expiry_date || "",
+          tech_specialization: profile?.tech_specialization || "",
+          business_permit_url: profile?.business_permit_url || "",
+          tech_cert_url: profile?.tech_cert_url || "",
+
           joined_date: profile?.created_at
             ? new Date(profile.created_at).toLocaleDateString("en-US", {
               month: "long",
@@ -279,6 +324,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         if (profile?.verification_status) {
           setVerificationStatus(profile.verification_status);
         }
+        setRejectionReason(profile?.rejection_reason || "");
       } catch (error) {
         console.error("Error fetching harvester profile:", error.message);
       }
@@ -533,7 +579,178 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   }, [activeTab, session?.user?.id]);
 
   const handleReverify = () => {
-    setActiveTab("settings");
+    setShowProfileDropdown(false);
+    setShowProfileModal(true);
+    setIsEditingProfile(true);
+  };
+
+  const handleResubmitVerification = async () => {
+    const currentStatus = String(verificationStatus || "").trim().toLowerCase();
+    const allowedStatuses = ["rejected", "expired"];
+
+    // Resubmission is intentionally available only after rejection/expiration.
+    // It does NOT require the account to be verified first.
+    if (!allowedStatuses.includes(currentStatus)) {
+      alert("Document resubmission is only available for rejected or expired Repair Shop accounts.");
+      return;
+    }
+
+    const permitFile =
+      resubmissionPermitRef.current?.files?.[0] || resubmissionPermitFile;
+    const techCertFile =
+      resubmissionTechCertRef.current?.files?.[0] || resubmissionTechCertFile;
+
+    if (!permitFile) {
+      alert("Please upload your corrected Business Permit / DTI Registration.");
+      return;
+    }
+
+    if (!techCertFile) {
+      alert("Please upload your corrected Technical Certification document.");
+      return;
+    }
+
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+    const maxFileSize = 5 * 1024 * 1024;
+
+    for (const [label, file] of [
+      ["Business Permit / DTI Registration", permitFile],
+      ["Technical Certification", techCertFile],
+    ]) {
+      if (!allowedTypes.includes(file.type)) {
+        alert(`${label} must be a PDF, JPEG, PNG, or WebP file.`);
+        return;
+      }
+      if (file.size > maxFileSize) {
+        alert(`${label} must not exceed 5MB.`);
+        return;
+      }
+    }
+
+    if (!session?.user?.id) {
+      alert("User session not found. Please log in again.");
+      return;
+    }
+
+    setResubmittingVerification(true);
+
+    try {
+      const userId = session.user.id;
+      const timestamp = Date.now();
+      const permitExt = (permitFile.name.split(".").pop() || "bin").toLowerCase();
+      const certExt = (techCertFile.name.split(".").pop() || "bin").toLowerCase();
+
+      const permitPath = `permits/${userId}/resubmission_permit_${timestamp}.${permitExt}`;
+      const certPath = `certs/${userId}/resubmission_cert_${timestamp}.${certExt}`;
+
+      // Upload the corrected documents using the same Supabase bucket and
+      // folder structure used by Repair Shop registration.
+      const { error: permitUploadError } = await supabase.storage
+        .from("verifications")
+        .upload(permitPath, permitFile);
+
+      if (permitUploadError) throw permitUploadError;
+
+      const { data: permitPublicUrl } = supabase.storage
+        .from("verifications")
+        .getPublicUrl(permitPath);
+
+      const { error: certUploadError } = await supabase.storage
+        .from("verifications")
+        .upload(certPath, techCertFile);
+
+      if (certUploadError) throw certUploadError;
+
+      const { data: certPublicUrl } = supabase.storage
+        .from("verifications")
+        .getPublicUrl(certPath);
+
+      // Move rejected/expired -> pending. No verified-status prerequisite.
+      const { data: updatedProfile, error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          business_permit_url: permitPublicUrl.publicUrl,
+          tech_cert_url: certPublicUrl.publicUrl,
+          verification_status: "pending",
+          rejection_reason: null,
+        })
+        .eq("id", userId)
+        .select("*")
+        .single();
+
+      if (profileError) throw profileError;
+
+      // Keep Auth metadata consistent with the profile status. Failure here
+      // should not undo a successful profile resubmission.
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: {
+          verification_status: "pending",
+          verification_badge: "New User",
+        },
+      });
+
+      if (metadataError) {
+        console.warn("Could not update verification metadata:", metadataError);
+      }
+
+      // Re-notify every Administrator account. Notification failure is treated
+      // as non-blocking because the corrected documents were already saved.
+      try {
+        const { data: admins, error: adminLookupError } = await supabase
+          .from("profiles")
+          .select("id,role")
+          .in("role", ["admin", "administrator"]);
+
+        if (adminLookupError) {
+          console.warn("Could not find administrator accounts:", adminLookupError);
+        } else if (admins?.length) {
+          const notificationRows = admins.map((admin) => ({
+            user_id: admin.id,
+            type: "verification_resubmission",
+            title: "Repair Shop Verification Resubmitted",
+            description: `${profileData.business_name || profileData.full_name || "A Repair Shop"} has resubmitted corrected verification documents for review.`,
+            content: `${profileData.business_name || profileData.full_name || "A Repair Shop"} has resubmitted corrected verification documents for review.`,
+            is_read: false,
+          }));
+
+          const { error: notificationError } = await supabase
+            .from("notifications")
+            .insert(notificationRows);
+
+          if (notificationError) {
+            console.warn("Could not create administrator notification:", notificationError);
+          }
+        }
+      } catch (notificationError) {
+        console.warn("Administrator notification step failed:", notificationError);
+      }
+
+      // Update the dashboard immediately without forcing the user to log out.
+      setVerificationStatus("pending");
+      setRejectionReason("");
+      setResubmissionPermitFile(null);
+      setResubmissionTechCertFile(null);
+      if (resubmissionPermitRef.current) resubmissionPermitRef.current.value = "";
+      if (resubmissionTechCertRef.current) resubmissionTechCertRef.current.value = "";
+      setProfileData((prev) => ({
+        ...prev,
+        business_permit_url: updatedProfile?.business_permit_url || permitPublicUrl.publicUrl,
+        tech_cert_url: updatedProfile?.tech_cert_url || certPublicUrl.publicUrl,
+      }));
+      setIsEditingProfile(false);
+
+      alert("Your corrected documents were resubmitted successfully. Your Repair Shop account is now pending administrator review.");
+    } catch (error) {
+      console.error("REPAIR SHOP VERIFICATION RESUBMISSION ERROR:", error);
+      alert(error?.message || "Unable to resubmit your verification documents. Please try again.");
+    } finally {
+      setResubmittingVerification(false);
+    }
   };
   const [myBids, setMyBids] = useState([]);
   const fetchMyBids = async () => {
@@ -638,8 +855,13 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           filter: `user_id=eq.${session.user.id}`,
         },
         (payload) => {
-          // Add the REAL notification from the database to your state
-          setNotifications((prev) => [payload.new, ...prev]);
+          // Add only the REAL database notification. Guard against duplicate
+          // realtime events so the same notification is not shown twice.
+          setNotifications((prev) =>
+            prev.some((item) => item.id === payload.new.id)
+              ? prev
+              : [payload.new, ...prev]
+          );
 
           // Show browser alert if matching
           if (payload.new.type === "alert_match") {
@@ -664,46 +886,11 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         .limit(10);
 
       if (data) {
-        // Keep the real data from DB, but prepend mock items to match the UI design
-        const mockupItems = [
-          {
-            id: "mock-1",
-            type: "bid_accepted",
-            title: "Bid Accepted",
-            content: "Your bid of ₱3,200 on iPhone 11 has been accepted",
-            created_at: new Date(Date.now() - 3600000 * 7).toISOString(), // 7h ago
-            is_read: false,
-          },
-          {
-            id: "mock-2",
-            type: "message",
-            title: "New Message",
-            content: "Maria Santos replied to your inquiry",
-            created_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
-            is_read: false,
-          },
-          {
-            id: "mock-3",
-            type: "meetup",
-            title: "Meetup Confirmed",
-            content:
-              "Meetup scheduled for March 13 at 2:00 PM - SM City Valenzuela",
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            is_read: true,
-          },
-          {
-            id: "mock-4",
-            type: "payment",
-            title: "Payment Reminder",
-            content:
-              "Don't forget to bring exact payment for tomorrow's meetup",
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            is_read: true,
-          },
-        ];
-
-        // Combine mockups with actual database notifications
-        setNotifications([...mockupItems, ...data]);
+        // Only show notifications that actually belong to this account.
+        // Do not add demo/mock notifications because they appear for every
+        // newly registered user and make the notification panel look like
+        // the user already has activity.
+        setNotifications(data);
       }
     };
 
@@ -1097,7 +1284,15 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
               {/* Notification Dropdown */}
               {showNotifications && (
-                <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+                <>
+                  {/* Click anywhere outside the notification box to close it. */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowNotifications(false)}
+                    aria-hidden="true"
+                  />
+
+                  <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
                   <div className="p-5 border-b border-slate-50 flex justify-between items-center">
                     <h3 className="font-black text-slate-800 text-xs uppercase tracking-tight">
                       Notifications
@@ -1178,7 +1373,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   <button className="w-full py-4 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors bg-slate-50/50 border-t border-slate-50">
                     View All Notifications
                   </button>
-                </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -1250,6 +1446,11 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                       <MenuLink
                         icon={<Settings size={15} />}
                         label="Settings"
+                        onClick={() => {
+                          setShowProfileDropdown(false);
+                          setShowProfileModal(true);
+                          setIsEditingProfile(true);
+                        }}
                       />
                       {/* Achievements */}
                       <MenuLink
@@ -1698,18 +1899,18 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           </p>
 
                           {isEditingProfile ? (
-                            <input
-                              type="email"
-                              value={profileData?.email || ""}
-                              onChange={(e) =>
-                                setProfileData((prev) => ({
-                                  ...prev,
-                                  email: e.target.value,
-                                }))
-                              }
-                              placeholder="Enter your email"
-                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
-                            />
+                            <div>
+                              <input
+                                type="email"
+                                value={profileData?.email || ""}
+                                readOnly
+                                disabled
+                                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-500 bg-slate-100 cursor-not-allowed outline-none"
+                              />
+                              <p className="text-[9px] text-slate-400 mt-1.5">
+                                Email address cannot be changed from Edit Profile.
+                              </p>
+                            </div>
                           ) : (
                             <p className="text-sm font-semibold text-slate-700">
                               {profileData?.email || "No email provided"}
@@ -1834,6 +2035,120 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   </div>
                 </div>
 
+                {/* VERIFICATION DOCUMENTS / RESUBMISSION */}
+                {isEditingProfile && (
+                  <div className="mx-6 mb-6 space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                    <div className="flex items-start justify-between gap-4 border-b pb-3">
+                      <div>
+                        <h3 className="font-bold text-gray-800 text-sm">
+                          Verification Documents
+                        </h3>
+                        <p className="text-[9px] text-slate-400 mt-1">
+                          {verificationStatus === "rejected" || verificationStatus === "expired"
+                            ? "Upload corrected documents to request another administrator review."
+                            : "Document replacement is available when your account is rejected or expired."}
+                        </p>
+                      </div>
+                      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${
+                        verificationStatus === "rejected"
+                          ? "bg-red-50 text-red-600"
+                          : verificationStatus === "expired"
+                            ? "bg-orange-50 text-orange-600"
+                            : "bg-slate-50 text-slate-500"
+                      }`}>
+                        {verificationStatus}
+                      </span>
+                    </div>
+
+                    {(verificationStatus === "rejected" || verificationStatus === "expired") ? (
+                      <>
+                        <div className="rounded-2xl bg-amber-50 border border-amber-100 p-3">
+                          <p className="text-[10px] text-amber-800 leading-relaxed">
+                            <strong>Resubmission:</strong> You do not need a Verified Repair Shop status to resubmit. This action is specifically available after rejection or expiration.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-2">
+                            Corrected Business Permit / DTI Registration <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            ref={resubmissionPermitRef}
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                            onChange={(e) => setResubmissionPermitFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => resubmissionPermitRef.current?.click()}
+                            className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-4 text-left hover:border-[#769c2d] hover:bg-lime-50/30 transition"
+                          >
+                            <span className="flex items-center gap-3">
+                              <span className="w-10 h-10 rounded-xl bg-lime-50 text-[#769c2d] flex items-center justify-center">
+                                <Upload size={18} />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-xs font-bold text-slate-700 truncate">
+                                  {resubmissionPermitFile?.name || "Choose corrected permit"}
+                                </span>
+                                <span className="block text-[9px] text-slate-400 mt-1">
+                                  PDF, JPEG, PNG, or WebP • maximum 5MB
+                                </span>
+                              </span>
+                            </span>
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-2">
+                            Corrected Technical Certification <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            ref={resubmissionTechCertRef}
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                            onChange={(e) => setResubmissionTechCertFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => resubmissionTechCertRef.current?.click()}
+                            className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-4 text-left hover:border-[#769c2d] hover:bg-lime-50/30 transition"
+                          >
+                            <span className="flex items-center gap-3">
+                              <span className="w-10 h-10 rounded-xl bg-lime-50 text-[#769c2d] flex items-center justify-center">
+                                <Upload size={18} />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-xs font-bold text-slate-700 truncate">
+                                  {resubmissionTechCertFile?.name || "Choose corrected certification"}
+                                </span>
+                                <span className="block text-[9px] text-slate-400 mt-1">
+                                  PDF, JPEG, PNG, or WebP • maximum 5MB
+                                </span>
+                              </span>
+                            </span>
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleResubmitVerification}
+                          disabled={resubmittingVerification}
+                          className="w-full bg-[#769c2d] text-white py-3 rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-lime-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                          {resubmittingVerification ? "Resubmitting Documents..." : "Resubmit for Verification"}
+                        </button>
+                      </>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 bg-slate-50 rounded-2xl p-4">
+                        Document resubmission is available when the verification status is <strong>Rejected</strong> or <strong>Expired</strong>.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* FOOTER */}
                 {isEditingProfile && (
                   <div className="p-4 border-t border-slate-100 flex gap-3 bg-white">
@@ -1864,7 +2179,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                             .from("profiles")
                             .update({
                               full_name: profileData.full_name?.trim(),
-                              email: profileData.email?.trim(),
+                              // Email is intentionally excluded from profile edits.
+                              // The user's existing email remains unchanged.
                               contact_number: profileData.contact_number?.trim() || null,
                               barangay:
                                 profileData.assigned_area?.trim() || null,
@@ -1910,29 +2226,67 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               </div>
             </div>
           )}
-          {verificationStatus === "rejected" && (
-            <div className="mb-8 p-6 bg-red-50 border-2 border-red-100 rounded-[2rem] flex items-center gap-6 animate-in slide-in-from-top duration-500">
-              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center flex-shrink-0">
-                <XCircle size={24} />
+          {(verificationStatus === "rejected" || verificationStatus === "expired") && (
+            <div className={`mb-8 p-6 border-2 rounded-[2rem] flex items-center gap-6 animate-in slide-in-from-top duration-500 ${
+              verificationStatus === "expired"
+                ? "bg-orange-50 border-orange-100"
+                : "bg-red-50 border-red-100"
+            }`}>
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                verificationStatus === "expired"
+                  ? "bg-orange-100 text-orange-600"
+                  : "bg-red-100 text-red-600"
+              }`}>
+                {verificationStatus === "expired" ? <Clock size={24} /> : <XCircle size={24} />}
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-black text-red-800 uppercase tracking-tight">
-                  Account Verification Rejected
+                <h3 className={`text-sm font-black uppercase tracking-tight ${
+                  verificationStatus === "expired" ? "text-orange-800" : "text-red-800"
+                }`}>
+                  {verificationStatus === "expired"
+                    ? "Account Verification Expired"
+                    : "Account Verification Rejected"}
                 </h3>
-                <p className="text-xs text-red-600 font-medium mt-1">
-                  Reason:{" "}
-                  <span className="font-bold">
-                    "{rejectionReason || "No specific reason provided."}"
-                  </span>
-                </p>
-                <p className="text-[10px] text-red-400 mt-2">
-                  Please update your documents in Settings and re-submit for
-                  approval.
+                {rejectionReason && (
+                  <p className={`text-xs font-medium mt-1 ${
+                    verificationStatus === "expired" ? "text-orange-700" : "text-red-600"
+                  }`}>
+                    Reason: <span className="font-bold">"{rejectionReason}"</span>
+                  </p>
+                )}
+                <p className={`text-[10px] mt-2 ${
+                  verificationStatus === "expired" ? "text-orange-500" : "text-red-400"
+                }`}>
+                  Upload corrected Business Permit and Technical Certification documents, then resubmit for administrator approval.
                 </p>
               </div>
-              <button className="px-6 py-2 bg-red-600 text-white text-[10px] font-black rounded-2xl uppercase tracking-widest hover:bg-red-700 transition-colors">
+              <button
+                type="button"
+                onClick={handleReverify}
+                className={`px-6 py-2 text-white text-[10px] font-black rounded-2xl uppercase tracking-widest transition-colors ${
+                  verificationStatus === "expired"
+                    ? "bg-orange-600 hover:bg-orange-700"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
                 Update Profile
               </button>
+            </div>
+          )}
+
+          {verificationStatus === "pending" && (
+            <div className="mb-8 p-5 bg-blue-50 border-2 border-blue-100 rounded-[2rem] flex items-center gap-4">
+              <div className="w-11 h-11 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center flex-shrink-0">
+                <Clock size={22} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-blue-800 uppercase tracking-tight">
+                  Verification Pending
+                </h3>
+                <p className="text-[10px] text-blue-600 mt-1">
+                  Your documents are with the Administrator for review. You will be notified when the verification status changes.
+                </p>
+              </div>
             </div>
           )}
 

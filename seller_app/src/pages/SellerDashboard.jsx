@@ -3345,9 +3345,9 @@ const SellerDashboard = ({ session }) => {
                           </p>
 
                           <div className="flex items-center justify-between">
-                            <p className="text-sm font-black text-[#2d7a7f]">
+                            {/* <p className="text-sm font-black text-[#2d7a7f]">
                               {isRepair ? "No payment" : `₱${Number(tx.amount || 0).toLocaleString()}`}
-                            </p>
+                            </p> */}
                             <span
                               className={`text-[9px] font-black px-2 py-1 rounded-full ${
                                 isSeller
