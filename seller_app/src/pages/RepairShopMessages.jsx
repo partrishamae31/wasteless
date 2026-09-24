@@ -757,44 +757,100 @@ const RepairShopMessages = ({ userId, onClose }) => {
       return;
     }
 
+    const messageContent = newMessage.trim();
+    const normalizedMessage = messageContent.toLowerCase();
+
+    // Keep the same restricted-content rules used by the Seller/Harvester side.
     const restrictedWords = [
       "viber",
-      "personal",
-      "number",
+      "whatsapp",
+      "telegram",
+      "messenger",
+      "facebook",
+      "instagram",
+      "gmail",
+      "email",
+      "e-mail",
+      "phone",
+      "mobile number",
+      "contact number",
+      "personal number",
+      "personal contact",
     ];
 
     if (
       restrictedWords.some((word) =>
-        newMessage
-          .toLowerCase()
-          .includes(word)
+        normalizedMessage.includes(word)
       )
     ) {
       setError(
-        "Message blocked: Avoid sharing personal contact info."
+        "Message blocked: Sharing personal contact information is not allowed."
+      );
+      return;
+    }
+
+    // TC_MSG_04: do not allow communication with an unverified/blocked account.
+    const { data: recipientProfile, error: recipientError } =
+      await supabase
+        .from("profiles")
+        .select(
+          "id, full_name, business_name, role, is_verified, verification_status, status"
+        )
+        .eq("id", activeChat.other_party_id)
+        .maybeSingle();
+
+    if (recipientError) {
+      console.error("Error checking recipient profile:", recipientError);
+      setError("Unable to verify the recipient's communication access.");
+      return;
+    }
+
+    const recipientStatus = String(
+      recipientProfile?.status || ""
+    ).toLowerCase();
+
+    const recipientVerificationStatus = String(
+      recipientProfile?.verification_status || ""
+    ).toLowerCase();
+
+    const recipientBlocked =
+      ["blocked", "suspended", "inactive", "banned"].includes(
+        recipientStatus
+      );
+
+    const recipientUnverified =
+      recipientProfile &&
+      (recipientProfile.is_verified !== true ||
+        (recipientVerificationStatus &&
+          recipientVerificationStatus !== "verified"));
+
+    if (
+      !recipientProfile ||
+      recipientBlocked ||
+      recipientUnverified
+    ) {
+      setError(
+        "Message blocked: This account is not currently eligible to receive messages."
       );
       return;
     }
 
     setError("");
 
-    const { error: sendError } = await supabase
-      .from("messages")
-      .insert([
-        {
-          /*
-           * Repair-shop conversations do not use listing_id.
-           */
-          listing_id: null,
-
-          sender_id: userId,
-
-          receiver_id:
-            activeChat.other_party_id,
-
-          content: newMessage.trim(),
-        },
-      ]);
+    const { data: insertedMessage, error: sendError } =
+      await supabase
+        .from("messages")
+        .insert([
+          {
+            // Repair-shop conversations do not use listing_id.
+            listing_id: null,
+            sender_id: userId,
+            receiver_id: activeChat.other_party_id,
+            content: messageContent,
+          },
+        ])
+        .select("*")
+        .single();
 
     if (sendError) {
       console.error(
@@ -807,6 +863,50 @@ const RepairShopMessages = ({ userId, onClose }) => {
       );
 
       return;
+    }
+
+    // Show the sent message immediately; realtime will ignore the duplicate.
+    if (insertedMessage) {
+      setMessages((previous) => {
+        if (previous.some((item) => item.id === insertedMessage.id)) {
+          return previous;
+        }
+        return [...previous, insertedMessage];
+      });
+    }
+
+    // TC_MSG_01: notify the harvester when a new message arrives.
+    const { data: senderProfile } = await supabase
+      .from("profiles")
+      .select("full_name, business_name, role")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const senderName =
+      senderProfile?.business_name ||
+      senderProfile?.full_name ||
+      "Repair Shop";
+
+    const { error: notificationError } = await supabase
+      .from("notifications")
+      .insert([
+        {
+          user_id: activeChat.other_party_id,
+          type: "message",
+          title: "New Message",
+          content: `${senderName} sent you a new message.`,
+          related_listing_id: null,
+          is_read: false,
+          description: "You received a new in-app message.",
+        },
+      ]);
+
+    if (notificationError) {
+      // A notification failure should not make the already-sent message fail.
+      console.warn(
+        "Message sent, but notification could not be created:",
+        notificationError
+      );
     }
 
     setNewMessage("");
@@ -1288,7 +1388,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                         {message.content}
                       </div>
 
-                      <span className="text-[9px] font-bold text-slate-400 mt-2">
+                      <span className="text-[9px] font-bold text-slate-400 mt-2 flex items-center gap-1">
                         {message.created_at
                           ? new Date(
                               message.created_at
@@ -1300,6 +1400,11 @@ const RepairShopMessages = ({ userId, onClose }) => {
                               }
                             )
                           : ""}
+                        {isMe && (
+                          <span className="text-emerald-500">
+                            · Delivered
+                          </span>
+                        )}
                       </span>
 
                     </div>

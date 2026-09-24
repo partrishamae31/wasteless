@@ -42,19 +42,22 @@ const SellerMessages = ({ userId, onTabChange }) => {
   // ============================================================
 
   const isRepairShopChat = (chat) =>
-    chat?.other_party_role_type === "repair_shop";
+    chat?.other_party_role_type === "repair_shop" &&
+    !chat?.listing_id;
 
   const getConversationKey = ({
     listingId,
     otherPartyId,
     roleType,
   }) => {
-    if (roleType === "repair_shop") {
-      return `repair-shop-${otherPartyId}`;
-    }
-
+    // A marketplace conversation must always be scoped to its listing,
+    // even when the bidder is a Repair Shop.
     if (listingId) {
       return `listing-${listingId}-${otherPartyId}`;
+    }
+
+    if (roleType === "repair_shop") {
+      return `repair-shop-${otherPartyId}`;
     }
 
     return `user-${otherPartyId}`;
@@ -77,6 +80,16 @@ const SellerMessages = ({ userId, onTabChange }) => {
       month: "short",
       day: "numeric",
     });
+  };
+
+  const formatMeetupTime = (timeValue) => {
+    if (!timeValue) return "";
+    const [hours, minutes] = String(timeValue).split(":").map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return timeValue;
+
+    const suffix = hours >= 12 ? "PM" : "AM";
+    const hour12 = hours % 12 || 12;
+    return `${String(hour12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${suffix}`;
   };
 
   const renderStars = (average_rating = 0) => {
@@ -297,9 +310,13 @@ const SellerMessages = ({ userId, onTabChange }) => {
           roleType: otherPartyInfo.roleType,
         });
 
-        // For repair shops, keep the repair conversation separate
-        // from marketplace listings.
-        if (otherPartyInfo.roleType === "repair_shop") {
+        // Repair Shop users can participate in TWO different kinds of chat:
+        // 1. marketplace chat -> has listing_id and must keep transaction context
+        // 2. repair-service chat -> no listing_id and uses repair appointments
+        if (
+          otherPartyInfo.roleType === "repair_shop" &&
+          !msg.listing_id
+        ) {
           const existing = conversationMap.get(key);
 
           if (
@@ -309,26 +326,14 @@ const SellerMessages = ({ userId, onTabChange }) => {
           ) {
             conversationMap.set(key, {
               ...msg,
-
               conversation_key: key,
-
               listing_id: null,
-
               other_party_id: otherPartyId,
-
               other_party_name: otherPartyInfo.name,
-
               other_party_role: otherPartyInfo.role,
-
-              other_party_role_type:
-                otherPartyInfo.roleType,
-
-              other_party_rating:
-                otherPartyInfo.rating,
-
-              other_party_review_count:
-                otherPartyInfo.reviewCount,
-
+              other_party_role_type: otherPartyInfo.roleType,
+              other_party_rating: otherPartyInfo.rating,
+              other_party_review_count: otherPartyInfo.reviewCount,
               repair_device_model:
                 existing?.repair_device_model || null,
             });
@@ -580,12 +585,13 @@ const SellerMessages = ({ userId, onTabChange }) => {
   // ============================================================
 
   const fetchActiveTransaction = async () => {
-    // Repair Shop conversations do not use transactions.
+    // Marketplace conversations use transactions regardless of
+    // whether the accepted bidder is a normal harvester or a Repair Shop.
+    // Only true repair-service chats (no listing_id) skip transactions.
     if (
       !activeChat ||
       !userId ||
-      !activeChat.listing_id ||
-      isRepairShopChat(activeChat)
+      !activeChat.listing_id
     ) {
       setActiveTransaction(null);
       return null;
@@ -600,6 +606,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
       )
       .in("status", [
         "pending",
+        "matched",
         "meetup_scheduled",
       ])
       .order("created_at", {
@@ -659,9 +666,9 @@ const SellerMessages = ({ userId, onTabChange }) => {
       return;
     }
 
-    const isRepairShop =
-      activeChat.other_party_role_type ===
-      "repair_shop";
+    // Only a Repair Shop chat without listing_id is a repair-service chat.
+    // A Repair Shop with listing_id is a marketplace transaction chat.
+    const isRepairShop = isRepairShopChat(activeChat);
 
     const fetchChatData = async () => {
       // --------------------------------------------------------
@@ -956,50 +963,113 @@ const SellerMessages = ({ userId, onTabChange }) => {
 
     const restrictedWords = [
       "viber",
-      "personal",
-      "number",
+      "whatsapp",
+      "telegram",
+      "messenger",
+      "facebook",
+      "instagram",
+      "gmail",
+      "email",
+      "e-mail",
+      "phone",
+      "mobile number",
+      "contact number",
+      "personal number",
+      "personal contact",
     ];
+
+    const normalizedMessage = newMessage
+      .trim()
+      .toLowerCase();
 
     if (
       restrictedWords.some((word) =>
-        newMessage
-          .toLowerCase()
-          .includes(word)
+        normalizedMessage.includes(word)
       )
     ) {
       setError(
-        "Message blocked: Avoid sharing personal contact info."
+        "Message blocked: Sharing personal contact information is not allowed."
       );
-
       return;
     }
 
     setError("");
 
-    const isRepairShop =
-      activeChat.other_party_role_type ===
-      "repair_shop";
-
-    const { error: sendError } =
+    // TC_MSG_04: verify that the recipient is still allowed
+    // to receive messages before attempting the insert.
+    const { data: recipientProfile, error: recipientError } =
       await supabase
-        .from("messages")
-        .insert([
-          {
-            // Repair Shop messages are independent
-            // of marketplace listings.
-            listing_id: isRepairShop
-              ? null
-              : activeChat.listing_id,
+        .from("profiles")
+        .select(
+          "id, full_name, business_name, role, is_verified, verification_status, status"
+        )
+        .eq("id", activeChat.other_party_id)
+        .maybeSingle();
 
-            sender_id: userId,
+    if (recipientError) {
+      console.error(
+        "Error checking recipient communication access:",
+        recipientError.message
+      );
+      setError(
+        "Unable to verify communication access. Please try again."
+      );
+      return;
+    }
 
-            receiver_id:
-              activeChat.other_party_id,
+    const recipientStatus =
+      String(recipientProfile?.status || "").toLowerCase();
+    const recipientVerification =
+      String(
+        recipientProfile?.verification_status || ""
+      ).toLowerCase();
 
-            content:
-              newMessage.trim(),
-          },
-        ]);
+    const isBlocked =
+      ["blocked", "suspended", "inactive", "banned"].includes(
+        recipientStatus
+      );
+
+    const isUnverified =
+      recipientProfile &&
+      (recipientProfile.is_verified !== true ||
+        (recipientVerification &&
+          recipientVerification !== "verified"));
+
+    if (!recipientProfile || isBlocked || isUnverified) {
+      setError(
+        "Message blocked: This account is not currently eligible to receive messages."
+      );
+      return;
+    }
+
+    // Only a Repair Shop chat without listing_id is a repair-service chat.
+    // A Repair Shop with listing_id is a marketplace transaction chat.
+    const isRepairShop = isRepairShopChat(activeChat);
+
+    const messagePayload = {
+      // Repair Shop messages are independent
+      // of marketplace listings.
+      listing_id: isRepairShop
+        ? null
+        : activeChat.listing_id,
+
+      sender_id: userId,
+
+      receiver_id:
+        activeChat.other_party_id,
+
+      content:
+        newMessage.trim(),
+    };
+
+    const {
+      data: insertedMessage,
+      error: sendError,
+    } = await supabase
+      .from("messages")
+      .insert([messagePayload])
+      .select("*")
+      .single();
 
     if (sendError) {
       console.error(
@@ -1014,6 +1084,53 @@ const SellerMessages = ({ userId, onTabChange }) => {
       return;
     }
 
+    // TC_MSG_01: create an in-app notification for the recipient.
+    // Notification failure should not undo a successfully stored message.
+    const senderName =
+      isRepairShop
+        ? "Repair Shop"
+        : "Tech Owner/Dealer";
+
+    const { error: notificationError } =
+      await supabase
+        .from("notifications")
+        .insert([
+          {
+            user_id: activeChat.other_party_id,
+            type: "message",
+            title: "New Message",
+            content: `${senderName} sent you a new message.`,
+            related_listing_id:
+              activeChat.listing_id || null,
+            is_read: false,
+            description:
+              "You received a new in-app message.",
+          },
+        ]);
+
+    if (notificationError) {
+      console.warn(
+        "Message notification could not be created:",
+        notificationError.message
+      );
+    }
+
+    // Add the inserted row immediately so the sender sees the
+    // message without waiting for the realtime event.
+    if (insertedMessage) {
+      setMessages((prev) => {
+        if (
+          prev.some(
+            (item) => item.id === insertedMessage.id
+          )
+        ) {
+          return prev;
+        }
+
+        return [...prev, insertedMessage];
+      });
+    }
+
     setNewMessage("");
   };
 
@@ -1022,10 +1139,10 @@ const SellerMessages = ({ userId, onTabChange }) => {
   // ============================================================
 
   const handleScheduleMeetup = async () => {
-    // Repair Shops do not use marketplace meetup scheduling.
+    // Marketplace meetup scheduling works for both normal harvesters
+    // and Repair Shops when they are the accepted bidder.
     if (
       !activeChat ||
-      isRepairShopChat(activeChat) ||
       !activeChat.listing_id
     ) {
       alert(
@@ -1067,10 +1184,14 @@ const SellerMessages = ({ userId, onTabChange }) => {
           "harvester_id",
           activeChat.other_party_id
         )
-        .eq(
-          "status",
-          "pending"
-        )
+        .in("status", [
+          "pending",
+          "matched",
+        ])
+        .order("created_at", {
+          ascending: false,
+        })
+        .limit(1)
         .maybeSingle();
 
       if (
@@ -1152,7 +1273,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
       const meetupMessage = `Meetup Scheduled!
 Final Price: ₱${finalPrice.toLocaleString()}
 Location: ${meetupData.location}
-Date: ${meetupData.date} at ${meetupData.time}${
+Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
         meetupData.notes
           ? `\nNotes: ${meetupData.notes}`
           : ""
@@ -1284,6 +1405,8 @@ Date: ${meetupData.date} at ${meetupData.time}${
               const isRepairShop =
                 conv.other_party_role_type ===
                 "repair_shop";
+              const isMarketplaceChat =
+                Boolean(conv.listing_id);
 
               return (
                 <div
@@ -1351,15 +1474,15 @@ Date: ${meetupData.date} at ${meetupData.time}${
 
                   <p className="text-[10px] text-teal-600 font-bold mb-1">
 
-                    {isRepairShop
-                      ? `Repair: ${
-                          conv.repair_device_model ||
-                          "Appointment"
-                        }`
-                      : `Re: ${
+                    {isMarketplaceChat
+                      ? `Re: ${
                           conv.listings
                             ?.device_model ||
                           "Item"
+                        }`
+                      : `Repair: ${
+                          conv.repair_device_model ||
+                          "Appointment"
                         }`}
 
                   </p>
@@ -1422,9 +1545,11 @@ Date: ${meetupData.date} at ${meetupData.time}${
                   </div>
 
                   <p className="text-[10px] text-slate-400">
-                    {activeChat.other_party_role_type ===
-                    "repair_shop"
-                      ? "Repair Shop Conversation"
+                    {activeChat.listing_id
+                      ? "Marketplace Conversation"
+                      : activeChat.other_party_role_type ===
+                        "repair_shop"
+                      ? "Repair Service Conversation"
                       : "Marketplace Conversation"}
                   </p>
 
@@ -1454,12 +1579,11 @@ Date: ${meetupData.date} at ${meetupData.time}${
                   MARKETPLACE MEETUP BUTTON
               ------------------------------------------------- */}
 
-              {activeChat.other_party_role_type !==
-                "repair_shop" &&
-                activeTransaction?.seller_id ===
+              {activeTransaction?.seller_id ===
                   userId &&
-                activeTransaction?.status ===
-                  "pending" && (
+                ["pending", "matched"].includes(
+                  activeTransaction?.status
+                ) && (
                   <button
                     onClick={async () => {
                       await fetchAcceptedBidAmount();
@@ -1472,9 +1596,7 @@ Date: ${meetupData.date} at ${meetupData.time}${
                   </button>
                 )}
 
-              {activeChat.other_party_role_type !==
-                "repair_shop" &&
-                activeTransaction?.harvester_id ===
+              {activeTransaction?.harvester_id ===
                   userId &&
                 activeTransaction?.status ===
                   "meetup_scheduled" && (
@@ -1496,8 +1618,7 @@ Date: ${meetupData.date} at ${meetupData.time}${
                   MARKETPLACE ITEM INFO
               ------------------------------------------------- */}
 
-              {activeChat.other_party_role_type !==
-                "repair_shop" &&
+              {activeChat.listing_id &&
                 activeChat.listings?.device_model && (
                   <div className="bg-white border border-emerald-100 rounded-2xl p-4">
                     <p className="text-[9px] uppercase tracking-wider font-bold text-emerald-600">
@@ -1517,8 +1638,7 @@ Date: ${meetupData.date} at ${meetupData.time}${
                   REPAIR APPOINTMENTS
               ------------------------------------------------- */}
 
-              {activeChat.other_party_role_type ===
-                "repair_shop" &&
+              {isRepairShopChat(activeChat) &&
                 repairAppointments.length > 0 && (
                   <div className="space-y-4">
 
@@ -1626,8 +1746,7 @@ Date: ${meetupData.date} at ${meetupData.time}${
                   NO APPOINTMENT MESSAGE
               ------------------------------------------------- */}
 
-              {activeChat.other_party_role_type ===
-                "repair_shop" &&
+              {isRepairShopChat(activeChat) &&
                 repairAppointments.length ===
                   0 && (
                   <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4">
@@ -1669,11 +1788,18 @@ Date: ${meetupData.date} at ${meetupData.time}${
                       {msg.content}
                     </div>
 
-                    <span className="text-[9px] font-bold text-slate-400 mt-2">
-                      {formatTime(
-                        msg.created_at
+                    <div className="flex items-center gap-1 mt-2">
+                      <span className="text-[9px] font-bold text-slate-400">
+                        {formatTime(
+                          msg.created_at
+                        )}
+                      </span>
+                      {isMe && (
+                        <span className="text-[9px] font-semibold text-emerald-500">
+                          Delivered
+                        </span>
                       )}
-                    </span>
+                    </div>
 
                   </div>
                 );
@@ -1746,8 +1872,7 @@ Date: ${meetupData.date} at ${meetupData.time}${
 
       {isModalOpen &&
         activeChat &&
-        activeChat.other_party_role_type !==
-          "repair_shop" && (
+        activeChat.listing_id && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
 
             <div className="bg-white rounded-[1.5rem] w-full max-w-lg overflow-hidden shadow-xl animate-in fade-in zoom-in duration-200">
@@ -1875,30 +2000,30 @@ Date: ${meetupData.date} at ${meetupData.time}${
                   <div className="grid grid-cols-3 gap-3">
 
                     {[
-                      "09:00 AM",
-                      "10:00 AM",
-                      "11:00 AM",
-                      "02:00 PM",
-                      "03:00 PM",
-                      "04:00 PM",
-                    ].map((t) => (
+                      { label: "09:00 AM", value: "09:00" },
+                      { label: "10:00 AM", value: "10:00" },
+                      { label: "11:00 AM", value: "11:00" },
+                      { label: "02:00 PM", value: "14:00" },
+                      { label: "03:00 PM", value: "15:00" },
+                      { label: "04:00 PM", value: "16:00" },
+                    ].map((slot) => (
                       <button
-                        key={t}
+                        key={slot.value}
                         type="button"
                         onClick={() =>
                           setMeetupData({
                             ...meetupData,
-                            time: t,
+                            time: slot.value,
                           })
                         }
                         className={`p-3 text-xs rounded-xl border transition-all duration-200 ${
                           meetupData.time ===
-                          t
+                          slot.value
                             ? "bg-[#9bc2c9] border-[#9bc2c9] text-white font-bold"
                             : "border-slate-200 text-slate-600 hover:border-teal-200"
                         }`}
                       >
-                        {t}
+                        {slot.label}
                       </button>
                     ))}
 

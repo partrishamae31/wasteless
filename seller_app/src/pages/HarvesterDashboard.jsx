@@ -53,9 +53,15 @@ const HAZARDOUS_DIAGNOSIS_KEYWORDS = [
 ];
 
 const isHazardousListing = (listing) => {
-  if (listing?.condition?.toLowerCase() !== "defective") return false;
+  // WASTELESS now uses only the canonical condition values:
+  // "Working" and "Not Working".
+  // Hazardous diagnosis checks apply only to Not Working devices.
+  if (String(listing?.condition || "").trim().toLowerCase() !== "not working") {
+    return false;
+  }
 
   const description = String(listing?.description || "").toLowerCase();
+
   return HAZARDOUS_DIAGNOSIS_KEYWORDS.some((issue) =>
     description.includes(issue.toLowerCase()),
   );
@@ -67,6 +73,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [activeTab, setActiveTab] = useState("browse");
   const [searchTerm, setSearchTerm] = useState("");
   const [conditionFilter, setConditionFilter] = useState("All Conditions");
+  const [accountRole, setAccountRole] = useState("");
+  const isRepairShop = accountRole === "repair_shop";
   const [sortOption, setSortOption] = useState("Newest");
   const [selectedListing, setSelectedListing] = useState(null);
   const [selectedSellerId, setSelectedSellerId] = useState(null);
@@ -227,6 +235,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           .single();
 
         if (profileError) throw profileError;
+
+        // Listing visibility is role-based: only Repair Shops may access Not Working items.
+        setAccountRole(profile?.role || "");
 
         // ACTIVE BIDS COUNT
         const { count: bidsCount } = await supabase
@@ -905,12 +916,19 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           console.log("Change received!", payload);
 
           // Repair Shops can see active Working listings and
-          // active, non-hazardous Defective listings.
+          // active, non-hazardous Not Working listings.
+          const incomingCondition = String(
+            payload.new?.condition || "",
+          ).trim().toLowerCase();
+          // Repair Shops receive only Not Working listings.
+          // Regular Tech Harvesters receive only Working listings.
+          const canSeeIncomingListing = isRepairShop
+            ? incomingCondition === "not working"
+            : incomingCondition === "working";
+
           if (
             payload.new?.status === "active" &&
-            ["working", "defective"].includes(
-              payload.new?.condition?.toLowerCase(),
-            ) &&
+            canSeeIncomingListing &&
             !isHazardousListing(payload.new)
           ) {
             // Re-fetch so seller profile data and bid information stay complete.
@@ -925,7 +943,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     return () => {
       supabase.removeChannel(listingsChannel);
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, isRepairShop]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -960,8 +978,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       }
     };
 
+    // Fetch the profile first so accountRole/isRepairShop is known
+    // before the marketplace listing query runs.
     fetchProfile();
-    fetchActiveListings();
   }, [session?.user?.id]);
 
   useEffect(() => {
@@ -981,8 +1000,18 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     checkVerification();
   }, [session?.user?.id]);
   useEffect(() => {
+    // Re-fetch listings whenever the account role becomes known/changes.
+    // Repair Shops -> all active Not Working listings (all barangays).
+    // Tech Harvesters -> all active Working listings (all barangays).
+    if (!isRepairShop && conditionFilter === "Not Working") {
+      setConditionFilter("All Conditions");
+    }
+
+    // Do not fetch while the role is still unknown.
+    if (!accountRole) return;
+
     fetchActiveListings();
-  }, []);
+  }, [isRepairShop, accountRole]);
 
   const fetchActiveListings = async () => {
     try {
@@ -1011,18 +1040,30 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   `
         )
         .eq("status", "active")
-        .in("condition", ["Working", "Defective"])
+        // Marketplace visibility is role-based:
+        // - Regular Tech Harvesters see Working listings.
+        // - Repair Shops see ONLY Not Working listings for parts/recovery.
+        .in("condition", isRepairShop ? ["Not Working"] : ["Working"])
+        // Barangay is intentionally NOT used as a dashboard visibility filter.
+        // All barangays are shown; barangay matching is only for notifications.
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      // Final routing rule:
-      // - Working -> visible to Repair Shops
-      // - Defective + safe/reusable -> visible to Repair Shops
-      // - Defective + hazardous -> NOT sellable and must never appear here
-      const sellableListings = (data || []).filter(
-        (listing) => !isHazardousListing(listing),
-      );
+      // FINAL VISIBILITY RULE:
+      // - Working -> visible to regular Tech Harvesters.
+      // - Not Working -> visible exclusively to Repair Shops.
+      // - Not Working + hazardous -> never shown in the marketplace.
+      // The query already restricts Not Working items by account role; this
+      // second check protects the UI if data changes while the dashboard is open.
+      const sellableListings = (data || []).filter((listing) => {
+        const condition = String(listing?.condition || "").trim().toLowerCase();
+
+        if (condition === "not working" && !isRepairShop) return false;
+        if (!["working", "not working"].includes(condition)) return false;
+
+        return !isHazardousListing(listing);
+      });
 
       const formattedData = sellableListings.map((listing) => {
         const bids = Array.isArray(listing.bids) ? listing.bids : [];
@@ -1083,14 +1124,21 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       if (
         statusError ||
         currentListing.status !== "active" ||
-        !["working", "defective"].includes(
-          currentListing.condition?.toLowerCase(),
+        (!["working", "not working"].includes(
+          String(currentListing.condition || "").trim().toLowerCase(),
         ) ||
+          (String(currentListing.condition || "").trim().toLowerCase() ===
+            "not working" &&
+            !isRepairShop)) ||
         isHazardousListing(currentListing)
       ) {
         alert(
           isHazardousListing(currentListing)
             ? "This item is hazardous and is not available for sale."
+            : String(currentListing?.condition || "").trim().toLowerCase() ===
+                "not working" &&
+              !isRepairShop
+            ? "Not Working items are available exclusively to Repair Shops."
             : "This listing is no longer accepting bids (Closed or Expired).",
         );
         setSelectedListing(null);
@@ -1204,11 +1252,16 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       );
     })
     .filter((item) => {
+      const condition = String(item.condition || "").trim().toLowerCase();
+
+      // Never allow a non-Repair-Shop account to surface Not Working items.
+      if (condition === "not working" && !isRepairShop) return false;
+
       if (conditionFilter === "All Conditions") {
         return true;
       }
 
-      return item.condition?.toLowerCase() === conditionFilter.toLowerCase();
+      return condition === conditionFilter.toLowerCase();
     })
     .sort((a, b) => {
       if (sortOption === "Price Low") {
@@ -2418,8 +2471,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             >
               <option>All Conditions</option>
               <option>Working</option>
-              <option>Defective</option>
-              <option>Parts Only</option>
+              {isRepairShop && <option>Not Working</option>}
             </select>
 
             {/* SORT */}
@@ -4001,14 +4053,11 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
 
   const getConditionStyles = (condition) => {
     switch (condition?.toLowerCase()) {
-      case "defective":
+      case "not working":
         return "bg-blue-50 text-blue-600 border-blue-100";
 
       case "working":
         return "bg-emerald-50 text-emerald-600 border-emerald-100";
-
-      case "parts only":
-        return "bg-orange-50 text-orange-600 border-orange-100";
 
       default:
         return "bg-slate-50 text-slate-600 border-slate-100";

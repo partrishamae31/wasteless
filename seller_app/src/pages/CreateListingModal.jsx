@@ -30,7 +30,7 @@ import {
 const INITIAL_FORM_DATA = {
   category: "",
   model: "",
-  condition: "Defective",
+  condition: "Working",
   last_working_date: "",
   description: "",
   attachments: [],
@@ -53,6 +53,41 @@ const INITIAL_CHECKLIST = {
   filesDeleted: false,
   hazardAcknowledged: false,
   valuationAcknowledged: false,
+};
+
+// Checklist criteria are device-specific. Only show data-sanitization
+// checks that can actually apply to the selected category.
+const CHECKLIST_BY_CATEGORY = {
+  Smartphone: ["factoryReset", "accountsRemoved", "simRemoved", "filesDeleted"],
+  Tablet: ["factoryReset", "accountsRemoved", "simRemoved", "filesDeleted"],
+  Laptop: ["factoryReset", "accountsRemoved", "filesDeleted"],
+  Desktop: ["factoryReset", "accountsRemoved", "filesDeleted"],
+  Monitor: [],
+  Others: ["factoryReset", "accountsRemoved", "filesDeleted"],
+  Parts: [],
+};
+
+const CHECKLIST_ITEMS = {
+  factoryReset: {
+    label: "Factory reset performed",
+    sub: "Device restored to original factory settings",
+  },
+  accountsRemoved: {
+    label: "All accounts logged out and removed",
+    sub: "Apple ID, Google account, Microsoft account, etc. signed out",
+  },
+  simRemoved: {
+    label: "SIM card and memory card removed",
+    sub: "All removable SIM/storage media extracted from the device",
+  },
+  filesDeleted: {
+    label: "Personal files deleted",
+    sub: "Photos, documents, contacts, and all personal data removed",
+  },
+  hazardAcknowledged: {
+    label: "Hazardous materials disclosure",
+    sub: "Confirm no visibly swollen, leaking, or otherwise damaged hazardous components are being presented as safe",
+  },
 };
 
 
@@ -111,7 +146,7 @@ const ConditionSection = ({ selected, onChange }) => {
       activeStyles: "border-emerald-500 bg-emerald-50/30 text-emerald-700",
     },
     {
-      id: "Defective",
+      id: "Not Working",
       label: "Not Working",
       sub: "Some components not working",
       activeStyles: "border-blue-500 bg-blue-50/30 text-blue-700",
@@ -783,6 +818,43 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const getApplicableChecklistKeys = () => {
+    const categoryKeys = CHECKLIST_BY_CATEGORY[formData.category] || [];
+    return showHazardWarning
+      ? [...categoryKeys, "hazardAcknowledged"]
+      : categoryKeys;
+  };
+
+  const applicableChecklistItems = getApplicableChecklistKeys().map(
+    (key) => ({
+      id: key,
+      ...CHECKLIST_ITEMS[key],
+    })
+  );
+
+  // When the device category/condition changes, clear checks that no longer
+  // apply so an old selection can never satisfy the wrong checklist.
+  useEffect(() => {
+    const applicableKeys = new Set(getApplicableChecklistKeys());
+
+    setChecklist((prev) => ({
+      ...prev,
+      factoryReset: applicableKeys.has("factoryReset")
+        ? prev.factoryReset
+        : false,
+      accountsRemoved: applicableKeys.has("accountsRemoved")
+        ? prev.accountsRemoved
+        : false,
+      simRemoved: applicableKeys.has("simRemoved") ? prev.simRemoved : false,
+      filesDeleted: applicableKeys.has("filesDeleted")
+        ? prev.filesDeleted
+        : false,
+      hazardAcknowledged: applicableKeys.has("hazardAcknowledged")
+        ? prev.hazardAcknowledged
+        : false,
+    }));
+  }, [formData.category, showHazardWarning]);
+
   useEffect(() => {
     calculateRecoveryValue();
   }, [issues, formData.base_part_value, formData.category]);
@@ -895,17 +967,17 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const hasMandatoryListingFields =
     Boolean(formData.model?.trim()) &&
     Boolean(formData.condition) &&
-    Boolean(formData.last_working_date) &&
+    (formData.condition === "Working" ||
+      Boolean(formData.last_working_date)) &&
     formData.price !== "" &&
     Number(formData.price) > 0;
 
+  const areApplicableChecklistItemsComplete =
+    getApplicableChecklistKeys().every((key) => checklist[key] === true);
+
   const isStep3Complete =
     hasMandatoryListingFields &&
-    checklist.factoryReset &&
-    checklist.accountsRemoved &&
-    checklist.simRemoved &&
-    checklist.filesDeleted &&
-    (showHazardWarning ? checklist.hazardAcknowledged : true) &&
+    areApplicableChecklistItemsComplete &&
     checklist.valuationAcknowledged;
 
   const checkAndNotifyHarvesters = async (newListing) => {
@@ -941,10 +1013,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     Boolean(formData.condition) &&
     isAssessmentComplete &&
     hasAttachments &&
-    Boolean(formData.last_working_date);
+    (formData.condition === "Working" ||
+      Boolean(formData.last_working_date));
 
   {
-    formData.condition === "Defective" && !formData.last_working_date && (
+    formData.condition === "Not Working" && !formData.last_working_date && (
       <p className="text-[10px] text-red-500 font-medium">
         Please specify when the device was last working.
       </p>
@@ -971,16 +1044,25 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       alert("You can only upload up to 5 images.");
     }
 
-    setFormData({
-      ...formData,
-      images: [...formData.images, ...validFiles],
-    });
+    // Legacy image handler retained for compatibility; active uploads use
+    // formData.attachments via handleAssetAttachment below.
+    setFormData((prev) => ({
+      ...prev,
+      attachments: [
+        ...prev.attachments,
+        ...validFiles.slice(0, Math.max(0, 5 - prev.attachments.length)).map((file) => ({
+          file,
+          type: "image",
+          previewUrl: URL.createObjectURL(file),
+        })),
+      ],
+    }));
   };
 
   const removeImage = (index) => {
-    const newImages = [...formData.images];
-    newImages.splice(index, 1);
-    setFormData({ ...formData, images: newImages });
+    // Kept for compatibility with older callers. The current UI uses
+    // removeAttachment for the unified image/video attachment list.
+    removeAttachment(index);
   };
 
   if (!isOpen) return null;
@@ -1074,7 +1156,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       if (
         !formData.model?.trim() ||
         !formData.condition ||
-        !formData.last_working_date ||
+        (formData.condition === "Not Working" &&
+          !formData.last_working_date) ||
         formData.price === "" ||
         Number(formData.price) <= 0
       ) {
@@ -1391,7 +1474,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 }
               />
 
-              {formData.condition && (
+              {formData.condition === "Not Working" && (
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700 block text-left">
                     When was this device last working?
@@ -1940,71 +2023,83 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               </div>
 
               <div className="space-y-4">
-                <p className="text-sm font-bold text-gray-800">
-                  Data Sanitization Checklist{" "}
-                  <span className="text-red-500">*</span>
-                </p>
-                <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-5 shadow-sm">
-                  <p className="text-[10px] text-gray-400">
-                    Confirm each step has been completed for {formData.model}:
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">
+                      Data Sanitization Checklist{" "}
+                      <span className="text-red-500">*</span>
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Only checks relevant to {formData.category || "this device"} are shown.
+                    </p>
+                  </div>
+                  <ShieldCheck size={18} className="text-[#2d7a7f] shrink-0" />
+                </div>
 
-                  {[
-                    {
-                      id: "factoryReset",
-                      label: "Factory reset performed",
-                      sub: "Device restored to original factory settings",
-                    },
-                    {
-                      id: "accountsRemoved",
-                      label: "All accounts logged out and removed",
-                      sub: "Apple ID, Google account, Microsoft account, etc. signed out",
-                    },
-                    {
-                      id: "simRemoved",
-                      label: "SIM card and memory card removed",
-                      sub: "All removable storage media extracted from device",
-                    },
-                    {
-                      id: "filesDeleted",
-                      label: "Personal files deleted",
-                      sub: "Photos, documents, contacts, and all personal data removed",
-                    },
-                    // ADD THIS NEW OBJECT BELOW:
-                    {
-                      id: "hazardAcknowledged",
-                      label: "Hazardous Materials Disclosure",
-                      sub: "Confirm no bloated batteries or leaking components are present",
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start gap-4 cursor-pointer group"
-                      onClick={() => handleChecklistToggle(item.id)}
-                    >
-                      <div
-                        className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center transition-all 
-    ${checklist[item.id]
-                            ? item.id === "hazardAcknowledged"
-                              ? "bg-amber-500 border-amber-500"
-                              : "bg-[#2d7a7f] border-[#2d7a7f]"
-                            : "border-gray-200"
-                          }`}
-                      >
-                        {checklist[item.id] && (
-                          <CheckCircle2 size={14} className="text-white" />
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-bold text-gray-800 group-hover:text-[#2d7a7f]">
-                          {item.label}
+                <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-5 shadow-sm">
+                  {applicableChecklistItems.length > 0 ? (
+                    <>
+                      <p className="text-[10px] text-gray-400">
+                        Confirm each applicable preparation step has been completed for{" "}
+                        {formData.model || "this device"}:
+                      </p>
+
+                      {applicableChecklistItems.map((item) => (
+                        <div
+                          key={item.id}
+                          role="button"
+                          tabIndex={0}
+                          className="flex items-start gap-4 cursor-pointer group select-none"
+                          onClick={() => handleChecklistToggle(item.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleChecklistToggle(item.id);
+                            }
+                          }}
+                        >
+                          <div
+                            className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                              checklist[item.id]
+                                ? item.id === "hazardAcknowledged"
+                                  ? "bg-amber-500 border-amber-500"
+                                  : "bg-[#2d7a7f] border-[#2d7a7f]"
+                                : "border-gray-200"
+                            }`}
+                          >
+                            {checklist[item.id] && (
+                              <CheckCircle2 size={14} className="text-white" />
+                            )}
+                          </div>
+
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-bold text-gray-800 group-hover:text-[#2d7a7f]">
+                              {item.label}
+                            </p>
+                            <p className="text-[9px] text-gray-400 leading-tight">
+                              {item.sub}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                      <Info size={16} className="text-slate-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-700">
+                          No data-sanitization checks apply to this category
                         </p>
-                        <p className="text-[9px] text-gray-400 leading-tight">
-                          {item.sub}
+                        <p className="text-[9px] text-slate-400 leading-tight mt-1">
+                          {formData.category === "Monitor"
+                            ? "This category does not normally contain user storage or account data."
+                            : formData.category === "Parts"
+                              ? "Individual parts do not require the device-level sanitization checks used for complete computing devices."
+                              : "The selected category has no device-level data checks configured."}
                         </p>
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -2085,7 +2180,9 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 {!isStep3Complete && (
                   <p className="text-center text-[10px] text-red-500 font-bold px-6">
                     Mandatory fields missing. Complete the device model, condition,
-                    last-used date, asking price, and required sanitization checks.
+                    asking price, all applicable checks ({getApplicableChecklistKeys().length}),
+                    and the valuation acknowledgement. A last-working date is required
+                    only for Not Working devices.
                   </p>
                 )}
 

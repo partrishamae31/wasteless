@@ -452,6 +452,41 @@ const parseBusinessPermitOcr = (text) => ({
 });
 
 const parseTechnicalCertificateOcr = (text) => ({
+  // Some technical certificates identify the technician/owner and shop.
+  // Capture those fields too so the second document can reinforce the
+  // information already extracted from the business permit.
+  fullName: findLabelValue(text, [
+    "OWNER",
+    "OWNER NAME",
+    "NAME OF OWNER",
+    "PROPRIETOR",
+    "REGISTERED OWNER",
+    "APPLICANT",
+    "APPLICANT NAME",
+    "TECHNICIAN",
+    "TECHNICIAN NAME",
+    "CERTIFICATE HOLDER",
+    "NAME OF HOLDER",
+    "HOLDER",
+  ]),
+  businessName: findLabelValue(text, [
+    "BUSINESS NAME",
+    "NAME OF BUSINESS",
+    "TRADE NAME",
+    "REGISTERED BUSINESS NAME",
+    "SHOP NAME",
+    "SHOP",
+    "COMPANY NAME",
+  ]),
+  address: findLabelValue(text, [
+    "BUSINESS ADDRESS",
+    "BUSINESS/SHOP ADDRESS",
+    "SHOP ADDRESS",
+    "PRINCIPAL ADDRESS",
+    "OFFICE ADDRESS",
+    "ADDRESS",
+    "LOCATION",
+  ]),
   certificateNumber: findLabelValue(text, ["CERTIFICATE NO", "CERTIFICATE NUMBER", "CERTIFICATION NO", "CERTIFICATION NUMBER", "CERT NO", "CERT NO."]),
   issuer: findLabelValue(text, ["ISSUER", "ISSUED BY", "ISSUING ORGANIZATION", "ISSUING BODY", "CERTIFYING BODY"]),
   certificateTitle: findLabelValue(text, ["CERTIFICATE TITLE", "CERTIFICATION TITLE", "TITLE OF CERTIFICATE", "CERTIFICATION"]),
@@ -681,26 +716,58 @@ const looksLikeRealName = (value) => {
 // Tries Gemini first, falls back to local OCR. Always returns the same
 // shape the rest of the form already expects.
 const extractDocument = async ({ file, documentType, barangays, onStatus, localParser, localOptions }) => {
-  let extracted;
+  let extracted = {};
   let source = "gemini";
   let localText = "";
+
+  const hasStructuredFields = (value) =>
+    value &&
+    Object.values(value).some((item) => String(item ?? "").trim());
 
   try {
     onStatus?.("Reading document with AI…");
     extracted = await scanWithGemini(file, documentType, barangays);
+
+    // A successful Edge Function response can still contain an empty/partial
+    // extraction. In that case, run local OCR instead of reporting "scan failed".
+    if (!hasStructuredFields(extracted)) {
+      throw new Error("The AI scanner returned no readable fields.");
+    }
   } catch (error) {
-    console.warn("[scan] Gemini failed, using offline OCR. Reason:", error?.message || error);
+    console.warn("[scan] AI scan unavailable/incomplete, using offline OCR. Reason:", error?.message || error);
     source = "local";
-    localText = await runLocalOcr(
-      file,
-      (message) => message?.status && onStatus?.(`AI scan unavailable, using offline scan… ${message.status}`),
-      localOptions,
-    );
+
+    try {
+      localText = await runLocalOcr(
+        file,
+        (message) =>
+          message?.status &&
+          onStatus?.(`Using offline scan… ${message.status}`),
+        localOptions,
+      );
+    } catch (localError) {
+      console.error("[scan] Offline OCR failed:", localError);
+      throw new Error(
+        "We couldn't read this document. Please upload a clear PDF or image and try scanning again.",
+      );
+    }
+
     console.log("Local OCR text:", localText);
-    extracted = localParser(localText);
+    extracted = localParser(localText) || {};
+
     if (extracted.fullName && !looksLikeRealName(extracted.fullName)) {
-      console.warn("[scan] Offline OCR name looked scrambled, leaving it empty:", extracted.fullName);
+      console.warn(
+        "[scan] Offline OCR name looked scrambled, leaving it empty:",
+        extracted.fullName,
+      );
       extracted = { ...extracted, fullName: "" };
+    }
+
+    // Even when the document has readable text but none of the expected
+    // labels were detected, keep the scan usable for manual review instead
+    // of showing a technical "scan failed" message.
+    if (!hasStructuredFields(extracted) && localText.trim()) {
+      extracted = { ...extracted, _readableTextFound: true };
     }
   }
 
@@ -712,6 +779,7 @@ const extractDocument = async ({ file, documentType, barangays, onStatus, localP
 
   return {
     source,
+    readableTextFound: Boolean(localText.trim()) || hasStructuredFields(extracted),
     extracted: {
       ...extracted,
       barangay,
@@ -729,6 +797,7 @@ const SignUp = ({ onLoginClick }) => {
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [idScanCompleted, setIdScanCompleted] = useState(false);
   const [permitScanCompleted, setPermitScanCompleted] = useState(false);
+  const [techCertScanCompleted, setTechCertScanCompleted] = useState(false);
   const [registrationSummaryReady, setRegistrationSummaryReady] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -858,7 +927,8 @@ const SignUp = ({ onLoginClick }) => {
       raw.includes("already registered") ||
       raw.includes("already exists") ||
       raw.includes("duplicate") ||
-      raw.includes("database error saving new user")
+      raw.includes("database error saving new user") ||
+      (raw.includes("could not send verification code") && raw.includes("new user"))
     ) {
       return "An account with this email already exists. Please log in instead, or use a different email address.";
     }
@@ -945,8 +1015,18 @@ const SignUp = ({ onLoginClick }) => {
       [field]: file,
     }));
 
-    if (field === "governmentId") setIdScanCompleted(false);
-    if (field === "businessPermit") setPermitScanCompleted(false);
+    if (field === "governmentId") {
+      setIdScanCompleted(false);
+      setScanMessage("");
+    }
+    if (field === "businessPermit") {
+      setPermitScanCompleted(false);
+      setScanMessage("");
+    }
+    if (field === "techCert") {
+      setTechCertScanCompleted(false);
+      setScanMessage("");
+    }
 
     if (errors[field]) {
       setErrors((prev) => ({
@@ -1001,8 +1081,20 @@ const SignUp = ({ onLoginClick }) => {
       const hasAddress = Boolean(extracted.address?.trim());
       const hasBarangay = Boolean(extracted.barangay);
 
-      if (!hasName && !hasAddress && !hasBarangay) {
-        throw new Error("The ID text could not be identified. Please upload a clearer, well-lit ID or enter the details manually.");
+      // The registration flow treats the ID scan as complete only when the
+      // three registration-critical identity/location fields are available.
+      // This prevents the user from reaching Review Summary with an
+      // incomplete scan and directly addresses TC_REG_03/TC_REG_04.
+      if (!hasName || !hasAddress || !hasBarangay) {
+        setIdScanCompleted(false);
+        const missing = [
+          !hasName ? "name" : "",
+          !hasAddress ? "address" : "",
+          !hasBarangay ? "barangay" : "",
+        ].filter(Boolean);
+        throw new Error(
+          `The ID scan is incomplete. Please upload a clearer ID so the ${missing.join(", ")} can be extracted, then scan again.`
+        );
       }
 
       setFormData((prev) => ({
@@ -1014,8 +1106,8 @@ const SignUp = ({ onLoginClick }) => {
       setIdScanCompleted(true);
       setScanMessage(
         source === "gemini"
-          ? "Scan complete. Review the extracted name, address, and barangay before continuing."
-          : "Offline scan complete (less accurate). Please double-check the name, address, and barangay.",
+          ? "ID scan verified. Name, address, and barangay were extracted successfully."
+          : "ID scan verified with offline OCR. Please double-check the extracted name, address, and barangay.",
       );
     } catch (error) {
       setIdScanCompleted(false);
@@ -1043,46 +1135,80 @@ const SignUp = ({ onLoginClick }) => {
     }
 
     setScanningPermit(true);
+    setPermitScanCompleted(false);
     setScanMessage("Scanning business permit…");
+
     try {
-      const { extracted, source } = await extractDocument({
+      const { extracted, source, readableTextFound } = await extractDocument({
         file,
         documentType: "business_permit",
         barangays: valenzuelaBarangays,
         onStatus: setScanMessage,
         localParser: parseBusinessPermitOcr,
+        localOptions: { multiPass: true },
       });
-      const nonEmpty = Object.values(extracted).some((value) => String(value || "").trim());
-      if (!nonEmpty) {
-        throw new Error("The permit text could not be identified. Please upload a clearer document or enter the details manually.");
+
+      const hasUsefulFields = Object.entries(extracted).some(
+        ([key, value]) =>
+          key !== "_readableTextFound" && String(value || "").trim(),
+      );
+
+      if (!hasUsefulFields && !readableTextFound) {
+        throw new Error(
+          "We couldn't identify readable permit details. Please upload a clearer document and scan again.",
+        );
       }
 
       setFormData((prev) => ({
         ...prev,
-        ...(extracted.fullName?.trim() ? { fullName: extracted.fullName.trim() } : {}),
-        ...(extracted.businessName?.trim() ? { businessName: extracted.businessName.trim() } : {}),
-        ...(extracted.address?.trim() ? { address: extracted.address.trim() } : {}),
-        ...(extracted.contactNumber?.trim() ? { contactNumber: extracted.contactNumber.trim() } : {}),
-        ...(extracted.businessPermitNumber?.trim() ? { businessPermitNumber: extracted.businessPermitNumber.trim() } : {}),
-        ...(extracted.permitType?.trim() ? { permitType: extracted.permitType.trim() } : {}),
-        ...(extracted.permitIssuingLgu?.trim() ? { permitIssuingLgu: extracted.permitIssuingLgu.trim() } : {}),
-        ...(extracted.permitIssueDate?.trim() ? { permitIssueDate: extracted.permitIssueDate.trim() } : {}),
-        ...(extracted.permitExpiryDate?.trim() ? { permitExpiryDate: extracted.permitExpiryDate.trim() } : {}),
-        ...(extracted.businessActivity?.trim() ? { businessActivity: extracted.businessActivity.trim() } : {}),
+        ...(extracted.fullName?.trim()
+          ? { fullName: extracted.fullName.trim() }
+          : {}),
+        ...(extracted.businessName?.trim()
+          ? { businessName: extracted.businessName.trim() }
+          : {}),
+        ...(extracted.address?.trim()
+          ? { address: extracted.address.trim() }
+          : {}),
+        ...(extracted.contactNumber?.trim()
+          ? { contactNumber: extracted.contactNumber.trim() }
+          : {}),
+        ...(extracted.businessPermitNumber?.trim()
+          ? { businessPermitNumber: extracted.businessPermitNumber.trim() }
+          : {}),
+        ...(extracted.permitType?.trim()
+          ? { permitType: extracted.permitType.trim() }
+          : {}),
+        ...(extracted.permitIssuingLgu?.trim()
+          ? { permitIssuingLgu: extracted.permitIssuingLgu.trim() }
+          : {}),
+        ...(extracted.permitIssueDate?.trim()
+          ? { permitIssueDate: extracted.permitIssueDate.trim() }
+          : {}),
+        ...(extracted.permitExpiryDate?.trim()
+          ? { permitExpiryDate: extracted.permitExpiryDate.trim() }
+          : {}),
+        ...(extracted.businessActivity?.trim()
+          ? { businessActivity: extracted.businessActivity.trim() }
+          : {}),
         ...(extracted.barangay ? { barangay: extracted.barangay } : {}),
       }));
 
       setPermitScanCompleted(true);
       setScanMessage(
         source === "gemini"
-          ? "Permit scan complete. Review and correct all extracted details before continuing."
-          : "Offline scan complete (less accurate). Please check every extracted detail carefully.",
+          ? "Business permit scan complete. Business name, shop address, and owner details were extracted where available."
+          : "Business permit scan complete with offline OCR. Please review the extracted business name, shop address, and owner details.",
       );
     } catch (error) {
       setPermitScanCompleted(false);
-      console.error("Business permit local OCR failed:", error);
-      setScanMessage("Permit scan failed. You can enter the details manually.");
-      alert(error?.message || "We couldn't read the permit. Please use a clearer image or enter the details manually.");
+      console.error("Business permit scan failed:", error);
+      const friendly = await getScanErrorMessage(
+        error,
+        "We couldn't read the business permit. Please upload a clearer document and try again.",
+      );
+      setScanMessage(friendly);
+      alert(friendly);
     } finally {
       setScanningPermit(false);
     }
@@ -1104,39 +1230,77 @@ const SignUp = ({ onLoginClick }) => {
     }
 
     setScanningTechCert(true);
+    setTechCertScanCompleted(false);
     setScanMessage("Scanning technical certificate…");
+
     try {
-      const { extracted, source } = await extractDocument({
+      const { extracted, source, readableTextFound } = await extractDocument({
         file,
         documentType: "technical_certificate",
         barangays: valenzuelaBarangays,
         onStatus: setScanMessage,
         localParser: parseTechnicalCertificateOcr,
+        localOptions: { multiPass: true },
       });
-      const nonEmpty = Object.values(extracted).some((value) => String(value || "").trim());
-      if (!nonEmpty) {
-        throw new Error("The certificate text could not be identified. Please upload a clearer document or enter the details manually.");
+
+      const hasUsefulFields = Object.entries(extracted).some(
+        ([key, value]) =>
+          key !== "_readableTextFound" && String(value || "").trim(),
+      );
+
+      if (!hasUsefulFields && !readableTextFound) {
+        throw new Error(
+          "We couldn't identify readable certification details. Please upload a clearer document and scan again.",
+        );
       }
 
       setFormData((prev) => ({
         ...prev,
-        ...(extracted.certificateNumber?.trim() ? { techCertificateNumber: extracted.certificateNumber.trim() } : {}),
-        ...(extracted.issuer?.trim() ? { techCertificateIssuer: extracted.issuer.trim() } : {}),
-        ...(extracted.certificateTitle?.trim() ? { techCertificateTitle: extracted.certificateTitle.trim() } : {}),
-        ...(extracted.issueDate?.trim() ? { techCertificateIssueDate: extracted.issueDate.trim() } : {}),
-        ...(extracted.expiryDate?.trim() ? { techCertificateExpiryDate: extracted.expiryDate.trim() } : {}),
-        ...(extracted.specialization?.trim() ? { techSpecialization: extracted.specialization.trim() } : {}),
+        ...(extracted.fullName?.trim()
+          ? { fullName: extracted.fullName.trim() }
+          : {}),
+        ...(extracted.businessName?.trim()
+          ? { businessName: extracted.businessName.trim() }
+          : {}),
+        ...(extracted.address?.trim()
+          ? { address: extracted.address.trim() }
+          : {}),
+        ...(extracted.certificateNumber?.trim()
+          ? { techCertificateNumber: extracted.certificateNumber.trim() }
+          : {}),
+        ...(extracted.issuer?.trim()
+          ? { techCertificateIssuer: extracted.issuer.trim() }
+          : {}),
+        ...(extracted.certificateTitle?.trim()
+          ? { techCertificateTitle: extracted.certificateTitle.trim() }
+          : {}),
+        ...(extracted.issueDate?.trim()
+          ? { techCertificateIssueDate: extracted.issueDate.trim() }
+          : {}),
+        ...(extracted.expiryDate?.trim()
+          ? { techCertificateExpiryDate: extracted.expiryDate.trim() }
+          : {}),
+        ...(extracted.specialization?.trim()
+          ? { techSpecialization: extracted.specialization.trim() }
+          : {}),
+        ...(extracted.barangay ? { barangay: extracted.barangay } : {}),
       }));
 
+      setTechCertScanCompleted(true);
       setScanMessage(
         source === "gemini"
-          ? "Technical certificate scan complete. Review the extracted details."
-          : "Offline scan complete (less accurate). Please check the extracted details.",
+          ? "Technical certificate scan complete. Review the extracted certification and owner/shop details."
+          : "Technical certificate scan complete with offline OCR. Please review the extracted details.",
       );
     } catch (error) {
-      console.error("Technical certificate local OCR failed:", error);
-      setScanMessage("Certificate scan failed. You can enter the details manually.");
-      alert(error?.message || "We couldn't read the certificate. Please use a clearer image or enter the details manually.");
+      setTechCertScanCompleted(false);
+      console.error("Technical certificate scan failed:", error);
+      const friendly = await getScanErrorMessage(
+        error,
+        "We couldn't read the technical certificate. Please upload a clearer document and try again.",
+      );
+      setScanMessage(friendly);
+      alert(friendly);
     } finally {
       setScanningTechCert(false);
     }
@@ -1240,9 +1404,22 @@ const SignUp = ({ onLoginClick }) => {
       if (!formData.barangay) { alert("Please confirm your barangay after scanning your ID."); return; }
       if (accountType === "harvester") {
         const idFile = governmentIdRef.current?.files?.[0] || formData.governmentId;
-        if (!idFile) { alert("Please upload your personal government ID and scan it before continuing."); return; }
-        if (!idScanCompleted) { alert("Please scan your government ID successfully before continuing."); return; }
-        if (!formData.address.trim()) { alert("Please confirm or enter your address after the ID scan."); return; }
+        if (!idFile) {
+          alert("Please upload your personal government ID and scan it before continuing.");
+          return;
+        }
+        if (!idScanCompleted) {
+          alert("Please complete and verify the government ID scan before continuing.");
+          return;
+        }
+        if (!formData.address.trim()) {
+          alert("Please confirm or enter your address after the ID scan.");
+          return;
+        }
+        if (!formData.fullName.trim() || !formData.barangay) {
+          alert("Please review the extracted name, address, and barangay before continuing.");
+          return;
+        }
       }
       // =========================
       // REPAIR SHOP
@@ -1520,6 +1697,24 @@ const SignUp = ({ onLoginClick }) => {
   };
   const steps = [1, 2, 3, 4, 5];
 
+  const governmentIdReady =
+    accountType !== "harvester" ||
+    (
+      idScanCompleted &&
+      Boolean(formData.fullName?.trim()) &&
+      Boolean(formData.address?.trim()) &&
+      Boolean(formData.barangay)
+    );
+
+  const canReviewSummary =
+    !loading &&
+    (accountType === "repair_shop" || governmentIdReady);
+
+  const canCreateAccount =
+    !loading &&
+    registrationSummaryReady &&
+    (accountType === "repair_shop" || governmentIdReady);
+
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] flex items-center justify-center p-6 font-sans">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-fadeIn">
@@ -1728,11 +1923,122 @@ const SignUp = ({ onLoginClick }) => {
               {accountType === "harvester" && (
               <div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
                 <label className="text-[11px] font-bold text-gray-700 block">Personal Government ID <span className="text-red-500">*</span></label>
-                <input type="file" ref={governmentIdRef} accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => handleFileChange(e, "governmentId")} className="block w-full text-xs" />
-                {formData.governmentId && <p className="text-xs text-emerald-700">Selected: {formData.governmentId.name}</p>}
-                <button type="button" onClick={scanGovernmentId} disabled={scanningId || !formData.governmentId} className="w-full py-2.5 rounded-lg border border-teal-600 text-teal-700 font-semibold text-sm disabled:opacity-50">{scanningId ? "Scanning ID…" : "Scan ID and autofill"}</button>
-                <p className="text-[10px] text-gray-500">Review the suggested name and barangay. Scanning assists with data entry; it does not verify ID authenticity.</p>
-                {scanMessage && <p role="status" className="text-xs text-teal-700">{scanMessage}</p>}
+                {/* <input
+                  type="file"
+                  ref={governmentIdRef}
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                  onChange={(e) => handleFileChange(e, "governmentId")}
+                  className="block w-full text-xs"
+                /> */}
+                
+                <div
+                      onClick={() => governmentIdRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.governmentId
+                        ? "border-emerald-400 bg-emerald-50/10"
+                        : "border-gray-200"
+                        }`}
+                      >
+                      <input
+                        type="file"
+                        ref={governmentIdRef}
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleFileChange(e, "governmentId")
+                        }
+                      />
+
+                      <Upload
+                        className={
+                          formData.governmentId
+                            ? "text-emerald-500 mb-2"
+                            : "text-gray-400 mb-2"
+                        }
+                        size={24}
+                      />
+
+                      <span className="text-teal-600 font-semibold text-sm">
+                        {formData.governmentId
+                          ? "ID uploaded!"
+                          : "Click to upload"}
+                      </span>
+
+                      <span className="text-gray-400 text-[10px] mt-1">
+                        {formData.governmentId
+                          ? formData.governmentId.name
+                          : "PDF, JPEG, PNG, or WebP (max 5MB)"}
+                      </span>
+                    </div>
+                    {formData.governmentId && (
+                  <div className="flex items-center justify-between gap-3 rounded-lg bg-white border border-teal-100 px-3 py-2">
+                    <p className="text-xs text-emerald-700 font-semibold truncate">
+                      Selected: {formData.governmentId.name}
+                    </p>
+                    {idScanCompleted && (
+                      <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide">
+                        ✓ ID Verified
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={scanGovernmentId}
+                  disabled={scanningId || !formData.governmentId}
+                  className="w-full py-3 rounded-lg border-2 border-teal-600 text-teal-700 font-black text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-teal-50 transition"
+                >
+                  {scanningId ? "Scanning Government ID…" : idScanCompleted ? "Rescan Government ID" : "Scan ID and Auto-Fill"}
+                </button>
+                
+                
+
+                {idScanCompleted ? (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 shrink-0 rounded-full bg-emerald-500 text-white flex items-center justify-center text-lg font-black">
+                        ✓
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-emerald-900 uppercase tracking-wide">
+                          ID Scan Complete
+                        </p>
+                        <p className="text-[11px] text-emerald-800 font-semibold leading-relaxed mt-1">
+                          Scan complete. <strong>Review the extracted name, address, and barangay below before continuing.</strong>
+                        </p>
+                        <p className="text-[9px] text-emerald-700 mt-1.5">
+                          The scan assists with registration data entry; it does not independently verify ID authenticity.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : scanMessage ? (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+                  >
+                    <p className="text-[11px] font-bold text-amber-900">
+                      ID scan needs attention
+                    </p>
+                    <p className="text-[10px] text-amber-800 mt-1 leading-relaxed">
+                      {scanMessage}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-[10px] text-amber-900 font-semibold">
+                      Government ID scan required before Review Summary
+                    </p>
+                    <p className="text-[9px] text-amber-800 mt-1 leading-relaxed">
+                      Upload a clear ID, scan it, then review the extracted name, address, and barangay. The Review Summary button stays disabled until the scan is complete.
+                    </p>
+                  </div>
+                )}
               </div>
               )}
               {accountType === "repair_shop" && (
@@ -1749,7 +2055,7 @@ const SignUp = ({ onLoginClick }) => {
                         ? "border-emerald-400 bg-emerald-50/10"
                         : "border-gray-200"
                         }`}
-                    >
+                      >
                       <input
                         type="file"
                         ref={permitRef}
@@ -1789,8 +2095,19 @@ const SignUp = ({ onLoginClick }) => {
                     >
                       {scanningPermit ? "Scanning permit…" : "Scan permit and autofill details"}
                     </button>
-                    {scanMessage && <p role="status" className="text-xs text-teal-700 mt-2">{scanMessage}</p>}
-                    <p className="text-[10px] text-gray-500 mt-1">OCR may misread details. Review the fields above. Scanning does not verify permit authenticity.</p>
+                    {permitScanCompleted ? (
+                      <div role="status" aria-live="polite" className="mt-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3">
+                        <p className="text-xs font-black text-emerald-900">✓ Business Permit Scan Complete</p>
+                        <p className="text-[10px] text-emerald-800 mt-1 leading-relaxed">
+                          Business name, shop address, and owner's name were extracted where available. Please review the fields below.
+                        </p>
+                      </div>
+                    ) : scanMessage && !scanningPermit && (
+                      <div role="alert" aria-live="polite" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-[10px] font-semibold text-amber-900">{scanMessage}</p>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-gray-500 mt-1">OCR assists with data entry. Review the extracted details; scanning does not verify permit authenticity.</p>
                   </div>
 
                   {/* CERTIFICATION TYPE */}
@@ -1892,8 +2209,16 @@ const SignUp = ({ onLoginClick }) => {
                       disabled={scanningTechCert || scanningPermit || !formData.techCert}
                       className="w-full mt-3 py-2.5 rounded-lg border border-teal-600 text-teal-700 font-semibold text-sm disabled:opacity-50"
                     >
-                      {scanningTechCert ? "Scanning certificate…" : "Scan certificate and autofill details"}
+                      {scanningTechCert ? "Scanning certificate…" : techCertScanCompleted ? "Rescan technical certificate" : "Scan certificate and autofill details"}
                     </button>
+                    {techCertScanCompleted && (
+                      <div role="status" aria-live="polite" className="mt-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3">
+                        <p className="text-xs font-black text-emerald-900">✓ Technical Certificate Scan Complete</p>
+                        <p className="text-[10px] text-emerald-800 mt-1 leading-relaxed">
+                          Certification details and owner/shop details were extracted where available. Please review the fields below.
+                        </p>
+                      </div>
+                    )}
                     <p className="text-[10px] text-gray-500 mt-1">
                       OCR assists with data entry. Review the extracted details; scanning does not verify certificate authenticity.
                     </p>
@@ -2152,8 +2477,13 @@ const SignUp = ({ onLoginClick }) => {
                 <button
                   type="button"
                   onClick={handleContinue}
-                  disabled={loading}
-                  className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90 disabled:opacity-50"
+                  disabled={!canReviewSummary}
+                  title={
+                    accountType === "harvester" && !governmentIdReady
+                      ? "Complete and verify the government ID scan first."
+                      : "Review Summary"
+                  }
+                  className="flex-1 py-2 bg-[#2d7a7f] text-white rounded-lg font-bold text-sm hover:opacity-90 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
                   {loading ? "Saving..." : "Review Summary"}
                 </button>
@@ -2168,6 +2498,20 @@ const SignUp = ({ onLoginClick }) => {
               <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
                 <p className="text-[11px] text-emerald-800 leading-relaxed">Review all information carefully. You can edit any field by going back before creating your account.</p>
               </div>
+
+              {accountType === "harvester" && (
+                <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">✓</div>
+                    <div>
+                      <p className="text-sm font-black text-emerald-900">Government ID Scan Verified</p>
+                      <p className="text-[10px] text-emerald-800 mt-1 leading-relaxed">
+                        The extracted <strong>name, address, and barangay</strong> are shown below. Please check them carefully before creating the account.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden text-sm">
                 {[
@@ -2188,12 +2532,28 @@ const SignUp = ({ onLoginClick }) => {
                     ["Certificate Issuer", formData.techCertificateIssuer],
                     ["Certificate Title", formData.techCertificateTitle],
                   ] : []),
-                ].map(([label, value]) => (
-                  <div key={label} className="p-3 flex flex-col gap-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
-                    <span className="text-gray-800 break-words">{value || "—"}</span>
-                  </div>
-                ))}
+                ].map(([label, value]) => {
+                  const highlighted =
+                    accountType === "harvester" &&
+                    ["Full Name", "Address", "Barangay of Residence"].includes(label);
+
+                  return (
+                    <div
+                      key={label}
+                      className={`p-3 flex flex-col gap-1 ${
+                        highlighted ? "bg-emerald-50/70 border-l-4 border-emerald-400" : ""
+                      }`}
+                    >
+                      <span className={`text-[10px] font-bold uppercase tracking-wide ${highlighted ? "text-emerald-700" : "text-gray-400"}`}>
+                        {label}
+                        {highlighted && " • EXTRACTED FROM ID"}
+                      </span>
+                      <span className={`break-words ${highlighted ? "text-emerald-900 font-bold" : "text-gray-800"}`}>
+                        {value || "—"}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
@@ -2203,7 +2563,19 @@ const SignUp = ({ onLoginClick }) => {
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setStep(4)} className="flex-1 py-3 border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50">Back / Edit</button>
-                <button type="button" onClick={handleContinue} disabled={loading} className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm hover:opacity-90 disabled:opacity-50">{loading ? "Creating Account..." : "Create Account"}</button>
+                <button
+                  type="button"
+                  onClick={handleContinue}
+                  disabled={!canCreateAccount}
+                  title={
+                    accountType === "harvester" && !governmentIdReady
+                      ? "Complete and verify the government ID scan first."
+                      : "Create Account"
+                  }
+                  className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm hover:opacity-90 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                >
+                  {loading ? "Creating Account..." : "Create Account"}
+                </button>
               </div>
             </div>
           )}

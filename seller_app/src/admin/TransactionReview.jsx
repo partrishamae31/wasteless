@@ -82,6 +82,10 @@ const TransactionReview = () => {
           flag_reason,
           reviewed_by,
           reviewed_at,
+          completed_at,
+          carbon_saved,
+          receipt_reference,
+          repair_appointment_id,
 
           listings (
             id,
@@ -220,6 +224,12 @@ const TransactionReview = () => {
     if (activeTab === "resolved") {
       filtered = filtered.filter(
         (transaction) => transaction.review_status === "resolved",
+      );
+    }
+
+    if (activeTab === "escalated") {
+      filtered = filtered.filter(
+        (transaction) => transaction.review_status === "escalated",
       );
     }
 
@@ -369,11 +379,84 @@ const TransactionReview = () => {
           : prev,
       );
 
+      // Notify both transaction parties that an administrator resolved the review.
+      const partyIds = [selectedTransaction.seller_id, selectedTransaction.harvester_id].filter(Boolean);
+      if (partyIds.length) {
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert(
+            partyIds.map((userId) => ({
+              user_id: userId,
+              type: "transaction_update",
+              title: "Transaction Review Resolved",
+              content: "An administrator has resolved the flagged transaction review.",
+              related_listing_id: selectedTransaction.listing_id || null,
+              is_read: false,
+              description: `Transaction ${selectedTransaction.id} was marked resolved by an administrator.`,
+            })),
+          );
+        if (notificationError) {
+          console.warn("ADMIN REVIEW NOTIFICATION ERROR:", notificationError);
+        }
+      }
+
       alert("Transaction review marked as resolved.");
     } catch (error) {
       console.error("Error resolving transaction:", error);
 
       alert("Failed to resolve this transaction. Please try again.");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleEscalate = async () => {
+    if (!selectedTransaction || !currentUser) return;
+
+    try {
+      setAssigning(true);
+      const { data, error } = await supabase
+        .from("transactions")
+        .update({
+          review_status: "escalated",
+          reviewed_by: currentUser.id,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", selectedTransaction.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setTransactions((prev) =>
+        prev.map((transaction) =>
+          transaction.id === selectedTransaction.id
+            ? { ...transaction, ...data }
+            : transaction,
+        ),
+      );
+      setSelectedTransaction((prev) => (prev ? { ...prev, ...data } : prev));
+
+      const partyIds = [selectedTransaction.seller_id, selectedTransaction.harvester_id].filter(Boolean);
+      if (partyIds.length) {
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert(partyIds.map((userId) => ({
+            user_id: userId,
+            type: "transaction_update",
+            title: "Transaction Escalated",
+            content: "An administrator escalated the transaction for further review.",
+            related_listing_id: selectedTransaction.listing_id || null,
+            is_read: false,
+            description: `Transaction ${selectedTransaction.id} was escalated by an administrator.`,
+          })));
+        if (notificationError) console.warn("ESCALATION NOTIFICATION ERROR:", notificationError);
+      }
+
+      alert("Transaction escalated for further review.");
+    } catch (error) {
+      console.error("Error escalating transaction:", error);
+      alert("Failed to escalate this transaction. Please try again.");
     } finally {
       setAssigning(false);
     }
@@ -424,6 +507,10 @@ const TransactionReview = () => {
 
     if (status === "resolved") {
       return "Resolved";
+    }
+
+    if (status === "escalated") {
+      return "Escalated";
     }
 
     return "Pending";
@@ -537,6 +624,7 @@ const TransactionReview = () => {
           ["pending", "Pending"],
           ["under_review", "Under Review"],
           ["resolved", "Resolved"],
+          ["escalated", "Escalated"],
           ["all", "All"],
         ].map(([value, label]) => (
           <button
@@ -793,6 +881,38 @@ const TransactionReview = () => {
                   </div>
                 </div>
 
+                {/* TRANSACTION PROGRESS */}
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Transaction Progress
+                  </p>
+                  <div className="rounded-xl border border-slate-100 bg-white p-4 space-y-3">
+                    {[
+                      ["Matched", selectedTransaction.created_at],
+                      ["Meetup Scheduled", selectedTransaction.meetup_date && selectedTransaction.meetup_time ? `${selectedTransaction.meetup_date}T${selectedTransaction.meetup_time}` : null],
+                      ["Handover / Completed", selectedTransaction.completed_at],
+                    ].map(([label, timestamp], index) => {
+                      const done = Boolean(timestamp) && (index < 2 || selectedTransaction.status === "completed");
+                      return (
+                        <div key={label} className="flex items-start gap-3">
+                          <div className={`mt-0.5 h-6 w-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold ${done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400"}`}>
+                            {done ? "✓" : index + 1}
+                          </div>
+                          <div>
+                            <p className={`text-xs font-semibold ${done ? "text-slate-700" : "text-slate-400"}`}>{label}</p>
+                            <p className="text-[10px] text-slate-400">{timestamp ? formatDateTime(timestamp) : "Not recorded yet"}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {selectedTransaction.status === "cancelled" && (
+                      <div className="rounded-lg bg-red-50 p-3 text-[10px] text-red-700">
+                        Cancelled: {selectedTransaction.cancel_reason || "No cancellation reason provided."}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* DESCRIPTION / NOTES */}
 
                 <div>
@@ -899,15 +1019,32 @@ const TransactionReview = () => {
                 )}
 
                 {getReviewStatus(selectedTransaction) === "under_review" && (
-                  <button
-                    onClick={handleResolve}
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <button
+                      onClick={handleResolve}
                     disabled={assigning}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     <CheckCircle2 size={16} />
 
                     {assigning ? "Resolving..." : "Mark Review as Resolved"}
-                  </button>
+                    </button>
+                    <button
+                      onClick={handleEscalate}
+                      disabled={assigning}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-orange-500 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <AlertTriangle size={16} />
+                      {assigning ? "Updating..." : "Escalate"}
+                    </button>
+                  </div>
+                )}
+
+                {getReviewStatus(selectedTransaction) === "escalated" && (
+                  <div className="flex items-center justify-center gap-2 rounded-xl bg-orange-50 py-3 text-sm font-semibold text-orange-600">
+                    <AlertTriangle size={16} />
+                    Transaction Escalated for Further Review
+                  </div>
                 )}
 
                 {getReviewStatus(selectedTransaction) === "resolved" && (
