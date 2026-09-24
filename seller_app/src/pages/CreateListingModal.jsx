@@ -1178,7 +1178,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
             device_model: formData.model.trim().replace(/\s+/g, " "),
             condition: formData.condition,
             asking_price: finalPrice,
-            last_working_date: formData.last_working_date,
+            // Postgres date columns reject empty strings -> send null instead.
+            last_working_date: formData.last_working_date || null,
             expires_at: biddingEndsAt,
             scrap_value: scrapValue,
             images: uploadedMediaUrls, // Pass all combined assets here
