@@ -316,7 +316,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                   {alerts.length}
                 </h3>
 
-                <p className="text-[11px] text-gray-400">
+                <p className="text-xs text-gray-400">
                   Active Alerts
                 </p>
               </div>
@@ -334,7 +334,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                   )}
                 </h3>
 
-                <p className="text-[11px] text-gray-400">
+                <p className="text-xs text-gray-400">
                   New Matches
                 </p>
               </div>
@@ -353,7 +353,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                   }
                 </h3>
 
-                <p className="text-[11px] text-gray-400">
+                <p className="text-xs text-gray-400">
                   Alerts With Matches
                 </p>
               </div>
@@ -368,7 +368,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                   {alerts.length}
                 </h3>
 
-                <p className="text-[11px] text-gray-400">
+                <p className="text-xs text-gray-400">
                   Total Monitors
                 </p>
               </div>
@@ -408,12 +408,12 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                             {alert.device_model}
                           </h3>
 
-                          <span className="bg-[#78A22F] text-white text-[10px] px-2 py-1 rounded-full font-medium">
+                          <span className="bg-[#78A22F] text-white text-xs px-2 py-1 rounded-full font-medium">
                             {alert.matchCount} MATCHES
                           </span>
                         </div>
 
-                        <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
+                        <div className="flex flex-wrap gap-3 text-xs text-gray-500">
                           <span className="flex items-center gap-1">
                             <CheckCircle2
                               size={12}
@@ -491,11 +491,11 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                           {alert.device_model}
                         </h2>
 
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-600 font-bold uppercase tracking-tight">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600 font-bold uppercase tracking-tight">
                           Active
                         </span>
 
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">
                           Not Working
                         </span>
                       </div>
@@ -527,7 +527,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                           </span>
                         </div>
 
-                        <p className="text-[10px] text-gray-400 mt-2">
+                        <p className="text-xs text-gray-400 mt-2">
                           Only Not Working listings are monitored.
                         </p>
                       </div>
@@ -576,7 +576,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                   </div>
                 )}
 
-                <p className="text-[10px] text-gray-400 mt-3 px-1">
+                <p className="text-xs text-gray-400 mt-3 px-1">
                   Triggered {alert.matchCount || 0} times
                 </p>
               </div>
@@ -674,7 +674,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                     />
                   </div>
 
-                  <p className="text-[11px] text-slate-400 mt-1.5">
+                  <p className="text-xs text-slate-400 mt-1.5">
                     Enter the device model you're looking for.
                   </p>
                 </div>

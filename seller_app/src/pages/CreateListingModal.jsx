@@ -1018,7 +1018,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
   {
     formData.condition === "Not Working" && !formData.last_working_date && (
-      <p className="text-[10px] text-red-500 font-medium">
+      <p className="text-xs text-red-500 font-medium">
         Please specify when the device was last working.
       </p>
     )
@@ -1308,7 +1308,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     size={18}
                     className="text-red-500 shrink-0 mt-0.5"
                   />
-                  <p className="text-[11px] font-medium text-red-700 leading-normal">
+                  <p className="text-xs font-medium text-red-700 leading-normal">
                     <span className="font-bold">Error:</span> This is a
                     non-small form factor device. Large household appliances
                     cannot be listed on this platform.
@@ -1346,7 +1346,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   <p className="text-sm font-bold text-gray-700">
                     Add photos or videos
                   </p>
-                  <p className="text-[10px] text-gray-400 mt-1">
+                  <p className="text-xs text-gray-400 mt-1">
                     Supported formats: JPG, PNG, MP4, MOV • Max file size: 10MB
                     per file
                   </p>
@@ -1381,7 +1381,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                         )}
 
                         {/* Status/Type pill indicator overlay */}
-                        <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-[2px] rounded px-1 py-0.5 text-[8px] font-bold text-white uppercase flex items-center gap-0.5">
+                        <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-[2px] rounded px-1 py-0.5 text-xs font-bold text-white uppercase flex items-center gap-0.5">
                           {item.type === "image" ? (
                             <ImageIcon size={8} />
                           ) : (
@@ -1409,11 +1409,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   <AlertTriangle size={18} className="text-red-500 shrink-0" />
 
                   <div>
-                    <p className="text-[11px] font-bold text-red-900">
+                    <p className="text-xs font-bold text-red-900">
                       Photos Required
                     </p>
 
-                    <p className="text-[10px] text-red-700/80">
+                    <p className="text-xs text-red-700/80">
                       Please upload at least one photo or video of the device to
                       continue.
                     </p>
@@ -1428,7 +1428,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   <p className="text-xs font-bold text-blue-900">
                     Damage Assessment
                   </p>
-                  <p className="text-[11px] text-blue-700/80">
+                  <p className="text-xs text-blue-700/80">
                     Please select all damages and issues that apply to your
                     device.
                   </p>
@@ -1480,7 +1480,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     When was this device last working?
                   </label>
 
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-xs text-slate-400">
                     This helps Repair Shops determine the possible condition of the
                     reusable parts.
                   </p>
@@ -1502,7 +1502,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   />
 
                   {!formData.last_working_date && (
-                    <p className="text-[10px] text-red-500 font-medium">
+                    <p className="text-xs text-red-500 font-medium">
                       Please specify the device's last-used/last-working date.
                     </p>
                   )}
@@ -1579,12 +1579,12 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                         Assessment Summary
                       </p>
                       {issues.noDamage ? (
-                        <p className="text-[11px] text-emerald-600 font-medium">
+                        <p className="text-xs text-emerald-600 font-medium">
                           No issues identified - Excellent condition
                         </p>
                       ) : (
                         <div className="space-y-3">
-                          <p className="text-[11px] text-gray-500 font-medium">
+                          <p className="text-xs text-gray-500 font-medium">
                             {allSelectedIssues.length}{" "}
                             {allSelectedIssues.length === 1
                               ? "issue"
@@ -1595,7 +1595,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                             {allSelectedIssues.map((issue, idx) => (
                               <span
                                 key={idx}
-                                className="bg-orange-50 text-orange-600 text-[10px] px-3 py-1 rounded-full border border-orange-100 font-medium"
+                                className="bg-orange-50 text-orange-600 text-xs px-3 py-1 rounded-full border border-orange-100 font-medium"
                               >
                                 {issue}
                               </span>
@@ -1616,10 +1616,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     className="text-amber-500 shrink-0"
                   />
                   <div>
-                    <p className="text-[11px] font-bold text-amber-900">
+                    <p className="text-xs font-bold text-amber-900">
                       Assessment Incomplete
                     </p>
-                    <p className="text-[10px] text-amber-700/80">
+                    <p className="text-xs text-amber-700/80">
                       Please select at least one damage/issue or mark the device
                       as "No Visible Damage" to continue.
                     </p>
@@ -1652,7 +1652,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 <div className="bg-[#00c853] text-white rounded-3xl p-6 relative shadow-lg">
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider opacity-90">
+                      <p className="text-xs uppercase tracking-wider opacity-90">
                         Estimated Recovery Value
                       </p>
                       <h3 className="text-4xl font-bold">
@@ -1660,10 +1660,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       </h3>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <span className="bg-white/20 text-[10px] px-3 py-1 rounded-full border border-white/30">
+                      <span className="bg-white/20 text-xs px-3 py-1 rounded-full border border-white/30">
                         Market Estimate
                       </span>
-                      <span className="flex items-center gap-1 text-[10px] opacity-90">
+                      <span className="flex items-center gap-1 text-xs opacity-90">
                         <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>{" "}
                         Dynamic
                       </span>
@@ -1672,7 +1672,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
                   <div className="grid grid-cols-2 gap-4 mt-6">
                     <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
-                      <p className="text-[10px] opacity-80 mb-1">
+                      <p className="text-xs opacity-80 mb-1">
                         Reusable Part Value
                       </p>
                       <p className="text-xl font-bold">
@@ -1680,7 +1680,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       </p>
                     </div>
                     <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
-                      <p className="text-[10px] opacity-80 mb-1">
+                      <p className="text-xs opacity-80 mb-1">
                         Raw Scrap Value
                       </p>
                       <p className="text-xl font-bold">
@@ -1688,7 +1688,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       </p>
                     </div>
                   </div>
-                  <p className="text-[9px] mt-4 opacity-80">
+                  <p className="text-xs mt-4 opacity-80">
                     Calculated based on actual historical listings of similar
                     models.
                   </p>
@@ -1702,7 +1702,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       size={22}
                     />
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-300">
+                      <p className="text-xs uppercase tracking-wider text-slate-300">
                         Market Value Context
                       </p>
                       <h3 className="text-xl font-bold leading-snug">
@@ -1718,7 +1718,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   </p>
 
                   <div className="mt-4 pt-3 border-t border-slate-600/40 flex justify-between items-center">
-                    <span className="text-[10px] text-slate-300 font-medium">
+                    <span className="text-xs text-slate-300 font-medium">
                       Estimated Baseline Scrap Value:
                     </span>
                     <span className="text-sm font-extrabold text-teal-300">
@@ -1734,7 +1734,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     Component Breakdown
                   </p>
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${hasMarketHistory
+                    className={`text-xs px-2 py-0.5 rounded-full font-bold ${hasMarketHistory
                       ? "bg-teal-50 text-[#2d7a7f]"
                       : "bg-amber-50 text-amber-700"
                       }`}
@@ -1770,7 +1770,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
                         <div className="flex items-center gap-3">
                           <span
-                            className={`text-[9px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${comp.status === "Intact"
+                            className={`text-xs px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${comp.status === "Intact"
                               ? "bg-emerald-50 text-emerald-700"
                               : "bg-red-50 text-red-600 line-through"
                               }`}
@@ -1789,7 +1789,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                                 : "0"}
                             </span>
                           ) : (
-                            <span className="text-[10px] font-bold text-gray-400 w-16 text-right">
+                            <span className="text-xs font-bold text-gray-400 w-16 text-right">
                               {comp.weightPercentage}% alloc
                             </span>
                           )}
@@ -1801,14 +1801,14 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
                 {/* Bottom Summary context toggle display */}
                 {hasMarketHistory ? (
-                  <div className="pt-2 border-t border-gray-50 flex justify-between items-center text-[11px] font-medium text-gray-400">
+                  <div className="pt-2 border-t border-gray-50 flex justify-between items-center text-xs font-medium text-gray-400">
                     <span>Maximum Reusable Component Valuen</span>
                     <span className="font-bold text-gray-600">
                       ₱{reusableValue.toLocaleString()}
                     </span>
                   </div>
                 ) : (
-                  <div className="pt-2 border-t border-gray-50 bg-slate-50/50 p-2.5 rounded-xl text-[10px] text-slate-500 leading-normal flex gap-2">
+                  <div className="pt-2 border-t border-gray-50 bg-slate-50/50 p-2.5 rounded-xl text-xs text-slate-500 leading-normal flex gap-2">
                     <Info
                       size={14}
                       className="text-slate-400 shrink-0 mt-0.5"
@@ -1904,10 +1904,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       className="bg-gray-50/50 p-3 rounded-xl text-center border border-gray-50 flex flex-col items-center justify-center"
                     >
                       <div className="text-teal-500 mb-1">{stat.icon}</div>
-                      <p className="text-[8px] text-gray-400 mb-1 uppercase font-bold">
+                      <p className="text-xs text-gray-400 mb-1 uppercase font-bold">
                         {stat.label}
                       </p>
-                      <p className="text-[11px] font-bold text-gray-800 leading-tight">
+                      <p className="text-xs font-bold text-gray-800 leading-tight">
                         {stat.val}
                       </p>
                     </div>
@@ -1921,13 +1921,13 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   Valuation based on:
                 </p>
                 <ul className="space-y-1 ml-2">
-                  <li className="text-[11px] text-gray-500">
+                  <li className="text-xs text-gray-500">
                     • Device condition: {formData.condition}
                   </li>
-                  <li className="text-[11px] text-gray-500">
+                  <li className="text-xs text-gray-500">
                     • {allSelectedIssues.length} damage(s) reported
                   </li>
-                  <li className="text-[11px] text-gray-500">
+                  <li className="text-xs text-gray-500">
                     • All original parts (+5% value)
                   </li>
                 </ul>
@@ -1941,7 +1941,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     Recommended Preparation Videos
                   </p>
                 </div>
-                <p className="text-[10px] text-gray-500">
+                <p className="text-xs text-gray-500">
                   Watch these certified video tutorials to securely wipe and
                   arrange your hardware:
                 </p>
@@ -1975,13 +1975,13 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                           <Video size={14} />
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold text-gray-800 group-hover:text-red-600 transition-colors">
+                          <p className="text-xs font-bold text-gray-800 group-hover:text-red-600 transition-colors">
                             {vid.title}
                           </p>
-                          <p className="text-[9px] text-gray-400">{vid.sub}</p>
+                          <p className="text-xs text-gray-400">{vid.sub}</p>
                         </div>
                       </div>
-                      <span className="text-[9px] font-bold text-gray-400 group-hover:text-red-500 transition-colors shrink-0 ml-2">
+                      <span className="text-xs font-bold text-gray-400 group-hover:text-red-500 transition-colors shrink-0 ml-2">
                         Watch →
                       </span>
                     </a>
@@ -2002,7 +2002,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     <p className="text-sm font-bold text-gray-800">
                       Data Sanitization Required
                     </p>
-                    <p className="text-[10px] text-gray-500 leading-tight">
+                    <p className="text-xs text-gray-500 leading-tight">
                       Before listing your device, please ensure all personal
                       data has been removed.
                     </p>
@@ -2014,7 +2014,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                         e.stopPropagation(); // Prevents the click from triggering parent scroll events
                         setShowSanitizationGuide(true);
                       }}
-                      className="flex items-center gap-2 px-3 py-1.5 border border-orange-200 rounded-lg text-orange-600 text-[10px] font-bold bg-white hover:bg-orange-50 active:scale-95 transition-all cursor-pointer pointer-events-auto"
+                      className="flex items-center gap-2 px-3 py-1.5 border border-orange-200 rounded-lg text-orange-600 text-xs font-bold bg-white hover:bg-orange-50 active:scale-95 transition-all cursor-pointer pointer-events-auto"
                     >
                       <ExternalLink size={12} /> View Sanitization Guide
                     </button>
@@ -2029,7 +2029,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       Data Sanitization Checklist{" "}
                       <span className="text-red-500">*</span>
                     </p>
-                    <p className="text-[10px] text-gray-400 mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       Only checks relevant to {formData.category || "this device"} are shown.
                     </p>
                   </div>
@@ -2039,7 +2039,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-5 shadow-sm">
                   {applicableChecklistItems.length > 0 ? (
                     <>
-                      <p className="text-[10px] text-gray-400">
+                      <p className="text-xs text-gray-400">
                         Confirm each applicable preparation step has been completed for{" "}
                         {formData.model || "this device"}:
                       </p>
@@ -2073,10 +2073,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                           </div>
 
                           <div className="space-y-1">
-                            <p className="text-[11px] font-bold text-gray-800 group-hover:text-[#2d7a7f]">
+                            <p className="text-xs font-bold text-gray-800 group-hover:text-[#2d7a7f]">
                               {item.label}
                             </p>
-                            <p className="text-[9px] text-gray-400 leading-tight">
+                            <p className="text-xs text-gray-400 leading-tight">
                               {item.sub}
                             </p>
                           </div>
@@ -2087,10 +2087,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     <div className="flex items-start gap-3 p-4 rounded-xl bg-slate-50 border border-slate-100">
                       <Info size={16} className="text-slate-500 shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-[11px] font-bold text-slate-700">
+                        <p className="text-xs font-bold text-slate-700">
                           No data-sanitization checks apply to this category
                         </p>
-                        <p className="text-[9px] text-slate-400 leading-tight mt-1">
+                        <p className="text-xs text-slate-400 leading-tight mt-1">
                           {formData.category === "Monitor"
                             ? "This category does not normally contain user storage or account data."
                             : formData.category === "Parts"
@@ -2115,14 +2115,14 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       <p className="text-sm font-bold text-gray-800">
                         Hazardous Materials Detected
                       </p>
-                      <p className="text-[10px] text-gray-500 leading-tight">
+                      <p className="text-xs text-gray-500 leading-tight">
                         This device contains components (Lithium-Ion Battery)
                         classified as hazardous waste due to reported
                         conditions.
                       </p>
                       <button
                         onClick={() => setShowHazardGuidelines(true)}
-                        className="flex items-center gap-2 w-full justify-center py-2.5 bg-white border border-gray-200 rounded-xl text-[10px] font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+                        className="flex items-center gap-2 w-full justify-center py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
                       >
                         <ExternalLink size={12} /> View Handling & Disposal
                         Guidelines
@@ -2138,10 +2138,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                           className="mt-1 w-4 h-4 rounded border-gray-300 text-[#2d7a7f]"
                         />
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-gray-800">
+                          <p className="text-xs font-bold text-gray-800">
                             I acknowledge the presence of hazardous materials
                           </p>
-                          <p className="text-[9px] text-gray-400 leading-tight">
+                          <p className="text-xs text-gray-400 leading-tight">
                             I have read the guidelines and agree to comply with
                             safety requirements for disposal or transfer.
                           </p>
@@ -2164,12 +2164,12 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     className="mt-1 w-4 h-4 rounded border-gray-300 text-[#2d7a7f]"
                   />
                   <div className="space-y-1">
-                    <p className="text-[11px] font-bold text-gray-800">
+                    <p className="text-xs font-bold text-gray-800">
                       {hasMarketHistory
                         ? "I acknowledge the valuation terms"
                         : "I acknowledge the new model manual listing pricing terms"}
                     </p>
-                    <p className="text-[10px] text-gray-500 leading-tight">
+                    <p className="text-xs text-gray-500 leading-tight">
                       {hasMarketHistory
                         ? `I understand the Estimated Recovery Value (₱${reusableValue.toLocaleString()}) is for decision support only. Actual offers from buyers may vary based on assessment.`
                         : "I understand that estimated marketplace recovery values are currently inactive for this model, and I am establishing an open-market target price manual configuration."}
@@ -2178,7 +2178,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 </label>
 
                 {!isStep3Complete && (
-                  <p className="text-center text-[10px] text-red-500 font-bold px-6">
+                  <p className="text-center text-xs text-red-500 font-bold px-6">
                     Mandatory fields missing. Complete the device model, condition,
                     asking price, all applicable checks ({getApplicableChecklistKeys().length}),
                     and the valuation acknowledgement. A last-working date is required
@@ -2241,11 +2241,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   <p className="font-bold text-gray-800 text-sm">
                     Lithium-Ion Battery
                   </p>
-                  <p className="text-[10px] text-gray-400 font-medium">
+                  <p className="text-xs text-gray-400 font-medium">
                     LiCoO2
                   </p>
                 </div>
-                <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                <span className="bg-orange-100 text-orange-700 text-xs font-black px-3 py-1 rounded-full uppercase">
                   High Risk
                 </span>
               </div>
@@ -2302,7 +2302,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 <div className="flex items-center gap-2 text-blue-700 text-xs font-bold uppercase tracking-wide">
                   <Info size={14} /> Disposal Procedure
                 </div>
-                <ul className="space-y-2 text-[11px] text-blue-800/80 ml-1">
+                <ul className="space-y-2 text-xs text-blue-800/80 ml-1">
                   <li className="flex gap-2">
                     <span>1.</span>{" "}
                     <span>Discharge battery to below 25% if possible</span>
@@ -2323,7 +2323,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               </div>
 
               <div className="pt-2">
-                <p className="text-[10px] text-gray-400 italic leading-relaxed text-center px-4">
+                <p className="text-xs text-gray-400 italic leading-relaxed text-center px-4">
                   Regulatory Info: Class 9 Hazardous Material | Regulated by:
                   Department of Environment and Natural Resources (DENR)
                 </p>

@@ -671,7 +671,7 @@ const SellerDonationTab = ({
             <div className="mb-2 flex items-center gap-2">
               <Gift size={20} />
 
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+              <span className="text-xs font-black uppercase tracking-[0.2em]">
                 Donation Management
               </span>
             </div>
@@ -862,7 +862,7 @@ const SellerDonationTab = ({
             </p>
           </div>
 
-          <span className="rounded-full bg-orange-100 px-3 py-1 text-[10px] font-black uppercase text-orange-600">
+          <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-black uppercase text-orange-600">
             {eligibleListings.length} available
           </span>
         </div>
@@ -903,11 +903,11 @@ const SellerDonationTab = ({
                   </div>
 
                   {listing.isStrongSuggestion ? (
-                    <span className="rounded-lg bg-orange-50 px-2 py-1 text-[9px] font-black text-orange-600">
+                    <span className="rounded-lg bg-orange-50 px-2 py-1 text-xs font-black text-orange-600">
                       RECOMMENDED
                     </span>
                   ) : (
-                    <span className="rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-500">
+                    <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-black text-slate-500">
                       ACTIVE LISTING
                     </span>
                   )}
@@ -945,7 +945,7 @@ const SellerDonationTab = ({
                     loadingDropOffPoints ||
                     availableDropOffPoints.length === 0
                   }
-                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#f97316] py-3 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-[#ea580c] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#f97316] py-3 text-xs font-black uppercase tracking-widest text-white transition hover:bg-[#ea580c] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Gift size={14} />
                   Donate This Listing
@@ -1041,7 +1041,7 @@ const SellerDonationTab = ({
                         {listing.category || "Electronics"}
                       </p>
 
-                      <p className="mt-1 text-[10px] text-slate-400">
+                      <p className="mt-1 text-xs text-slate-400">
                         Donated{" "}
                         {formatDate(listing.created_at)}
                       </p>
@@ -1049,7 +1049,7 @@ const SellerDonationTab = ({
                   </div>
 
                   <div className="text-left sm:text-right">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-[9px] font-black uppercase text-emerald-700">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase text-emerald-700">
                       <CheckCircle2 size={12} />
 
                       {status === "donated"
@@ -1063,7 +1063,7 @@ const SellerDonationTab = ({
                      * separately below the status badge.
                      */}
                     <div className="mt-2">
-                      <p className="flex items-center justify-start gap-1 text-[10px] font-bold text-slate-600 sm:justify-end">
+                      <p className="flex items-center justify-start gap-1 text-xs font-bold text-slate-600 sm:justify-end">
                         <MapPin
                           size={11}
                           className="shrink-0"
@@ -1073,7 +1073,7 @@ const SellerDonationTab = ({
                       </p>
 
                       {pointAddress && (
-                        <p className="mt-1 text-[10px] text-slate-400">
+                        <p className="mt-1 text-xs text-slate-400">
                           {pointAddress}
                         </p>
                       )}
@@ -1218,7 +1218,7 @@ const SellerDonationTab = ({
                 type="button"
                 disabled={isDonating}
                 onClick={closeDonationModal}
-                className="flex-1 rounded-xl bg-slate-100 py-3 text-[10px] font-black uppercase text-slate-500 disabled:opacity-50"
+                className="flex-1 rounded-xl bg-slate-100 py-3 text-xs font-black uppercase text-slate-500 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -1232,7 +1232,7 @@ const SellerDonationTab = ({
                   availableDropOffPoints.length === 0
                 }
                 onClick={handleDonate}
-                className="flex-1 rounded-xl bg-orange-500 py-3 text-[10px] font-black uppercase text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex-1 rounded-xl bg-orange-500 py-3 text-xs font-black uppercase text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isDonating
                   ? "Saving..."

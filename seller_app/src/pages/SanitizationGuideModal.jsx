@@ -190,7 +190,7 @@ const SanitizationGuideModal = ({ isOpen, onClose, deviceModel }) => {
         </div>
 
         <div className="px-8 pt-6">
-          <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase mb-2">
+          <div className="flex justify-between text-xs font-bold text-gray-400 uppercase mb-2">
             <span>
               Step {currentStep} of {totalSteps}
             </span>
@@ -218,7 +218,7 @@ const SanitizationGuideModal = ({ isOpen, onClose, deviceModel }) => {
               <div className="text-red-500 shrink-0 mt-0.5">
                 <Info size={16} />
               </div>
-              <p className="text-[11px] leading-relaxed text-red-700 font-medium">
+              <p className="text-xs leading-relaxed text-red-700 font-medium">
                 {activeData.warning}
               </p>
             </div>
@@ -232,7 +232,7 @@ const SanitizationGuideModal = ({ isOpen, onClose, deviceModel }) => {
             <ul className="space-y-4">
               {activeData.instructions.map((text, idx) => (
                 <li key={idx} className="flex gap-4 items-start">
-                  <span className="w-6 h-6 rounded-full bg-[#2d7a7f] text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="w-6 h-6 rounded-full bg-[#2d7a7f] text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                     {idx + 1}
                   </span>
                   <span className="text-sm text-gray-600 font-medium">

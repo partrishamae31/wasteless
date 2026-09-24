@@ -269,7 +269,7 @@ const TransactionsView = ({
         <div className="flex justify-between items-end">
           <div>
             <p className="text-sm font-bold text-slate-700">{label}</p>
-            <p className="text-[10px] text-slate-400 font-medium">{sublabel}</p>
+            <p className="text-xs text-slate-400 font-medium">{sublabel}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -305,7 +305,7 @@ const TransactionsView = ({
               <h2 className="text-xl font-black uppercase tracking-tight">
                 Rate Your Experience
               </h2>
-              <p className="text-white/80 text-[10px] font-bold uppercase mt-1">
+              <p className="text-white/80 text-xs font-bold uppercase mt-1">
                 How was your transaction with{" "}
                 {transaction.seller?.full_name || "the seller"}?
               </p>
@@ -341,13 +341,13 @@ const TransactionsView = ({
                 <div className="flex gap-3">
                   <button
                     onClick={() => setRecommend(true)}
-                    className={`flex-1 py-3 px-4 rounded-xl border-2 flex items-center justify-center gap-2 text-[10px] font-black uppercase transition-all ${recommend === true ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-100 text-slate-400"}`}
+                    className={`flex-1 py-3 px-4 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-black uppercase transition-all ${recommend === true ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-100 text-slate-400"}`}
                   >
                     <Check size={14} /> Yes, Recommend
                   </button>
                   <button
                     onClick={() => setRecommend(false)}
-                    className={`flex-1 py-3 px-4 rounded-xl border-2 flex items-center justify-center gap-2 text-[10px] font-black uppercase transition-all ${recommend === false ? "border-red-500 bg-red-50 text-red-700" : "border-slate-100 text-slate-400"}`}
+                    className={`flex-1 py-3 px-4 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-black uppercase transition-all ${recommend === false ? "border-red-500 bg-red-50 text-red-700" : "border-slate-100 text-slate-400"}`}
                   >
                     <XCircle size={14} /> No, Don't
                   </button>
@@ -370,7 +370,7 @@ const TransactionsView = ({
             <div className="p-6 bg-slate-50 flex gap-3">
               <button
                 onClick={onClose}
-                className="flex-1 py-4 font-black text-slate-400 text-[10px] uppercase"
+                className="flex-1 py-4 font-black text-slate-400 text-xs uppercase"
               >
                 Cancel
               </button>
@@ -384,7 +384,7 @@ const TransactionsView = ({
                     comment,
                   })
                 }
-                className={`flex-1 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg transition-all text-white ${isSubmittingRating
+                className={`flex-1 py-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg transition-all text-white ${isSubmittingRating
                   ? "bg-slate-400 cursor-not-allowed"
                   : "bg-[#769c2d] hover:bg-[#668827] active:scale-[0.98]"
                   }`}
@@ -569,7 +569,7 @@ const TransactionsView = ({
                 <h2 className="text-xl md:text-2xl font-black text-slate-700">
                   Transaction Receipt
                 </h2>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
                   Official transaction record
                 </p>
               </div>
@@ -588,7 +588,7 @@ const TransactionsView = ({
             <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-lg">
               {/* Receipt Brand Header */}
               <div className="bg-gradient-to-r from-[#3285a1] to-[#14516d] text-white text-center p-8">
-                <p className="text-[11px] tracking-[0.3em] text-white/70 font-medium">
+                <p className="text-xs tracking-[0.3em] text-white/70 font-medium">
                   WASTELESS MARKETPLACE
                 </p>
 
@@ -716,7 +716,7 @@ const TransactionsView = ({
     <div className="flex gap-8 h-[800px] animate-in fade-in duration-500 bg-transparent">
       {/* Left Sidebar */}
       <div className="w-1/3 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-        <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
+        <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
           Active Transactions
         </h2>
         {transactions.map((tx) => {
@@ -744,7 +744,7 @@ const TransactionsView = ({
                 </h3>
 
                 <span
-                  className={`text-[8px] font-black px-2 py-1 rounded-lg uppercase whitespace-nowrap ${statusConfig.color}`}
+                  className={`text-xs font-black px-2 py-1 rounded-lg uppercase whitespace-nowrap ${statusConfig.color}`}
                 >
                   {repair ? "Repair" : statusConfig.label}
                 </span>
@@ -752,25 +752,25 @@ const TransactionsView = ({
 
               {repair ? (
                 <>
-                  <p className="text-[10px] font-bold text-slate-500 mb-1">
+                  <p className="text-xs font-bold text-slate-500 mb-1">
                     🔧 Repair Service
                   </p>
 
-                  <p className="text-[10px] text-slate-400 mb-1">
+                  <p className="text-xs text-slate-400 mb-1">
                     Customer: {personName}
                   </p>
 
-                  <p className="text-[10px] text-slate-400 line-clamp-2">
+                  <p className="text-xs text-slate-400 line-clamp-2">
                     Issue: {getRepairIssue(tx)}
                   </p>
 
-                  <p className="text-[9px] text-emerald-600 font-bold mt-2">
+                  <p className="text-xs text-emerald-600 font-bold mt-2">
                     No payment required
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-[10px] text-slate-400 mb-1">
+                  <p className="text-xs text-slate-400 mb-1">
                     Seller: {personName}
                   </p>
 
@@ -780,7 +780,7 @@ const TransactionsView = ({
                 </>
               )}
 
-              <p className="text-[9px] text-slate-400 mt-2 flex items-center gap-1">
+              <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
                 <MessageSquare size={10} />
                 {tx.message_count || 0} messages
               </p>
@@ -804,14 +804,14 @@ const TransactionsView = ({
                     "Electronic Device"}
                 </h2>
 
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">
+                <p className="text-xs font-bold opacity-70 uppercase tracking-widest mt-1">
                   {isRepairTransaction(selectedTransaction)
                     ? "Repair Service"
                     : `ID: T00${selectedTransaction.id?.slice(0, 4) || "1"}`}
                 </p>
               </div>
               <span
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase ${getStatusConfig(selectedTransaction.status).color}`}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${getStatusConfig(selectedTransaction.status).color}`}
               >
                 {getStatusConfig(selectedTransaction.status).label}
               </span>
@@ -868,7 +868,7 @@ const TransactionsView = ({
                         </div>
 
                         <span
-                          className={`text-[9px] font-black uppercase tracking-tighter text-center ${isPast ? "text-green-700" : "text-slate-300"
+                          className={`text-xs font-black uppercase tracking-tighter text-center ${isPast ? "text-green-700" : "text-slate-300"
                             }`}
                         >
                           {step}
@@ -922,7 +922,7 @@ const TransactionsView = ({
                         </div>
 
                         <span
-                          className={`text-[9px] font-black uppercase tracking-tighter ${isPast ? "text-green-700" : "text-slate-300"
+                          className={`text-xs font-black uppercase tracking-tighter ${isPast ? "text-green-700" : "text-slate-300"
                             }`}
                         >
                           {step}
@@ -935,7 +935,7 @@ const TransactionsView = ({
             )}
             <div className="flex justify-between border-b border-slate-50 pb-6">
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
+                <p className="text-xs font-black text-slate-400 uppercase mb-1">
                   {isRepairTransaction(selectedTransaction)
                     ? "Customer"
                     : "Seller"}
@@ -947,7 +947,7 @@ const TransactionsView = ({
               </div>
 
               <div className="text-right">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
+                <p className="text-xs font-black text-slate-400 uppercase mb-1">
                   {isRepairTransaction(selectedTransaction)
                     ? "Service"
                     : "Amount"}
@@ -974,7 +974,7 @@ const TransactionsView = ({
                     <div className="flex gap-3">
                       <MapPin className="text-slate-400" size={18} />
                       <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase">
+                        <p className="text-xs font-black text-slate-400 uppercase">
                           Location
                         </p>
                         <p className="text-xs font-bold text-slate-700">
@@ -986,7 +986,7 @@ const TransactionsView = ({
                     <div className="flex gap-3">
                       <Clock className="text-slate-400" size={18} />
                       <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase">
+                        <p className="text-xs font-black text-slate-400 uppercase">
                           Date & Time
                         </p>
                         <p className="text-xs font-bold text-slate-700">
@@ -998,7 +998,7 @@ const TransactionsView = ({
                     </div>
                   </div>
                   <div className="pt-2">
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                    <p className="text-xs font-black text-slate-400 uppercase">
                       Notes
                     </p>
                     <p className="text-xs text-slate-600">
@@ -1010,11 +1010,11 @@ const TransactionsView = ({
                       onClick={() =>
                         handleCompleteHandover(selectedTransaction.id)
                       }
-                      className="flex-1 bg-[#3285a1] text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-900/20"
+                      className="flex-1 bg-[#3285a1] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-900/20"
                     >
                       Confirm Handover Complete
                     </button>
-                    <button className="px-8 border border-slate-200 text-slate-400 py-4 rounded-2xl font-black text-[10px] uppercase">
+                    <button className="px-8 border border-slate-200 text-slate-400 py-4 rounded-2xl font-black text-xs uppercase">
                       Cancel
                     </button>
                   </div>
@@ -1030,7 +1030,7 @@ const TransactionsView = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                    <p className="text-xs font-black text-slate-400 uppercase">
                       Device
                     </p>
 
@@ -1040,7 +1040,7 @@ const TransactionsView = ({
                   </div>
 
                   <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                    <p className="text-xs font-black text-slate-400 uppercase">
                       Category
                     </p>
 
@@ -1050,7 +1050,7 @@ const TransactionsView = ({
                   </div>
 
                   <div className="md:col-span-2">
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                    <p className="text-xs font-black text-slate-400 uppercase">
                       Reported Issue
                     </p>
 
@@ -1060,7 +1060,7 @@ const TransactionsView = ({
                   </div>
 
                   <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                    <p className="text-xs font-black text-slate-400 uppercase">
                       Appointment Date
                     </p>
 
@@ -1079,7 +1079,7 @@ const TransactionsView = ({
                   </div>
 
                   <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                    <p className="text-xs font-black text-slate-400 uppercase">
                       Appointment Time
                     </p>
 
@@ -1091,7 +1091,7 @@ const TransactionsView = ({
 
                 {getRepairNotes(selectedTransaction) && (
                   <div className="pt-4 border-t border-emerald-100">
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                    <p className="text-xs font-black text-slate-400 uppercase">
                       Service Details
                     </p>
 
@@ -1102,7 +1102,7 @@ const TransactionsView = ({
                 )}
 
                 <div className="bg-white rounded-2xl p-4 border border-emerald-100">
-                  <p className="text-[10px] font-black text-emerald-700 uppercase">
+                  <p className="text-xs font-black text-emerald-700 uppercase">
                     Payment
                   </p>
 
@@ -1110,7 +1110,7 @@ const TransactionsView = ({
                     No payment required
                   </p>
 
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1">
                     This repair appointment is recorded as a service transaction.
                   </p>
                 </div>
@@ -1155,14 +1155,14 @@ const TransactionsView = ({
                     <div className="flex items-center gap-2 text-white">
                       <FileText size={15} />
 
-                      <span className="text-[10px] font-black uppercase tracking-widest">
+                      <span className="text-xs font-black uppercase tracking-widest">
                         {isRepairTransaction(selectedTransaction)
                           ? "Repair Service Record"
                           : "Official Receipt"}
                       </span>
                     </div>
 
-                    <span className="text-[9px] text-white/60 uppercase">
+                    <span className="text-xs text-white/60 uppercase">
                       WasteLess Marketplace
                     </span>
                   </div>
@@ -1170,9 +1170,9 @@ const TransactionsView = ({
                   {/* Receipt Preview */}
                   <div className="px-5 py-4">
                     <div className="flex justify-between items-center py-2">
-                      <span className="text-[10px] text-slate-400">Item</span>
+                      <span className="text-xs text-slate-400">Item</span>
 
-                      <span className="text-[10px] font-black text-slate-700 text-right">
+                      <span className="text-xs font-black text-slate-700 text-right">
                         {isRepairTransaction(selectedTransaction)
                           ? getRepairDevice(selectedTransaction)
                           : selectedTransaction.listing?.device_model ||
@@ -1181,9 +1181,9 @@ const TransactionsView = ({
                     </div>
 
                     <div className="flex justify-between items-center py-2">
-                      <span className="text-[10px] text-slate-400">Seller</span>
+                      <span className="text-xs text-slate-400">Seller</span>
 
-                      <span className="text-[10px] font-bold text-slate-600 text-right">
+                      <span className="text-xs font-bold text-slate-600 text-right">
                         {isRepairTransaction(selectedTransaction)
                           ? getTransactionPersonName(selectedTransaction)
                           : selectedTransaction.seller?.full_name || "Seller"}
@@ -1191,7 +1191,7 @@ const TransactionsView = ({
                     </div>
 
                     <div className="flex justify-between items-center py-2 border-t border-slate-100">
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-xs text-slate-400">
                         {isRepairTransaction(selectedTransaction)
                           ? "Payment"
                           : "Amount Paid"}
@@ -1207,7 +1207,7 @@ const TransactionsView = ({
                     </div>
 
                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-                      <span className="text-[9px] font-bold text-[#3285a1]">
+                      <span className="text-xs font-bold text-[#3285a1]">
                         Tap to view full receipt
                       </span>
 
@@ -1251,16 +1251,16 @@ const TransactionsView = ({
             )}
 
             {/* <div className="pt-6">
-              <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-6">
+              <h4 className="text-xs font-black text-slate-300 uppercase tracking-widest mb-6">
                 Messages
               </h4>
               <div className="space-y-6">
                 <div className="text-center space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400">
+                  <p className="text-xs font-bold text-slate-400">
                     Accepted bid of ₱
                     {selectedTransaction.amount?.toLocaleString() || "24,000"}
                   </p>
-                  <p className="text-[9px] text-slate-300">
+                  <p className="text-xs text-slate-300">
                     Meetup scheduled at Barangay Veinte Reales Hall on April 30,
                     2026 at 14:00
                   </p>
@@ -1272,7 +1272,7 @@ const TransactionsView = ({
                       I have the display and keyboard ready for pickup
                     </p>
                   </div>
-                  <span className="text-[9px] text-slate-300 mt-2 ml-1">
+                  <span className="text-xs text-slate-300 mt-2 ml-1">
                     10:15 AM
                   </span>
                 </div>
@@ -1283,18 +1283,18 @@ const TransactionsView = ({
                       Great! See you on the 30th
                     </p>
                   </div>
-                  <span className="text-[9px] text-slate-300 mt-2 mr-1">
+                  <span className="text-xs text-slate-300 mt-2 mr-1">
                     11:02 AM
                   </span>
                 </div>
 
                 <div className="text-center pt-4">
-                  <p className="text-[10px] text-slate-300 uppercase font-black">
+                  <p className="text-xs text-slate-300 uppercase font-black">
                     Transaction is Completed
                   </p>
                   <button
                     onClick={() => setIsRatingModalOpen(true)}
-                    className="text-[10px] text-[#3285a1] font-black uppercase mt-1 hover:underline"
+                    className="text-xs text-[#3285a1] font-black uppercase mt-1 hover:underline"
                   >
                     Rate Seller Pedro Garcia
                   </button>

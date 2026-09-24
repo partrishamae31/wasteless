@@ -31,7 +31,7 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
                   ? "Donation Details"
                   : "Directions to Center"}
               </h2>
-              <p className="text-[10px] opacity-90 uppercase tracking-wider font-medium">
+              <p className="text-xs opacity-90 uppercase tracking-wider font-medium">
                 {view === "details"
                   ? "Select your barangay's e-waste center"
                   : `Barangay ${barangay || "Gen. T. de Leon"} Drop-off Point`}
@@ -51,7 +51,7 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
           <div className="p-7 space-y-6">
             <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl flex gap-3">
               <Info className="text-blue-500 shrink-0 mt-0.5" size={18} />
-              <p className="text-[11px] text-blue-700 leading-relaxed text-left">
+              <p className="text-xs text-blue-700 leading-relaxed text-left">
                 <span className="font-bold">
                   Drop-off at Your Barangay Center:
                 </span>{" "}
@@ -65,7 +65,7 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
             </div>
 
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] block text-left">
+              <label className="text-xs font-black text-slate-400 uppercase tracking-[0.15em] block text-left">
                 Your Designated E-waste Center
               </label>
               <div className="border border-emerald-100 bg-emerald-50/40 rounded-3xl p-6 border-dashed">
@@ -77,11 +77,11 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
                     <h4 className="text-sm font-bold text-slate-800 italic">
                       Barangay {barangay || "Gen. T. de Leon"} E-waste Center
                     </h4>
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       {barangay || "Gen. T. de Leon"} Public Market, Valenzuela
                       City
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                    <p className="text-xs text-slate-400 mt-1 font-medium">
                       Mon-Fri, 8:00 AM - 5:00 PM
                     </p>
                   </div>
@@ -96,7 +96,7 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
             </div>
 
             <div className="text-left space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] block">
+              <label className="text-xs font-black text-slate-400 uppercase tracking-[0.15em] block">
                 Additional Notes (Optional)
               </label>
               <textarea
@@ -125,7 +125,7 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
                 <div className="w-5 h-5 bg-slate-100 rounded-full flex items-center justify-center">
                   <Circle size={8} className="text-slate-400 fill-slate-400" />
                 </div>
-                <span className="text-[10px] font-bold text-slate-700">
+                <span className="text-xs font-bold text-slate-700">
                   Estimated Travel: 8-12 mins
                 </span>
               </div>
@@ -140,13 +140,13 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
                   <div className="w-[2px] h-12 bg-dashed border-l-2 border-dashed border-slate-200 my-1" />
                 </div>
                 <div className="text-left pb-4">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                  <p className="text-xs font-black text-slate-300 uppercase tracking-widest">
                     Start Point
                   </p>
                   <p className="text-sm font-extrabold text-slate-800">
                     Your Registered Address
                   </p>
-                  <p className="text-[11px] text-slate-400 font-medium">
+                  <p className="text-xs text-slate-400 font-medium">
                     Valenzuela City, Metro Manila
                   </p>
                 </div>
@@ -156,13 +156,13 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
               <div className="flex gap-5">
                 <div className="w-5 h-5 rounded-full border-[3px] border-emerald-500 bg-white shadow-sm" />
                 <div className="text-left">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                  <p className="text-xs font-black text-slate-300 uppercase tracking-widest">
                     Destination
                   </p>
                   <p className="text-sm font-extrabold text-slate-800 italic">
                     Barangay {barangay || "Gen. T. de Leon"} E-waste Center
                   </p>
-                  <p className="text-[11px] text-slate-400 font-medium">
+                  <p className="text-xs text-slate-400 font-medium">
                     {barangay || "Gen. T. de Leon"} Public Market
                   </p>
                 </div>
@@ -174,7 +174,7 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
               <div className="bg-orange-100 p-1.5 rounded-lg shrink-0">
                 <Info size={16} className="text-orange-600" />
               </div>
-              <p className="text-[11px] text-orange-800 leading-relaxed font-medium text-left">
+              <p className="text-xs text-orange-800 leading-relaxed font-medium text-left">
                 <span className="font-bold">Pro-tip:</span> Make sure to pack
                 your items securely. Mention the{" "}
                 <span className="underline italic">"Gadget-to-Goods"</span>{" "}
@@ -188,13 +188,13 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
         <div className="p-7 pt-0 flex gap-4">
           <button
             onClick={handleBack}
-            className="flex-1 py-4 bg-white border border-slate-200 rounded-2xl text-[11px] font-black text-slate-400 uppercase tracking-widest hover:bg-slate-50 transition"
+            className="flex-1 py-4 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-400 uppercase tracking-widest hover:bg-slate-50 transition"
           >
             {view === "details" ? "Back" : "Return"}
           </button>
           <button
             onClick={() => onConfirm(listing?.id)}
-            className="flex-[1.5] py-4 bg-[#f97316] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#ea580c] transition shadow-lg shadow-orange-100 active:scale-95"
+            className="flex-[1.5] py-4 bg-[#f97316] text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#ea580c] transition shadow-lg shadow-orange-100 active:scale-95"
           >
             <CheckCircle2 size={18} /> Confirm Donation
           </button>

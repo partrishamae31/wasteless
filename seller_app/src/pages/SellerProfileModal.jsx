@@ -447,12 +447,12 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                   {rating > 0 ? rating.toFixed(1) : "New"}
                 </span>
 
-                <span className="text-[8px] text-slate-400">
+                <span className="text-xs text-slate-400">
                   ({reviews.length})
                 </span>
               </div>
 
-              <p className="text-[8px] text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-400 mt-0.5">
                 Marketplace Rating
               </p>
             </div>
@@ -472,14 +472,14 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
             <div className="flex items-center gap-1 mt-1">
               <MapPin size={9} className="text-slate-400" />
 
-              <p className="text-[8px] text-slate-400">
+              <p className="text-xs text-slate-400">
                 Barangay {seller?.barangay || "Valenzuela"}
                 {seller?.city ? ` · ${seller.city}` : " · Valenzuela City"}
               </p>
             </div>
 
             {joinedDate && (
-              <p className="text-[8px] text-slate-300 mt-1">
+              <p className="text-xs text-slate-300 mt-1">
                 Member since {joinedDate}
               </p>
             )}
@@ -487,13 +487,13 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
 
           {/* SMALL RATING BADGE */}
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-yellow-50 border border-yellow-100 rounded-full text-[8px] font-black text-slate-600">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-yellow-50 border border-yellow-100 rounded-full text-xs font-black text-slate-600">
               <Star size={9} className="fill-yellow-400 text-yellow-400" />
               {rating > 0 ? rating.toFixed(1) : "No marketplace rating"}
             </span>
 
             {repairReviews.length > 0 && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 border border-purple-100 rounded-full text-[8px] font-black text-purple-700">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 border border-purple-100 rounded-full text-xs font-black text-purple-700">
                 <Star size={9} className="fill-purple-400 text-purple-400" />
                 {repairReviewAverage.toFixed(1)} Repair
               </span>
@@ -510,13 +510,13 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
               {stats.totalListed}
             </p>
 
-            <p className="text-[7px] text-slate-400 font-bold">Total Listed</p>
+            <p className="text-xs text-slate-400 font-bold">Total Listed</p>
           </div>
 
           <div className="text-center py-3 border-r border-slate-100">
             <p className="text-sm font-black text-[#769c2d]">{stats.sold}</p>
 
-            <p className="text-[7px] text-slate-400 font-bold">Sold</p>
+            <p className="text-xs text-slate-400 font-bold">Sold</p>
           </div>
 
           <div className="text-center py-3">
@@ -524,7 +524,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
               {stats.responseRate}%
             </p>
 
-            <p className="text-[7px] text-slate-400 font-bold">Response</p>
+            <p className="text-xs text-slate-400 font-bold">Response</p>
           </div>
         </div>
 
@@ -553,7 +553,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
             <button
               key={tab.name}
               onClick={() => setActiveTab(tab.name)}
-              className={`flex-1 py-2.5 text-[8px] font-bold transition-colors border-b-2 ${
+              className={`flex-1 py-2.5 text-xs font-bold transition-colors border-b-2 ${
                 activeTab === tab.name
                   ? "text-[#4d7e2b] border-[#769c2d]"
                   : "text-slate-400 border-transparent"
@@ -577,7 +577,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
             <div className="py-14 text-center">
               <div className="w-7 h-7 border-2 border-[#769c2d] border-t-transparent rounded-full animate-spin mx-auto" />
 
-              <p className="text-[9px] text-slate-400 font-bold mt-3">
+              <p className="text-xs text-slate-400 font-bold mt-3">
                 Loading seller profile...
               </p>
             </div>
@@ -588,7 +588,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
           ============================================ */}
           {!loading && activeTab === "Listings" && (
             <div className="p-3">
-              <p className="text-[8px] font-bold text-slate-400 mb-2">
+              <p className="text-xs font-bold text-slate-400 mb-2">
                 {listings.length} active{" "}
                 {listings.length === 1 ? "listing" : "listings"}
               </p>
@@ -597,7 +597,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 <div className="py-10 text-center">
                   <Package size={28} className="mx-auto text-slate-200" />
 
-                  <p className="text-[9px] font-bold text-slate-400 mt-2">
+                  <p className="text-xs font-bold text-slate-400 mt-2">
                     No active listings
                   </p>
                 </div>
@@ -627,33 +627,33 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                             </div>
                           )}
 
-                          <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-[#5b9b27] text-white text-[6px] font-black">
+                          <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-[#5b9b27] text-white text-xs font-black">
                             Active
                           </span>
                         </div>
 
                         {/* DETAILS */}
                         <div className="p-2">
-                          <p className="text-[9px] font-black text-slate-700 truncate">
+                          <p className="text-xs font-black text-slate-700 truncate">
                             {item.device_model || "Device"}
                           </p>
 
-                          <p className="text-[7px] text-slate-400 truncate">
+                          <p className="text-xs text-slate-400 truncate">
                             {item.category || "E-waste"}
                             {" · "}
                             {item.condition || "Unknown"}
                           </p>
 
-                          <p className="text-[10px] font-black text-sky-600 mt-1">
+                          <p className="text-xs font-black text-sky-600 mt-1">
                             {formatPrice(item.asking_price)}
                           </p>
 
-                          <p className="text-[7px] text-slate-400 mt-1 flex items-center gap-1">
+                          <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                             <MapPin size={7} />
                             {seller?.barangay || "Valenzuela"}
                           </p>
 
-                          <p className="text-[7px] text-slate-300 mt-0.5">
+                          <p className="text-xs text-slate-300 mt-0.5">
                             {new Date(item.created_at).toLocaleDateString(
                               "en-US",
                               {
@@ -676,7 +676,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
 ============================================ */}
           {!loading && activeTab === "Sold" && (
             <div className="p-3">
-              <p className="text-[8px] font-bold text-slate-400 mb-2">
+              <p className="text-xs font-bold text-slate-400 mb-2">
                 {soldListings.length} sold{" "}
                 {soldListings.length === 1 ? "item" : "items"}
               </p>
@@ -685,11 +685,11 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 <div className="py-10 text-center">
                   <ShoppingBag size={28} className="mx-auto text-slate-200" />
 
-                  <p className="text-[9px] font-bold text-slate-400 mt-2">
+                  <p className="text-xs font-bold text-slate-400 mt-2">
                     No sold items yet
                   </p>
 
-                  <p className="text-[8px] text-slate-300 mt-1">
+                  <p className="text-xs text-slate-300 mt-1">
                     Completed sales will appear here
                   </p>
                 </div>
@@ -720,28 +720,28 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                           )}
 
                           {/* SOLD BADGE */}
-                          <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-slate-500 text-white text-[6px] font-black">
+                          <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-slate-500 text-white text-xs font-black">
                             Sold
                           </span>
                         </div>
 
                         {/* DETAILS */}
                         <div className="p-2">
-                          <p className="text-[9px] font-black text-slate-700 truncate">
+                          <p className="text-xs font-black text-slate-700 truncate">
                             {item.device_model || "Device"}
                           </p>
 
-                          <p className="text-[7px] text-slate-400 truncate">
+                          <p className="text-xs text-slate-400 truncate">
                             {item.category || "E-waste"}
                             {" · "}
                             {item.condition || "Unknown"}
                           </p>
 
-                          <p className="text-[10px] font-black text-slate-700 mt-1">
+                          <p className="text-xs font-black text-slate-700 mt-1">
                             {formatPrice(item.asking_price)}
                           </p>
 
-                          <p className="text-[7px] text-slate-400 mt-1 flex items-center gap-1">
+                          <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                             <Clock size={7} />
                             {formatRelativeDate(item.created_at)}
                           </p>
@@ -764,7 +764,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 <button
                   type="button"
                   onClick={() => setReviewType("marketplace")}
-                  className={`py-2 rounded-md text-[8px] font-black transition ${
+                  className={`py-2 rounded-md text-xs font-black transition ${
                     reviewType === "marketplace"
                       ? "bg-white text-sky-600 shadow-sm"
                       : "text-slate-400"
@@ -776,7 +776,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 <button
                   type="button"
                   onClick={() => setReviewType("repair")}
-                  className={`py-2 rounded-md text-[8px] font-black transition ${
+                  className={`py-2 rounded-md text-xs font-black transition ${
                     reviewType === "repair"
                       ? "bg-white text-purple-600 shadow-sm"
                       : "text-slate-400"
@@ -795,7 +795,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                       <p className="text-xs font-black text-slate-500 mt-3">
                         No marketplace reviews yet
                       </p>
-                      <p className="text-[8px] text-slate-400 mt-1">
+                      <p className="text-xs text-slate-400 mt-1">
                         Reviews from completed buying/selling transactions will
                         appear here.
                       </p>
@@ -823,7 +823,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                               ))}
                             </div>
 
-                            <p className="text-[7px] text-slate-400 mt-1">
+                            <p className="text-xs text-slate-400 mt-1">
                               {reviews.length}{" "}
                               {reviews.length === 1 ? "review" : "reviews"}
                             </p>
@@ -840,7 +840,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                                 key={label}
                                 className="flex items-center gap-1"
                               >
-                                <span className="w-[52px] text-[6px] text-slate-400">
+                                <span className="w-[52px] text-xs text-slate-400">
                                   {label}
                                 </span>
                                 <div className="flex-1 h-[3px] bg-slate-100 rounded-full overflow-hidden">
@@ -851,7 +851,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                                     }}
                                   />
                                 </div>
-                                <span className="w-[17px] text-right text-[6px] text-slate-500 font-bold">
+                                <span className="w-[17px] text-right text-xs text-slate-500 font-bold">
                                   {value ? value.toFixed(1) : "—"}
                                 </span>
                               </div>
@@ -877,12 +877,12 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                             >
                               <div className="flex items-start justify-between">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 rounded-full bg-[#4a9672] text-white flex items-center justify-center text-[8px] font-black">
+                                  <div className="w-6 h-6 rounded-full bg-[#4a9672] text-white flex items-center justify-center text-xs font-black">
                                     {reviewerInitial}
                                   </div>
 
                                   <div>
-                                    <p className="text-[8px] font-black text-slate-700">
+                                    <p className="text-xs font-black text-slate-700">
                                       {reviewerName}
                                     </p>
 
@@ -898,21 +898,21 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                                           }
                                         />
                                       ))}
-                                      <span className="text-[6px] text-slate-400 ml-1">
+                                      <span className="text-xs text-slate-400 ml-1">
                                         {reviewRating.toFixed(1)}
                                       </span>
                                     </div>
                                   </div>
                                 </div>
 
-                                <span className="text-[6px] text-slate-300">
+                                <span className="text-xs text-slate-300">
                                   {reviewDate
                                     ? formatRelativeDate(reviewDate)
                                     : ""}
                                 </span>
                               </div>
 
-                              <p className="text-[7px] leading-[1.45] text-slate-500 mt-2">
+                              <p className="text-xs leading-[1.45] text-slate-500 mt-2">
                                 "{reviewComment}"
                               </p>
 
@@ -921,7 +921,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                                   size={7}
                                   className="text-[#67a83a]"
                                 />
-                                <span className="text-[6px] text-[#67a83a] font-bold">
+                                <span className="text-xs text-[#67a83a] font-bold">
                                   Verified Purchase
                                 </span>
                               </div>
@@ -943,7 +943,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                       <p className="text-xs font-black text-slate-500 mt-3">
                         No repair reviews yet
                       </p>
-                      <p className="text-[8px] text-slate-400 mt-1">
+                      <p className="text-xs text-slate-400 mt-1">
                         Reviews from completed repair services will appear here.
                       </p>
                     </div>
@@ -970,7 +970,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                               ))}
                             </div>
 
-                            <p className="text-[7px] text-slate-400 mt-1">
+                            <p className="text-xs text-slate-400 mt-1">
                               {repairReviews.length}{" "}
                               {repairReviews.length === 1 ? "repair review" : "repair reviews"}
                             </p>
@@ -986,7 +986,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                                 key={label}
                                 className="flex items-center gap-1"
                               >
-                                <span className="w-[65px] text-[6px] text-slate-400">
+                                <span className="w-[65px] text-xs text-slate-400">
                                   {label}
                                 </span>
                                 <div className="flex-1 h-[3px] bg-white rounded-full overflow-hidden">
@@ -997,7 +997,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                                     }}
                                   />
                                 </div>
-                                <span className="w-[17px] text-right text-[6px] text-slate-500 font-bold">
+                                <span className="w-[17px] text-right text-xs text-slate-500 font-bold">
                                   {value ? value.toFixed(1) : "—"}
                                 </span>
                               </div>
@@ -1023,16 +1023,16 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                             >
                               <div className="flex items-start justify-between">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 rounded-full bg-purple-500 text-white flex items-center justify-center text-[8px] font-black">
+                                  <div className="w-6 h-6 rounded-full bg-purple-500 text-white flex items-center justify-center text-xs font-black">
                                     {reviewerInitial}
                                   </div>
 
                                   <div>
                                     <div className="flex items-center gap-1">
-                                      <p className="text-[8px] font-black text-slate-700">
+                                      <p className="text-xs font-black text-slate-700">
                                         {reviewerName}
                                       </p>
-                                      <span className="text-[5px] px-1 py-0.5 rounded bg-purple-50 text-purple-600 font-black">
+                                      <span className="text-xs px-1 py-0.5 rounded bg-purple-50 text-purple-600 font-black">
                                         REPAIR
                                       </span>
                                     </div>
@@ -1049,32 +1049,32 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                                           }
                                         />
                                       ))}
-                                      <span className="text-[6px] text-slate-400 ml-1">
+                                      <span className="text-xs text-slate-400 ml-1">
                                         {reviewRating.toFixed(1)}
                                       </span>
                                     </div>
                                   </div>
                                 </div>
 
-                                <span className="text-[6px] text-slate-300">
+                                <span className="text-xs text-slate-300">
                                   {reviewDate
                                     ? formatRelativeDate(reviewDate)
                                     : ""}
                                 </span>
                               </div>
 
-                              <p className="text-[7px] leading-[1.45] text-slate-500 mt-2">
+                              <p className="text-xs leading-[1.45] text-slate-500 mt-2">
                                 "{reviewComment}"
                               </p>
 
                               <div className="mt-2 grid grid-cols-2 gap-1">
-                                <span className="text-[6px] text-slate-400">
+                                <span className="text-xs text-slate-400">
                                   Communication:{" "}
                                   <b className="text-slate-600">
                                     {Number(review.communication_rating || 0).toFixed(1)}
                                   </b>
                                 </span>
-                                <span className="text-[6px] text-slate-400">
+                                <span className="text-xs text-slate-400">
                                   Service:{" "}
                                   <b className="text-slate-600">
                                     {Number(review.service_rating || 0).toFixed(1)}
@@ -1087,7 +1087,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                                   size={7}
                                   className="text-purple-500"
                                 />
-                                <span className="text-[6px] text-purple-500 font-bold">
+                                <span className="text-xs text-purple-500 font-bold">
                                   Verified Repair Service
                                 </span>
                               </div>
@@ -1111,11 +1111,11 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 <User size={14} className="text-slate-400" />
 
                 <div>
-                  <p className="text-[7px] text-slate-400 uppercase font-bold">
+                  <p className="text-xs text-slate-400 uppercase font-bold">
                     Seller
                   </p>
 
-                  <p className="text-[9px] font-bold text-slate-700">
+                  <p className="text-xs font-bold text-slate-700">
                     {sellerName}
                   </p>
                 </div>
@@ -1125,11 +1125,11 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 <MapPin size={14} className="text-slate-400" />
 
                 <div>
-                  <p className="text-[7px] text-slate-400 uppercase font-bold">
+                  <p className="text-xs text-slate-400 uppercase font-bold">
                     Location
                   </p>
 
-                  <p className="text-[9px] font-bold text-slate-700">
+                  <p className="text-xs font-bold text-slate-700">
                     Barangay {seller?.barangay || "Valenzuela"}
                   </p>
                 </div>
@@ -1139,11 +1139,11 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 <Clock size={14} className="text-slate-400" />
 
                 <div>
-                  <p className="text-[7px] text-slate-400 uppercase font-bold">
+                  <p className="text-xs text-slate-400 uppercase font-bold">
                     Response Rate
                   </p>
 
-                  <p className="text-[9px] font-bold text-slate-700">
+                  <p className="text-xs font-bold text-slate-700">
                     {stats.responseRate}%
                   </p>
                 </div>
@@ -1158,7 +1158,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
         <div className="p-2 border-t border-slate-100 bg-white flex gap-2">
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 rounded-lg bg-slate-100 text-slate-600 text-[8px] font-black"
+            className="flex-1 py-2.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-black"
           >
             Close
           </button>
@@ -1169,7 +1169,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 onMessage(seller);
               }
             }}
-            className="flex-1 py-2.5 rounded-lg bg-[#2589a3] text-white text-[8px] font-black flex items-center justify-center gap-1.5 hover:bg-[#20798f] transition"
+            className="flex-1 py-2.5 rounded-lg bg-[#2589a3] text-white text-xs font-black flex items-center justify-center gap-1.5 hover:bg-[#20798f] transition"
           >
             <MessageSquare size={10} />
             Message Seller

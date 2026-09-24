@@ -1736,7 +1736,7 @@ const SignUp = ({ onLoginClick }) => {
           </div>
           <div>
             <h2 className="text-xl font-bold leading-tight">Join Wasteless</h2>
-            <p className="text-[10px] opacity-90">Create your account</p>
+            <p className="text-xs opacity-90">Create your account</p>
           </div>
         </div>
 
@@ -1772,7 +1772,7 @@ const SignUp = ({ onLoginClick }) => {
                   }`}
               >
                 Community User / Tech-Dealer
-                <span className="block text-[12px] font-normal text-gray-400 mt-1">
+                <span className="block text-xs font-normal text-gray-400 mt-1">
                   Buy working items or sell unused/non-working electronics
                 </span>
               </button>
@@ -1785,7 +1785,7 @@ const SignUp = ({ onLoginClick }) => {
                   }`}
               >
                 Repair Shop
-                <span className="block text-[12px] font-normal text-gray-400 mt-1">
+                <span className="block text-xs font-normal text-gray-400 mt-1">
                   Buy items for parts or request repair services
                 </span>
               </button>
@@ -1796,13 +1796,13 @@ const SignUp = ({ onLoginClick }) => {
                   onChange={(e) => setPrivacyConsent(e.target.checked)}
                   className="mt-0.5 h-4 w-4 accent-[#2d7a7f]"
                 />
-                <span className="text-[12px] leading-relaxed text-gray-600">
+                <span className="text-xs leading-relaxed text-gray-600">
                   I consent to the collection and processing of my registration and verification information for Wasteless account creation and verification.
                 </span>
               </label>
 
               {!privacyConsent && accountType && (
-                <p className="text-[12px] text-red-500 -mt-2">You must consent to data collection to proceed.</p>
+                <p className="text-xs text-red-500 -mt-2">You must consent to data collection to proceed.</p>
               )}
 
               <button
@@ -1822,7 +1822,7 @@ const SignUp = ({ onLoginClick }) => {
               </h3>
               <div className="space-y-4">
                 <div>
-                  <label className="text-[15px] font-semibold text-gray-700 mb-1 block">
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Email Address <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1834,14 +1834,14 @@ const SignUp = ({ onLoginClick }) => {
                     value={formData.email}
                   />
                   {errors.email && (
-                    <p className="text-[12px] text-red-500 mt-1">
+                    <p className="text-xs text-red-500 mt-1">
                       {errors.email}
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <label className="text-[15px] font-semibold text-gray-700 mb-1 block">
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Password <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1852,13 +1852,13 @@ const SignUp = ({ onLoginClick }) => {
                     onChange={handleChange}
                     value={formData.password}
                   />
-                  <p className="text-[12px] text-gray-400 mt-1.5">
+                  <p className="text-xs text-gray-400 mt-1.5">
                     Minimum 8 characters with uppercase, lowercase, number, and symbol
                   </p>
                 </div>
 
                 <div>
-                  <label className="text-[15px] font-semibold text-gray-700 mb-1 block">
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
                     Confirm Password <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1870,7 +1870,7 @@ const SignUp = ({ onLoginClick }) => {
                     value={formData.confirmPassword}
                   />
                   {errors.confirmPassword && (
-                    <p className="text-[10px] text-red-500 mt-1">
+                    <p className="text-xs text-red-500 mt-1">
                       {errors.confirmPassword}
                     </p>
                   )}
@@ -1913,7 +1913,7 @@ const SignUp = ({ onLoginClick }) => {
               </h3>
 
               <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
-                <p className="text-[11px] text-blue-800 leading-relaxed">
+                <p className="text-xs text-blue-800 leading-relaxed">
                   {accountType === "harvester"
                     ? "Upload your personal government ID so Wasteless can suggest your details. Review the information before continuing."
                     : "Provide your shop details, business registration, and technical certification. A personal government ID is not required for repair-shop registration."}
@@ -1922,7 +1922,7 @@ const SignUp = ({ onLoginClick }) => {
 
               {accountType === "harvester" && (
               <div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
-                <label className="text-[11px] font-bold text-gray-700 block">Personal Government ID <span className="text-red-500">*</span></label>
+                <label className="text-xs font-bold text-gray-700 block">Personal Government ID <span className="text-red-500">*</span></label>
                 {/* <input
                   type="file"
                   ref={governmentIdRef}
@@ -1963,7 +1963,7 @@ const SignUp = ({ onLoginClick }) => {
                           : "Click to upload"}
                       </span>
 
-                      <span className="text-gray-400 text-[10px] mt-1">
+                      <span className="text-gray-400 text-xs mt-1">
                         {formData.governmentId
                           ? formData.governmentId.name
                           : "PDF, JPEG, PNG, or WebP (max 5MB)"}
@@ -1975,7 +1975,7 @@ const SignUp = ({ onLoginClick }) => {
                       Selected: {formData.governmentId.name}
                     </p>
                     {idScanCompleted && (
-                      <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide">
+                      <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs font-black uppercase tracking-wide">
                         ✓ ID Verified
                       </span>
                     )}
@@ -2007,10 +2007,10 @@ const SignUp = ({ onLoginClick }) => {
                         <p className="text-sm font-black text-emerald-900 uppercase tracking-wide">
                           ID Scan Complete
                         </p>
-                        <p className="text-[11px] text-emerald-800 font-semibold leading-relaxed mt-1">
+                        <p className="text-xs text-emerald-800 font-semibold leading-relaxed mt-1">
                           Scan complete. <strong>Review the extracted name, address, and barangay below before continuing.</strong>
                         </p>
-                        <p className="text-[9px] text-emerald-700 mt-1.5">
+                        <p className="text-xs text-emerald-700 mt-1.5">
                           The scan assists with registration data entry; it does not independently verify ID authenticity.
                         </p>
                       </div>
@@ -2022,19 +2022,19 @@ const SignUp = ({ onLoginClick }) => {
                     aria-live="polite"
                     className="rounded-xl border border-amber-200 bg-amber-50 p-3"
                   >
-                    <p className="text-[11px] font-bold text-amber-900">
+                    <p className="text-xs font-bold text-amber-900">
                       ID scan needs attention
                     </p>
-                    <p className="text-[10px] text-amber-800 mt-1 leading-relaxed">
+                    <p className="text-xs text-amber-800 mt-1 leading-relaxed">
                       {scanMessage}
                     </p>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <p className="text-[10px] text-amber-900 font-semibold">
+                    <p className="text-xs text-amber-900 font-semibold">
                       Government ID scan required before Review Summary
                     </p>
-                    <p className="text-[9px] text-amber-800 mt-1 leading-relaxed">
+                    <p className="text-xs text-amber-800 mt-1 leading-relaxed">
                       Upload a clear ID, scan it, then review the extracted name, address, and barangay. The Review Summary button stays disabled until the scan is complete.
                     </p>
                   </div>
@@ -2044,7 +2044,7 @@ const SignUp = ({ onLoginClick }) => {
               {accountType === "repair_shop" && (
                 <>
                   <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                    <label className="text-xs font-bold text-gray-700 block mb-2">
                       Business Permit / DTI Registration{" "}
                       <span className="text-red-500">*</span>
                     </label>
@@ -2081,7 +2081,7 @@ const SignUp = ({ onLoginClick }) => {
                           : "Click to upload"}
                       </span>
 
-                      <span className="text-gray-400 text-[10px] mt-1">
+                      <span className="text-gray-400 text-xs mt-1">
                         {formData.businessPermit
                           ? formData.businessPermit.name
                           : "PDF, JPEG, PNG, or WebP (max 5MB)"}
@@ -2098,21 +2098,21 @@ const SignUp = ({ onLoginClick }) => {
                     {permitScanCompleted ? (
                       <div role="status" aria-live="polite" className="mt-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3">
                         <p className="text-xs font-black text-emerald-900">✓ Business Permit Scan Complete</p>
-                        <p className="text-[10px] text-emerald-800 mt-1 leading-relaxed">
+                        <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
                           Business name, shop address, and owner's name were extracted where available. Please review the fields below.
                         </p>
                       </div>
                     ) : scanMessage && !scanningPermit && (
                       <div role="alert" aria-live="polite" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-[10px] font-semibold text-amber-900">{scanMessage}</p>
+                        <p className="text-xs font-semibold text-amber-900">{scanMessage}</p>
                       </div>
                     )}
-                    <p className="text-[10px] text-gray-500 mt-1">OCR assists with data entry. Review the extracted details; scanning does not verify permit authenticity.</p>
+                    <p className="text-xs text-gray-500 mt-1">OCR assists with data entry. Review the extracted details; scanning does not verify permit authenticity.</p>
                   </div>
 
                   {/* CERTIFICATION TYPE */}
                   <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                    <label className="text-xs font-bold text-gray-700 block mb-2">
                       Certification Type{" "}
                       <span className="text-red-500">*</span>
                     </label>
@@ -2141,7 +2141,7 @@ const SignUp = ({ onLoginClick }) => {
                   {/* OTHER CERTIFICATION */}
                   {formData.certificationType === "Other Certification" && (
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                      <label className="text-xs font-bold text-gray-700 block mb-2">
                         Specify Certification{" "}
                         <span className="text-red-500">*</span>
                       </label>
@@ -2159,7 +2159,7 @@ const SignUp = ({ onLoginClick }) => {
 
                   {/* TECHNICAL CERTIFICATION */}
                   <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                    <label className="text-xs font-bold text-gray-700 block mb-2">
                       Technical Certification{" "}
                       <span className="text-red-500">*</span>
                     </label>
@@ -2196,7 +2196,7 @@ const SignUp = ({ onLoginClick }) => {
                           : "Click to upload"}
                       </span>
 
-                      <span className="text-gray-400 text-[10px] mt-1">
+                      <span className="text-gray-400 text-xs mt-1">
                         {formData.techCert
                           ? formData.techCert.name
                           : "PDF, JPEG, PNG, or WebP (max 5MB)"}
@@ -2214,84 +2214,84 @@ const SignUp = ({ onLoginClick }) => {
                     {techCertScanCompleted && (
                       <div role="status" aria-live="polite" className="mt-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3">
                         <p className="text-xs font-black text-emerald-900">✓ Technical Certificate Scan Complete</p>
-                        <p className="text-[10px] text-emerald-800 mt-1 leading-relaxed">
+                        <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
                           Certification details and owner/shop details were extracted where available. Please review the fields below.
                         </p>
                       </div>
                     )}
-                    <p className="text-[10px] text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 mt-1">
                       OCR assists with data entry. Review the extracted details; scanning does not verify certificate authenticity.
                     </p>
                   </div>
 
                   <div className="space-y-4 rounded-xl border border-emerald-100 bg-emerald-50/30 p-4">
                     <p className="text-xs font-semibold text-gray-700">Business Permit Details</p>
-                    <p className="text-[10px] text-gray-500">Review the fields extracted from your business permit before submitting.</p>
+                    <p className="text-xs text-gray-500">Review the fields extracted from your business permit before submitting.</p>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Business Permit Number <span className="text-red-500">*</span></label>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Business Permit Number <span className="text-red-500">*</span></label>
                       <input name="businessPermitNumber" type="text" value={formData.businessPermitNumber} onChange={handleChange} placeholder="Permit number" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Permit Type <span className="text-red-500">*</span></label>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Permit Type <span className="text-red-500">*</span></label>
                       <input name="permitType" type="text" value={formData.permitType} onChange={handleChange} placeholder="e.g. Mayor's Permit / Business Permit" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Permit Issuing LGU <span className="text-red-500">*</span></label>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Permit Issuing LGU <span className="text-red-500">*</span></label>
                       <input name="permitIssuingLgu" type="text" value={formData.permitIssuingLgu} onChange={handleChange} placeholder="e.g. City Government of Valenzuela" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[11px] font-bold text-gray-700 block mb-2">Issue Date</label>
+                        <label className="text-xs font-bold text-gray-700 block mb-2">Issue Date</label>
                         <input name="permitIssueDate" type="date" value={formData.permitIssueDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-gray-700 block mb-2">Expiry Date</label>
+                        <label className="text-xs font-bold text-gray-700 block mb-2">Expiry Date</label>
                         <input name="permitExpiryDate" type="date" value={formData.permitExpiryDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Business Activity / Nature of Business <span className="text-red-500">*</span></label>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Business Activity / Nature of Business <span className="text-red-500">*</span></label>
                       <input name="businessActivity" type="text" value={formData.businessActivity} onChange={handleChange} placeholder="Nature of business" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
                   </div>
 
                   <div className="space-y-4 rounded-xl border border-blue-100 bg-blue-50/30 p-4">
                     <p className="text-xs font-semibold text-gray-700">Technical Certification Details</p>
-                    <p className="text-[10px] text-gray-500">Review the fields extracted from your technical certificate before submitting.</p>
+                    <p className="text-xs text-gray-500">Review the fields extracted from your technical certificate before submitting.</p>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Certificate Number <span className="text-red-500">*</span></label>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Certificate Number <span className="text-red-500">*</span></label>
                       <input name="techCertificateNumber" type="text" value={formData.techCertificateNumber} onChange={handleChange} placeholder="Certificate number" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Issuing Organization <span className="text-red-500">*</span></label>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Issuing Organization <span className="text-red-500">*</span></label>
                       <input name="techCertificateIssuer" type="text" value={formData.techCertificateIssuer} onChange={handleChange} placeholder="e.g. TESDA" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Certification / Qualification Title <span className="text-red-500">*</span></label>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Certification / Qualification Title <span className="text-red-500">*</span></label>
                       <input name="techCertificateTitle" type="text" value={formData.techCertificateTitle} onChange={handleChange} placeholder="Certification or qualification title" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[11px] font-bold text-gray-700 block mb-2">Issue Date</label>
+                        <label className="text-xs font-bold text-gray-700 block mb-2">Issue Date</label>
                         <input name="techCertificateIssueDate" type="date" value={formData.techCertificateIssueDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-gray-700 block mb-2">Expiry Date</label>
+                        <label className="text-xs font-bold text-gray-700 block mb-2">Expiry Date</label>
                         <input name="techCertificateExpiryDate" type="date" value={formData.techCertificateExpiryDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-700 block mb-2">Specialization / Competency</label>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Specialization / Competency</label>
                       <input name="techSpecialization" type="text" value={formData.techSpecialization} onChange={handleChange} placeholder="Specialization or competency" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
                   </div>
@@ -2303,27 +2303,27 @@ const SignUp = ({ onLoginClick }) => {
                 <p className="text-xs font-semibold text-gray-700">Review your details</p>
                 {/* REVIEW NAME EXTRACTED FROM ID */}
               <div>
-                <label className="text-[11px] font-bold text-gray-700 block mb-2">Full Name <span className="text-red-500">*</span></label>
+                <label className="text-xs font-bold text-gray-700 block mb-2">Full Name <span className="text-red-500">*</span></label>
                 <input name="fullName" type="text" value={formData.fullName} onChange={handleChange} placeholder={accountType === "repair_shop" ? "Full name of owner/contact person" : "Name as shown on your government ID"} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                {!formData.fullName.trim() && <p className="text-[10px] text-amber-700 mt-1">{accountType === "repair_shop" ? "Enter the full name shown on the business permit." : "Scan your ID first. If the name cannot be read, enter it exactly as shown on your ID."}</p>}
+                {!formData.fullName.trim() && <p className="text-xs text-amber-700 mt-1">{accountType === "repair_shop" ? "Enter the full name shown on the business permit." : "Scan your ID first. If the name cannot be read, enter it exactly as shown on your ID."}</p>}
               </div>
                 <div>
-                  <label className="text-[11px] font-bold text-gray-700 block mb-2">Address <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-bold text-gray-700 block mb-2">Address <span className="text-red-500">*</span></label>
                   <textarea name="address" rows={2} value={formData.address} onChange={handleChange} placeholder={accountType === "repair_shop" ? "Complete shop address" : "Address as shown on your government ID"} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm resize-none" />
-                  <p className="text-[10px] text-gray-500 mt-1">Review or correct the address before creating your account.</p>
+                  <p className="text-xs text-gray-500 mt-1">Review or correct the address before creating your account.</p>
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-gray-700 block mb-2">Contact Number <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-bold text-gray-700 block mb-2">Contact Number <span className="text-red-500">*</span></label>
                   <input name="contactNumber" type="tel" value={formData.contactNumber} onChange={handleChange} placeholder="09123456789" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                  <p className="text-[10px] text-gray-500 mt-1">{accountType === "repair_shop" ? "Review the contact number extracted from the business permit." : "Enter or correct your phone number if it was not extracted from the ID."}</p>
+                  <p className="text-xs text-gray-500 mt-1">{accountType === "repair_shop" ? "Review the contact number extracted from the business permit." : "Enter or correct your phone number if it was not extracted from the ID."}</p>
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-gray-700 block mb-2">{accountType === "repair_shop" ? "Business Barangay" : "Barangay of Residence"} <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-bold text-gray-700 block mb-2">{accountType === "repair_shop" ? "Business Barangay" : "Barangay of Residence"} <span className="text-red-500">*</span></label>
                   <select name="barangay" value={formData.barangay} onChange={handleChange} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm">
                     <option value="">Select barangay...</option>
                     {valenzuelaBarangays.map((brgy) => <option key={brgy} value={brgy}>{brgy}</option>)}
                   </select>
-                  <p className="text-[10px] text-gray-500 mt-1">{accountType === "repair_shop" ? "Confirm the barangay where the repair shop is located." : "Confirm the barangay suggested by the ID scan."}</p>
+                  <p className="text-xs text-gray-500 mt-1">{accountType === "repair_shop" ? "Confirm the barangay where the repair shop is located." : "Confirm the barangay suggested by the ID scan."}</p>
                 </div>
               </div>
               {/* =========================
@@ -2334,7 +2334,7 @@ const SignUp = ({ onLoginClick }) => {
 
                   {/* ROLE DESCRIPTION */}
                   <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                    <p className="text-[10px] text-gray-500 leading-relaxed">
+                    <p className="text-xs text-gray-500 leading-relaxed">
                       As a Community User / Tech-Dealer, you can buy working second-hand electronics and sell eligible electronics on Wasteless.
                     </p>
                   </div>
@@ -2349,7 +2349,7 @@ const SignUp = ({ onLoginClick }) => {
 
                   {/* BUSINESS NAME */}
                   <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                    <label className="text-xs font-bold text-gray-700 block mb-2">
                       Business/Shop Name{" "}
                       <span className="text-red-500">*</span>
                     </label>
@@ -2366,7 +2366,7 @@ const SignUp = ({ onLoginClick }) => {
 
                   {/* SHOP ADDRESS */}
                   <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                    <label className="text-xs font-bold text-gray-700 block mb-2">
                       Shop Address{" "}
                       <span className="text-red-500">*</span>
                     </label>
@@ -2380,7 +2380,7 @@ const SignUp = ({ onLoginClick }) => {
                       className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                     />
 
-                    <p className="text-[9px] text-gray-400 mt-1.5">
+                    <p className="text-xs text-gray-400 mt-1.5">
                       Enter the address of your actual repair shop location.
                     </p>
                   </div>
@@ -2389,7 +2389,7 @@ const SignUp = ({ onLoginClick }) => {
     SHOP LOCATION
 ========================= */}
                   <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-2">
+                    <label className="text-xs font-bold text-gray-700 block mb-2">
                       Shop Location{" "}
                       <span className="text-red-500">*</span>
                     </label>
@@ -2401,7 +2401,7 @@ const SignUp = ({ onLoginClick }) => {
                           className="text-emerald-600 mt-0.5 shrink-0"
                         />
 
-                        <p className="text-[10px] text-emerald-800 leading-relaxed">
+                        <p className="text-xs text-emerald-800 leading-relaxed">
                           Select the exact location of your repair shop.
                           Click on the map or drag the pin to position it
                           at your shop.
@@ -2439,18 +2439,18 @@ const SignUp = ({ onLoginClick }) => {
 
                     {shopLocation ? (
                       <div className="mt-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
-                        <p className="text-[9px] font-semibold text-gray-600">
+                        <p className="text-xs font-semibold text-gray-600">
                           Selected shop location
                         </p>
 
-                        <p className="text-[9px] text-gray-400 mt-0.5">
+                        <p className="text-xs text-gray-400 mt-0.5">
                           Latitude: {shopLocation[0].toFixed(6)}
                           {" • "}
                           Longitude: {shopLocation[1].toFixed(6)}
                         </p>
                       </div>
                     ) : (
-                      <p className="text-[9px] text-gray-400 mt-1.5">
+                      <p className="text-xs text-gray-400 mt-1.5">
                         A starting location based on your selected barangay
                         will be shown. Please move the pin to your actual
                         shop location.
@@ -2496,7 +2496,7 @@ const SignUp = ({ onLoginClick }) => {
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-lg font-bold text-gray-800">Registration Summary</h3>
               <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
-                <p className="text-[11px] text-emerald-800 leading-relaxed">Review all information carefully. You can edit any field by going back before creating your account.</p>
+                <p className="text-xs text-emerald-800 leading-relaxed">Review all information carefully. You can edit any field by going back before creating your account.</p>
               </div>
 
               {accountType === "harvester" && (
@@ -2505,7 +2505,7 @@ const SignUp = ({ onLoginClick }) => {
                     <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">✓</div>
                     <div>
                       <p className="text-sm font-black text-emerald-900">Government ID Scan Verified</p>
-                      <p className="text-[10px] text-emerald-800 mt-1 leading-relaxed">
+                      <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
                         The extracted <strong>name, address, and barangay</strong> are shown below. Please check them carefully before creating the account.
                       </p>
                     </div>
@@ -2544,7 +2544,7 @@ const SignUp = ({ onLoginClick }) => {
                         highlighted ? "bg-emerald-50/70 border-l-4 border-emerald-400" : ""
                       }`}
                     >
-                      <span className={`text-[10px] font-bold uppercase tracking-wide ${highlighted ? "text-emerald-700" : "text-gray-400"}`}>
+                      <span className={`text-xs font-bold uppercase tracking-wide ${highlighted ? "text-emerald-700" : "text-gray-400"}`}>
                         {label}
                         {highlighted && " • EXTRACTED FROM ID"}
                       </span>
@@ -2558,7 +2558,7 @@ const SignUp = ({ onLoginClick }) => {
 
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
                 <p className="text-xs font-bold text-gray-700">Verification status</p>
-                <p className="text-[11px] text-gray-600">New User - verification pending. Your role privileges are applied after account creation, while document verification remains pending.</p>
+                <p className="text-xs text-gray-600">New User - verification pending. Your role privileges are applied after account creation, while document verification remains pending.</p>
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -2591,7 +2591,7 @@ const SignUp = ({ onLoginClick }) => {
             </div>
           )}
 
-          <p className="text-center text-[11px] text-gray-400 mt-6">
+          <p className="text-center text-xs text-gray-400 mt-6">
             Already have an account?{" "}
             <span
               onClick={onLoginClick}

@@ -1391,7 +1391,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
           {conversations.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-[11px] text-slate-400">
+              <p className="text-xs text-slate-400">
                 No conversations yet.
               </p>
             </div>
@@ -1435,7 +1435,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                       </span>
 
                       <span
-                        className={`shrink-0 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-bold uppercase ${
                           isRepairShop
                             ? "bg-violet-100 text-violet-700"
                             : "bg-emerald-100 text-emerald-700"
@@ -1447,7 +1447,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                     </div>
 
-                    <span className="text-[10px] text-slate-400 shrink-0 ml-2">
+                    <span className="text-xs text-slate-400 shrink-0 ml-2">
                       {formatTime(
                         conv.created_at
                       )}
@@ -1460,7 +1460,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                       conv.other_party_rating
                     )}
 
-                    <span className="text-[9px] text-slate-500 font-medium">
+                    <span className="text-xs text-slate-500 font-medium">
                       {Number(
                         conv.other_party_rating ||
                           0
@@ -1472,7 +1472,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     </span>
                   </div>
 
-                  <p className="text-[10px] text-teal-600 font-bold mb-1">
+                  <p className="text-xs text-teal-600 font-bold mb-1">
 
                     {isMarketplaceChat
                       ? `Re: ${
@@ -1487,7 +1487,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                   </p>
 
-                  <p className="text-[11px] text-slate-500 truncate">
+                  <p className="text-xs text-slate-500 truncate">
                     {conv.content ||
                       "No messages yet."}
                   </p>
@@ -1531,7 +1531,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     </p>
 
                     <span
-                      className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                      className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase ${
                         activeChat.other_party_role_type ===
                         "repair_shop"
                           ? "bg-violet-100 text-violet-700"
@@ -1544,7 +1544,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                   </div>
 
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-xs text-slate-400">
                     {activeChat.listing_id
                       ? "Marketplace Conversation"
                       : activeChat.other_party_role_type ===
@@ -1559,7 +1559,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                       activeChat.other_party_rating
                     )}
 
-                    <span className="text-[10px] text-slate-500 font-medium">
+                    <span className="text-xs text-slate-500 font-medium">
                       {Number(
                         activeChat.other_party_rating ||
                           0
@@ -1589,7 +1589,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                       await fetchAcceptedBidAmount();
                       setIsModalOpen(true);
                     }}
-                    className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-[10px] font-bold"
+                    className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-xs font-bold"
                   >
                     <Calendar size={14} />
                     Schedule Meetup
@@ -1600,7 +1600,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                   userId &&
                 activeTransaction?.status ===
                   "meetup_scheduled" && (
-                  <span className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl text-[10px] font-bold border border-emerald-100">
+                  <span className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl text-xs font-bold border border-emerald-100">
                     <CheckCheck size={14} />
                     Meetup Scheduled
                   </span>
@@ -1621,7 +1621,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
               {activeChat.listing_id &&
                 activeChat.listings?.device_model && (
                   <div className="bg-white border border-emerald-100 rounded-2xl p-4">
-                    <p className="text-[9px] uppercase tracking-wider font-bold text-emerald-600">
+                    <p className="text-xs uppercase tracking-wider font-bold text-emerald-600">
                       Marketplace Item
                     </p>
 
@@ -1666,14 +1666,14 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                             </div>
 
-                            <span className="text-[9px] px-2 py-1 rounded-full bg-violet-50 text-violet-600 font-bold uppercase">
+                            <span className="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-600 font-bold uppercase">
                               {appointment.status ||
                                 "pending"}
                             </span>
 
                           </div>
 
-                          <div className="space-y-2 text-[11px] text-slate-600">
+                          <div className="space-y-2 text-xs text-slate-600">
 
                             <p>
                               <span className="font-bold">
@@ -1750,7 +1750,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                 repairAppointments.length ===
                   0 && (
                   <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4">
-                    <p className="text-[10px] text-violet-600">
+                    <p className="text-xs text-violet-600">
                       No repair appointment has
                       been submitted in this
                       conversation yet.
@@ -1789,13 +1789,13 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     </div>
 
                     <div className="flex items-center gap-1 mt-2">
-                      <span className="text-[9px] font-bold text-slate-400">
+                      <span className="text-xs font-bold text-slate-400">
                         {formatTime(
                           msg.created_at
                         )}
                       </span>
                       {isMe && (
-                        <span className="text-[9px] font-semibold text-emerald-500">
+                        <span className="text-xs font-semibold text-emerald-500">
                           Delivered
                         </span>
                       )}
@@ -1819,7 +1819,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
             >
 
               {error && (
-                <div className="mb-2 text-red-500 text-[10px] font-bold flex items-center gap-1">
+                <div className="mb-2 text-red-500 text-xs font-bold flex items-center gap-1">
                   <ShieldAlert
                     size={12}
                   />
@@ -1924,7 +1924,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                   <div>
 
-                    <p className="text-[11px] font-semibold text-emerald-700/70 uppercase tracking-wider">
+                    <p className="text-xs font-semibold text-emerald-700/70 uppercase tracking-wider">
                       Accepted Bid Amount
                     </p>
 
@@ -2111,13 +2111,13 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                                 }
                               </p>
 
-                              <p className="text-[11px] text-slate-400 mt-1">
+                              <p className="text-xs text-slate-400 mt-1">
                                 {
                                   point.address
                                 }
                               </p>
 
-                              <p className="text-[10px] text-slate-400 mt-1">
+                              <p className="text-xs text-slate-400 mt-1">
                                 {
                                   point.barangay
                                 }

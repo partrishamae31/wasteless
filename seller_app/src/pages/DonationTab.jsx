@@ -1217,7 +1217,7 @@ const DonationTab = ({ profileData }) => {
                 {/* VIDEOS */}
                 <div className="border border-red-200 bg-red-50 rounded-2xl p-5">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-white text-[10px]">
+                    <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-white text-xs">
                       ▶
                     </div>
 

@@ -377,7 +377,7 @@ localStorage.setItem("wasteless_login_role", role);
 
           {/* TAGLINE */}
           <div className="w-full">
-            <h2 className="text-white text-4xl xl:text-5xl font-bold tracking-tight text-center">
+            <h2 className="text-white text-4xl xl:text-5xl font-extrabold tracking-tight text-center">
               Recover More. Waste Less.
             </h2>
           </div>
@@ -427,7 +427,7 @@ localStorage.setItem("wasteless_login_role", role);
           )}
 
           {/* ROLE LABEL */}
-          <label className="text-[11px] font-bold text-[#4d5667] mb-3 block">
+          <label className="text-xs font-bold text-[#4d5667] mb-3 block">
             Select Your Role
           </label>
 
@@ -473,7 +473,7 @@ localStorage.setItem("wasteless_login_role", role);
                   {item.title}
                 </p>
 
-                <p className="text-[12px] text-[#7c8494] leading-tight mt-1">
+                <p className="text-xs text-[#7c8494] leading-tight mt-1">
                   {item.desc}
                 </p>
               </button>
@@ -485,7 +485,7 @@ localStorage.setItem("wasteless_login_role", role);
 
             {/* EMAIL */}
             <div>
-              <label className="text-[11px] font-semibold text-[#4d5667] block mb-2">
+              <label className="text-xs font-semibold text-[#4d5667] block mb-2">
                 Email Address
               </label>
 
@@ -528,13 +528,13 @@ localStorage.setItem("wasteless_login_role", role);
 
               <div className="flex items-center justify-between mb-2">
 
-                <label className="text-[11px] font-semibold text-[#4d5667]">
+                <label className="text-xs font-semibold text-[#4d5667]">
                   Password
                 </label>
 
                 <button
   type="button"
-  className="text-[10px] font-medium text-[#2587a2] hover:underline"
+  className="text-xs font-medium text-[#2587a2] hover:underline"
   onClick={() => {
     setResetEmail(email);
     setResetError("");
@@ -614,7 +614,7 @@ localStorage.setItem("wasteless_login_role", role);
             </button>
           </form>
           {/* CREATE ACCOUNT */}
-          <p className="text-center text-[11px] text-[#8b93a0] mt-6">
+          <p className="text-center text-xs text-[#8b93a0] mt-6">
             Don't have an account?{" "}
             <span
               onClick={onSignUpClick}

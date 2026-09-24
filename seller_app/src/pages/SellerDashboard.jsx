@@ -189,7 +189,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-white/80 text-[10px] font-black uppercase tracking-widest">
+              <div className="flex items-center gap-2 text-white/80 text-xs font-black uppercase tracking-widest">
                 <Wrench size={14} /> Repair Service Review
               </div>
               <h2 className="text-2xl font-black mt-2">Rate Repair Shop</h2>
@@ -210,7 +210,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
 
         <div className="p-6 space-y-6">
           <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
-            <p className="text-[10px] font-black text-purple-500 uppercase tracking-widest">
+            <p className="text-xs font-black text-purple-500 uppercase tracking-widest">
               Repair Shop
             </p>
             <p className="text-sm font-black text-slate-800 mt-1">{repairShop}</p>
@@ -219,7 +219,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
 
           <div>
             <p className="text-sm font-black text-slate-700">Communication</p>
-            <p className="text-[11px] text-slate-400 mb-2">
+            <p className="text-xs text-slate-400 mb-2">
               How well did the repair shop communicate with you?
             </p>
             {renderStars(communication, setCommunication)}
@@ -227,7 +227,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
 
           <div>
             <p className="text-sm font-black text-slate-700">Service Quality</p>
-            <p className="text-[11px] text-slate-400 mb-2">
+            <p className="text-xs text-slate-400 mb-2">
               How satisfied are you with the repair service?
             </p>
             {renderStars(service, setService)}
@@ -235,7 +235,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
 
           <div>
             <p className="text-sm font-black text-slate-700">Overall Experience</p>
-            <p className="text-[11px] text-slate-400 mb-2">
+            <p className="text-xs text-slate-400 mb-2">
               Overall, how would you rate this repair shop?
             </p>
             {renderStars(overall, setOverall)}
@@ -281,7 +281,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
               placeholder="Tell us about your repair experience..."
               className="w-full mt-2 rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 resize-none"
             />
-            <p className="text-[10px] text-slate-400 text-right mt-1">
+            <p className="text-xs text-slate-400 text-right mt-1">
               {comment.length}/1000
             </p>
           </div>
@@ -462,7 +462,7 @@ const MarketplaceRatingModal = ({
         <div className="bg-gradient-to-r from-[#2d7a7f] to-[#3285a1] p-6 text-white">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-white/80 text-[10px] font-black uppercase tracking-widest">
+              <div className="flex items-center gap-2 text-white/80 text-xs font-black uppercase tracking-widest">
                  Marketplace Review
               </div>
               <h2 className="text-2xl font-black mt-2">
@@ -486,7 +486,7 @@ const MarketplaceRatingModal = ({
 
         <div className="p-6 space-y-5">
           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
               {isRatingBuyer ? "Buyer" : "Seller"}
             </p>
             <p className="text-sm font-black text-slate-800 mt-1">{ratedName}</p>
@@ -503,7 +503,7 @@ const MarketplaceRatingModal = ({
           ].map(([label, description, value, setter]) => (
             <div key={label}>
               <p className="text-sm font-black text-slate-700">{label}</p>
-              <p className="text-[11px] text-slate-400 mb-2">{description}</p>
+              <p className="text-xs text-slate-400 mb-2">{description}</p>
               {renderStars(value, setter)}
             </div>
           ))}
@@ -543,7 +543,7 @@ const MarketplaceRatingModal = ({
               placeholder={`Tell us about your experience with this ${isRatingBuyer ? "buyer" : "seller"}...`}
               className="w-full mt-2 rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-[#2d7a7f] focus:ring-2 focus:ring-blue-100 resize-none"
             />
-            <p className="text-[10px] text-slate-400 text-right mt-1">
+            <p className="text-xs text-slate-400 text-right mt-1">
               {feedback.length}/1000
             </p>
           </div>
@@ -744,7 +744,7 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
               <h2 className="text-xl md:text-2xl font-black text-slate-700">
                 {isRepair ? "Repair Service Record" : "Transaction Receipt"}
               </h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
                 Official {isRepair ? "repair service" : "transaction"} record
               </p>
             </div>
@@ -760,7 +760,7 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
         <div className="px-6 md:px-8 pb-6">
           <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-lg">
             <div className="bg-gradient-to-r from-[#3285a1] to-[#14516d] text-white text-center p-8">
-              <p className="text-[11px] tracking-[0.3em] text-white/70 font-medium">
+              <p className="text-xs tracking-[0.3em] text-white/70 font-medium">
                 WASTELESS {isRepair ? "REPAIR SERVICE" : "MARKETPLACE"}
               </p>
               <h3 className="text-2xl md:text-3xl font-black mt-2">
@@ -793,7 +793,7 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
                     <Leaf size={18} />
                     <span className="font-black text-sm">{carbonSaved} kg CO₂ saved</span>
                   </div>
-                  <p className="text-[11px] text-emerald-700 mt-2">Thank you for helping extend the useful life of electronics.</p>
+                  <p className="text-xs text-emerald-700 mt-2">Thank you for helping extend the useful life of electronics.</p>
                 </div>
               )}
 
@@ -803,7 +803,7 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
                     <Wrench size={18} />
                     <span className="font-black text-sm">Repair service completed</span>
                   </div>
-                  <p className="text-[11px] text-purple-700 mt-2">
+                  <p className="text-xs text-purple-700 mt-2">
                     This record confirms the completed repair appointment. No marketplace payment was required.
                   </p>
                 </div>
@@ -1627,7 +1627,7 @@ const SellerDashboard = ({ session }) => {
       <div className="flex items-start gap-3">
         <div className="mt-1 text-slate-400">{icon}</div>
         <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">
             {label}
           </p>
           <p className="text-xs font-semibold text-slate-700">{value}</p>
@@ -2363,7 +2363,7 @@ const SellerDashboard = ({ session }) => {
                 setShowProfileMenu(false); // Close profile if notification is opened
               }}
             />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center border-2 border-white">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center border-2 border-white">
               {notifications.filter((n) => !n.is_read).length}
             </span>
 
@@ -2376,12 +2376,12 @@ const SellerDashboard = ({ session }) => {
                     <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">
                       Notifications
                     </h3>
-                    <button className="text-[10px] text-blue-500 font-bold hover:underline mt-0.5">
+                    <button className="text-xs text-blue-500 font-bold hover:underline mt-0.5">
                       Mark all read (
                       {notifications.filter((n) => !n.is_read).length})
                     </button>
                   </div>
-                  <button className="text-[10px] bg-slate-50 text-slate-500 px-4 py-2 rounded-full font-black uppercase tracking-tighter hover:bg-slate-100 transition">
+                  <button className="text-xs bg-slate-50 text-slate-500 px-4 py-2 rounded-full font-black uppercase tracking-tighter hover:bg-slate-100 transition">
                     Clear All
                   </button>
                 </div>
@@ -2438,14 +2438,14 @@ const SellerDashboard = ({ session }) => {
                       />
                     ))
                   ) : (
-                    <div className="p-10 text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                    <div className="p-10 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
                       No new activities
                     </div>
                   )}
                 </div>
 
                 {/* Footer Link */}
-                <button className="w-full py-4 text-[10px] font-black text-slate-400 bg-slate-50/30 hover:bg-slate-50 transition uppercase tracking-[0.2em] border-t border-slate-50">
+                <button className="w-full py-4 text-xs font-black text-slate-400 bg-slate-50/30 hover:bg-slate-50 transition uppercase tracking-[0.2em] border-t border-slate-50">
                   View All Notifications
                 </button>
               </div>
@@ -2466,7 +2466,7 @@ const SellerDashboard = ({ session }) => {
             >
               <MessageSquare size={24} />
               {messageUserCount > 0 && (
-                <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[10px] rounded-full min-w-4 h-4 px-1 flex items-center justify-center border-2 border-white">
+                <span className="absolute -top-1 -right-2 bg-red-500 text-white text-xs rounded-full min-w-4 h-4 px-1 flex items-center justify-center border-2 border-white">
                   {messageUserCount > 99 ? "99+" : messageUserCount}
                 </span>
               )}
@@ -2483,7 +2483,7 @@ const SellerDashboard = ({ session }) => {
                 {currentProfileName}
               </div>
               <div
-                className={`text-[10px] flex items-center gap-1 justify-end font-semibold ${profileData?.verification_status === "verified"
+                className={`text-xs flex items-center gap-1 justify-end font-semibold ${profileData?.verification_status === "verified"
                   ? "text-emerald-500"
                   : profileData?.verification_status === "pending"
                     ? "text-amber-500"
@@ -2521,14 +2521,14 @@ const SellerDashboard = ({ session }) => {
                     <div className="text-sm font-bold truncate">
                       {currentProfileName}
                     </div>
-                    <div className="text-[10px] opacity-80 truncate">
+                    <div className="text-xs opacity-80 truncate">
                       {session.user.email}
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <div className="flex-1 bg-white/10 rounded-lg p-1.5 text-center">
-                    <div className="text-[10px] opacity-70 flex items-center justify-center gap-1">
+                    <div className="text-xs opacity-70 flex items-center justify-center gap-1">
                       <Star size={10} /> Rating
                     </div>
                     <div className="text-xs font-bold">
@@ -2538,7 +2538,7 @@ const SellerDashboard = ({ session }) => {
                     </div>
                   </div>
                   <div className="flex-1 bg-white/10 rounded-lg p-1.5 text-center">
-                    <div className="text-[10px] opacity-70 flex items-center justify-center gap-1">
+                    <div className="text-xs opacity-70 flex items-center justify-center gap-1">
                       <Package size={10} /> Listings
                     </div>
                     <div className="text-xs font-bold">{listings.length}</div>
@@ -2578,7 +2578,7 @@ const SellerDashboard = ({ session }) => {
                         <Award size={20} />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">
                           Current Trust Tier
                         </p>
                         <p className="text-sm font-black text-slate-800">
@@ -2595,13 +2595,13 @@ const SellerDashboard = ({ session }) => {
                       <>
                         <div className="grid grid-cols-2 gap-2">
                           <div className="rounded-lg bg-white p-2">
-                            <p className="text-[10px] text-slate-500">Completed transactions</p>
+                            <p className="text-xs text-slate-500">Completed transactions</p>
                             <p className="text-sm font-black text-slate-800">
                               {userTrustStats.completedTransactions}
                             </p>
                           </div>
                           <div className="rounded-lg bg-white p-2">
-                            <p className="text-[10px] text-slate-500">Average rating</p>
+                            <p className="text-xs text-slate-500">Average rating</p>
                             <p className="text-sm font-black text-slate-800">
                               {Number(userTrustStats.averageRating || 0).toFixed(1)} / 5
                             </p>
@@ -2609,7 +2609,7 @@ const SellerDashboard = ({ session }) => {
                         </div>
 
                         <div>
-                          <div className="flex justify-between gap-2 text-[10px] text-slate-500 mb-1">
+                          <div className="flex justify-between gap-2 text-xs text-slate-500 mb-1">
                             <span>Progress to {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "top tier"}</span>
                             <span className="font-bold">{progressPercent}%</span>
                           </div>
@@ -2622,7 +2622,7 @@ const SellerDashboard = ({ session }) => {
                         </div>
 
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">
+                          <p className="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-1">
                             Tier privileges
                           </p>
                           {currentTrustTier?.privileges?.length ? (
@@ -2677,14 +2677,14 @@ const SellerDashboard = ({ session }) => {
                 </span>
               </p>
 
-              <p className="mt-2 text-[10px] text-red-400">
+              <p className="mt-2 text-xs text-red-400">
                 Please update your documents and re-submit for approval.
               </p>
             </div>
 
             <button
               onClick={() => setIsVerificationModalOpen(true)}
-              className="rounded-xl bg-red-600 px-6 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-red-700"
+              className="rounded-xl bg-red-600 px-6 py-2 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-red-700"
             >
               Update Profile
             </button>
@@ -2721,7 +2721,7 @@ const SellerDashboard = ({ session }) => {
               <div className="text-3xl font-black mb-1 text-slate-800">
                 {stat.val}
               </div>
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                 {stat.label}
               </div>
             </div>
@@ -2883,7 +2883,7 @@ const SellerDashboard = ({ session }) => {
                                   {item.device_model}
                                 </h3>
 
-                                <span className="bg-emerald-100 text-emerald-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">
+                                <span className="bg-emerald-100 text-emerald-600 text-xs px-2 py-0.5 rounded-full font-bold uppercase">
                                   {item.status}
                                 </span>
 
@@ -2989,7 +2989,7 @@ const SellerDashboard = ({ session }) => {
 
                                 <div>
 
-                                  <p className="text-[9px] uppercase tracking-wider font-black text-blue-400">
+                                  <p className="text-xs uppercase tracking-wider font-black text-blue-400">
                                     Your Offer
                                   </p>
 
@@ -3004,7 +3004,7 @@ const SellerDashboard = ({ session }) => {
 
 
                                 <span
-                                  className={`px-3 py-1 rounded-full text-[10px] font-black ${myBid.status === "accepted"
+                                  className={`px-3 py-1 rounded-full text-xs font-black ${myBid.status === "accepted"
                                     ? "bg-emerald-100 text-emerald-700"
                                     : "bg-amber-100 text-amber-700"
                                     }`}
@@ -3058,7 +3058,7 @@ const SellerDashboard = ({ session }) => {
                           My Bids
                         </h3>
 
-                        <p className="text-[10px] text-slate-400 mt-1">
+                        <p className="text-xs text-slate-400 mt-1">
                           Offers you have placed
                         </p>
 
@@ -3120,7 +3120,7 @@ const SellerDashboard = ({ session }) => {
                               No bids placed yet
                             </p>
 
-                            <p className="text-[10px] text-slate-400 mt-1">
+                            <p className="text-xs text-slate-400 mt-1">
                               Your offers will appear here.
                             </p>
 
@@ -3165,7 +3165,7 @@ const SellerDashboard = ({ session }) => {
                                   {listing.device_model}
                                 </p>
 
-                                <p className="text-[10px] text-slate-400 mt-1">
+                                <p className="text-xs text-slate-400 mt-1">
                                   Asking Price: ₱
                                   {askingPrice.toLocaleString()}
                                 </p>
@@ -3183,7 +3183,7 @@ const SellerDashboard = ({ session }) => {
                             {/* YOUR BID */}
                             <div className="bg-blue-50 rounded-xl p-3 mt-3">
 
-                              <p className="text-[9px] uppercase tracking-wider font-black text-blue-400">
+                              <p className="text-xs uppercase tracking-wider font-black text-blue-400">
                                 Your Offer
                               </p>
 
@@ -3191,7 +3191,7 @@ const SellerDashboard = ({ session }) => {
                                 ₱{bidAmount.toLocaleString()}
                               </p>
 
-                              <p className="text-[9px] text-slate-400 mt-1">
+                              <p className="text-xs text-slate-400 mt-1">
                                 {percentage}% of asking price
                               </p>
 
@@ -3202,7 +3202,7 @@ const SellerDashboard = ({ session }) => {
                             <div className="flex items-center justify-between mt-3">
 
                               <span
-                                className={`px-2.5 py-1 rounded-full text-[9px] font-black ${bid.status === "accepted"
+                                className={`px-2.5 py-1 rounded-full text-xs font-black ${bid.status === "accepted"
                                   ? "bg-emerald-100 text-emerald-700"
                                   : "bg-amber-100 text-amber-700"
                                   }`}
@@ -3214,7 +3214,7 @@ const SellerDashboard = ({ session }) => {
 
 
                               {bid.created_at && (
-                                <span className="text-[9px] text-slate-400">
+                                <span className="text-xs text-slate-400">
 
                                   {new Date(
                                     bid.created_at
@@ -3236,7 +3236,7 @@ const SellerDashboard = ({ session }) => {
                               onClick={() =>
                                 handleSelectListing(listing)
                               }
-                              className="w-full mt-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-[10px] font-black hover:bg-slate-50 transition"
+                              className="w-full mt-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-black hover:bg-slate-50 transition"
                             >
                               View Listing
                             </button>
@@ -3265,7 +3265,7 @@ const SellerDashboard = ({ session }) => {
                   <h3 className="text-sm font-bold text-slate-700">
                     Active Transactions
                   </h3>
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1">
                     Transactions where you are either the seller or the buyer.
                   </p>
                 </div>
@@ -3277,7 +3277,7 @@ const SellerDashboard = ({ session }) => {
                   <p className="text-sm mt-7 font-bold text-slate-500 mt-3">
                     No active transactions
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1">
                     Accepted bids and purchases will appear here.
                   </p>
                 </div>
@@ -3312,7 +3312,7 @@ const SellerDashboard = ({ session }) => {
                               {isRepair ? getRepairDevice(tx) : tx.listing?.device_model || "Electronic Item"}
                             </h4>
                             <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${
                                 isCompleted
                                   ? "bg-green-50 text-green-600 border-green-200"
                                   : tx.status === "cancelled"
@@ -3349,7 +3349,7 @@ const SellerDashboard = ({ session }) => {
                               {isRepair ? "No payment" : `₱${Number(tx.amount || 0).toLocaleString()}`}
                             </p> */}
                             <span
-                              className={`text-[9px] font-black px-2 py-1 rounded-full ${
+                              className={`text-xs font-black px-2 py-1 rounded-full ${
                                 isSeller
                                   ? "bg-emerald-50 text-emerald-700"
                                   : "bg-blue-50 text-blue-700"
@@ -3412,7 +3412,7 @@ const SellerDashboard = ({ session }) => {
                                         ? "Meetup Scheduled"
                                         : "Matched"}
                                 </span>
-                                <span className="bg-white/10 px-3 py-1 rounded-full text-[9px] font-black uppercase">
+                                <span className="bg-white/10 px-3 py-1 rounded-full text-xs font-black uppercase">
                                   {isSeller ? "You are selling" : "You are buying"}
                                 </span>
                               </div>
@@ -3437,7 +3437,7 @@ const SellerDashboard = ({ session }) => {
                                       <div className={`bg-white p-1 rounded-full border-2 ${active ? "border-green-500 text-green-500" : "border-slate-200 text-slate-300"}`}>
                                         {active ? <Check size={14} strokeWidth={3} /> : <Clock size={14} />}
                                       </div>
-                                      <span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">{label}</span>
+                                      <span className="absolute -bottom-7 text-xs font-bold text-slate-500 whitespace-nowrap">{label}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -3445,9 +3445,9 @@ const SellerDashboard = ({ session }) => {
                                 <div className="relative flex justify-between items-center max-w-lg mx-auto">
                                   <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2" />
                                   <div className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${isCompleted ? "bg-green-500 w-full" : isMeetupScheduled ? "bg-blue-500 w-1/2" : "bg-blue-500 w-0"}`} />
-                                  <div className="relative z-10 flex flex-col items-center"><div className="bg-white p-1 rounded-full border-2 border-green-500 text-green-500"><Check size={14} strokeWidth={3} /></div><span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">Matched</span></div>
-                                  <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isMeetupScheduled || isCompleted ? "border-blue-500 text-blue-500" : "border-slate-200 text-slate-300"}`}>{isMeetupScheduled || isCompleted ? <Check size={14} strokeWidth={3} /> : <Clock size={14} />}</div><span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">Meetup Scheduled</span></div>
-                                  <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : "border-slate-200 text-slate-300"}`}><Check size={14} strokeWidth={3} className={isCompleted ? "opacity-100" : "opacity-0"} /></div><span className="absolute -bottom-7 text-[10px] font-bold text-slate-500 whitespace-nowrap">Handover Complete</span></div>
+                                  <div className="relative z-10 flex flex-col items-center"><div className="bg-white p-1 rounded-full border-2 border-green-500 text-green-500"><Check size={14} strokeWidth={3} /></div><span className="absolute -bottom-7 text-xs font-bold text-slate-500 whitespace-nowrap">Matched</span></div>
+                                  <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isMeetupScheduled || isCompleted ? "border-blue-500 text-blue-500" : "border-slate-200 text-slate-300"}`}>{isMeetupScheduled || isCompleted ? <Check size={14} strokeWidth={3} /> : <Clock size={14} />}</div><span className="absolute -bottom-7 text-xs font-bold text-slate-500 whitespace-nowrap">Meetup Scheduled</span></div>
+                                  <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : "border-slate-200 text-slate-300"}`}><Check size={14} strokeWidth={3} className={isCompleted ? "opacity-100" : "opacity-0"} /></div><span className="absolute -bottom-7 text-xs font-bold text-slate-500 whitespace-nowrap">Handover Complete</span></div>
                                 </div>
                               )}
                             </div>
@@ -3455,17 +3455,17 @@ const SellerDashboard = ({ session }) => {
                             <div className="p-8">
                               <div className={`grid ${isRepair ? "grid-cols-2" : "grid-cols-3"} gap-6 mb-8`}>
                                 <div>
-                                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                                  <p className="text-xs text-slate-400 font-bold uppercase mb-1">
                                     {isRepair ? "Customer" : "Seller"}
                                   </p>
                                   <p className="text-sm font-bold text-slate-700">
                                     {sellerName}
                                   </p>
-                                  {isSeller && !isRepair && <span className="text-[9px] text-emerald-600 font-bold">You</span>}
-                                  {isRepair && <span className="text-[9px] text-blue-600 font-bold">You</span>}
+                                  {isSeller && !isRepair && <span className="text-xs text-emerald-600 font-bold">You</span>}
+                                  {isRepair && <span className="text-xs text-blue-600 font-bold">You</span>}
                                 </div>
                                 <div>
-                                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                                  <p className="text-xs text-slate-400 font-bold uppercase mb-1">
                                     {isRepair ? "Repair Shop" : "Buyer"}
                                   </p>
                                   <p className="text-sm font-bold text-slate-700">
@@ -3474,7 +3474,7 @@ const SellerDashboard = ({ session }) => {
                                 </div>
                                 {!isRepair && (
                                   <div>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Amount</p>
+                                    <p className="text-xs text-slate-400 font-bold uppercase mb-1">Amount</p>
                                     <p className="text-xl font-black text-[#2d7a7f]">₱{Number(tx.amount || 0).toLocaleString()}</p>
                                   </div>
                                 )}
@@ -3490,11 +3490,11 @@ const SellerDashboard = ({ session }) => {
                                         <p className="text-sm font-bold text-purple-800">Repair Appointment</p>
                                       </div>
                                       <div className="grid grid-cols-2 gap-4">
-                                        <div><p className="text-[9px] uppercase font-bold text-purple-400">Date</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_date ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Not set"}</p></div>
-                                        <div><p className="text-[9px] uppercase font-bold text-purple-400">Time</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_time || "Not set"}</p></div>
-                                        <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-purple-400">Category</p><p className="text-sm font-bold text-slate-700 mt-1">{repairCategory}</p></div>
-                                        <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-purple-400">Reported Issue</p><p className="text-sm text-slate-600 mt-1">{repairIssue}</p></div>
-                                        {repairNotes && <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-purple-400">Service Notes</p><p className="text-xs text-slate-600 mt-1">{repairNotes}</p></div>}
+                                        <div><p className="text-xs uppercase font-bold text-purple-400">Date</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_date ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Not set"}</p></div>
+                                        <div><p className="text-xs uppercase font-bold text-purple-400">Time</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_time || "Not set"}</p></div>
+                                        <div className="col-span-2"><p className="text-xs uppercase font-bold text-purple-400">Category</p><p className="text-sm font-bold text-slate-700 mt-1">{repairCategory}</p></div>
+                                        <div className="col-span-2"><p className="text-xs uppercase font-bold text-purple-400">Reported Issue</p><p className="text-sm text-slate-600 mt-1">{repairIssue}</p></div>
+                                        {repairNotes && <div className="col-span-2"><p className="text-xs uppercase font-bold text-purple-400">Service Notes</p><p className="text-xs text-slate-600 mt-1">{repairNotes}</p></div>}
                                       </div>
                                     </div>
                                   )}
@@ -3526,7 +3526,7 @@ const SellerDashboard = ({ session }) => {
                                   ) : isMeetupScheduled ? (
                                     <div className="bg-purple-50 border border-purple-100 rounded-xl p-5">
                                       <div className="flex items-center gap-3"><Calendar className="text-purple-600" size={20} /><div><p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p><p className="text-xs text-purple-600 mt-1">Your repair appointment has been confirmed. The repair shop will mark the service as completed after the repair is finished.</p></div></div>
-                                      <div className="grid grid-cols-2 gap-3 mt-4"><div className="bg-white rounded-xl p-3 border border-purple-100"><p className="text-[9px] font-black uppercase text-slate-400">Date</p><p className="text-xs font-bold text-slate-700 mt-1">{tx.meetup_date || "Not scheduled"}</p></div><div className="bg-white rounded-xl p-3 border border-purple-100"><p className="text-[9px] font-black uppercase text-slate-400">Time</p><p className="text-xs font-bold text-slate-700 mt-1">{tx.meetup_time || "Not scheduled"}</p></div></div>
+                                      <div className="grid grid-cols-2 gap-3 mt-4"><div className="bg-white rounded-xl p-3 border border-purple-100"><p className="text-xs font-black uppercase text-slate-400">Date</p><p className="text-xs font-bold text-slate-700 mt-1">{tx.meetup_date || "Not scheduled"}</p></div><div className="bg-white rounded-xl p-3 border border-purple-100"><p className="text-xs font-black uppercase text-slate-400">Time</p><p className="text-xs font-bold text-slate-700 mt-1">{tx.meetup_time || "Not scheduled"}</p></div></div>
                                     </div>
                                   ) : (
                                     <div className="bg-purple-50 border border-purple-100 rounded-xl p-5"><div className="flex items-center gap-3"><Wrench className="text-purple-600" size={20}/><div><p className="text-sm font-bold text-purple-800">Repair Service Request</p><p className="text-xs text-purple-600 mt-1">Your repair request is being processed. The repair shop will confirm the appointment before the service begins.</p></div></div></div>
@@ -3539,10 +3539,10 @@ const SellerDashboard = ({ session }) => {
                                     <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6">
                                       <div className="flex items-center gap-2 mb-4"><Calendar size={17} className="text-blue-600" /><p className="text-sm font-bold text-blue-800">Meetup Details</p></div>
                                       <div className="grid grid-cols-2 gap-4">
-                                        <div><p className="text-[9px] uppercase font-bold text-blue-400">Date</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_date ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"}) : "Not set"}</p></div>
-                                        <div><p className="text-[9px] uppercase font-bold text-blue-400">Time</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_time || "Not set"}</p></div>
-                                        <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-blue-400">Location</p><p className="text-sm font-bold text-slate-700 mt-1 flex items-center gap-1"><MapPin size={14} className="text-blue-500" />{tx.barangay || "Not set"}</p></div>
-                                        {tx.notes && <div className="col-span-2"><p className="text-[9px] uppercase font-bold text-blue-400">Notes</p><p className="text-xs text-slate-600 mt-1">{tx.notes}</p></div>}
+                                        <div><p className="text-xs uppercase font-bold text-blue-400">Date</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_date ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"}) : "Not set"}</p></div>
+                                        <div><p className="text-xs uppercase font-bold text-blue-400">Time</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_time || "Not set"}</p></div>
+                                        <div className="col-span-2"><p className="text-xs uppercase font-bold text-blue-400">Location</p><p className="text-sm font-bold text-slate-700 mt-1 flex items-center gap-1"><MapPin size={14} className="text-blue-500" />{tx.barangay || "Not set"}</p></div>
+                                        {tx.notes && <div className="col-span-2"><p className="text-xs uppercase font-bold text-blue-400">Notes</p><p className="text-xs text-slate-600 mt-1">{tx.notes}</p></div>}
                                       </div>
                                     </div>
                                   ) : null}
@@ -3697,7 +3697,7 @@ const SellerDashboard = ({ session }) => {
                     </h2>
                     <div className="flex items-center gap-2 mt-1">
                       <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${profileData?.verification_status === "approved"
+                        className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${profileData?.verification_status === "approved"
                           ? "bg-emerald-500/20 text-white"
                           : profileData?.verification_status === "pending"
                             ? "bg-amber-500/20 text-white"
@@ -3716,7 +3716,7 @@ const SellerDashboard = ({ session }) => {
                               ? "Verification Rejected"
                               : "Not Submitted"}
                       </span>
-                      <span className="text-[10px] opacity-80">
+                      <span className="text-xs opacity-80">
                         Active since{" "}
                         {new Date(session.user.created_at).toLocaleDateString(
                           "en-US",
@@ -3788,7 +3788,7 @@ const SellerDashboard = ({ session }) => {
                       <div className="text-sm font-black text-gray-800">
                         {stat.val}
                       </div>
-                      <div className="text-[9px] text-gray-500 font-medium leading-tight">
+                      <div className="text-xs text-gray-500 font-medium leading-tight">
                         {stat.label}
                       </div>
                     </div>
@@ -3803,19 +3803,19 @@ const SellerDashboard = ({ session }) => {
                   <div className="relative z-10">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.18em] font-black text-white/70">
+                        <p className="text-xs uppercase tracking-[0.18em] font-black text-white/70">
                           Your Trust Tier
                         </p>
                         <h3 className="font-black text-2xl mt-1">
                           {trustTierLoading ? "Loading..." : getTrustTierLabel(currentTrustTier.name)}
                         </h3>
-                        <p className="text-[10px] opacity-80 mt-1">
+                        <p className="text-xs opacity-80 mt-1">
                           Based on completed transactions and your ratings
                         </p>
                       </div>
                       <div className="bg-white/15 border border-white/20 rounded-2xl px-3 py-2 text-center min-w-[72px]">
                         <Shield size={16} className="mx-auto mb-1 text-yellow-300" />
-                        <span className="text-[9px] font-black uppercase tracking-wider">Tier</span>
+                        <span className="text-xs font-black uppercase tracking-wider">Tier</span>
                       </div>
                     </div>
 
@@ -3830,41 +3830,41 @@ const SellerDashboard = ({ session }) => {
                         </span>
                       </span>
                       {userTrustStats.averageRating >= 4.0 && (
-                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                        <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
                           Recommended
                         </span>
                       )}
                     </div>
 
                     {trustTierError ? (
-                      <div className="bg-red-500/15 border border-red-300/20 rounded-xl p-3 text-[10px] text-red-100">
+                      <div className="bg-red-500/15 border border-red-300/20 rounded-xl p-3 text-xs text-red-100">
                         Unable to load Trust Tier requirements: {trustTierError}
                       </div>
                     ) : (
                       <>
                         <div className="grid grid-cols-2 gap-2 mb-3">
                           <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                            <p className="text-[9px] uppercase tracking-wider text-white/60 font-bold">
+                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold">
                               Completed
                             </p>
                             <p className="text-lg font-black mt-1">
                               {userTrustStats.completedTransactions}
                             </p>
-                            <p className="text-[9px] text-white/60">transactions</p>
+                            <p className="text-xs text-white/60">transactions</p>
                           </div>
                           <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                            <p className="text-[9px] uppercase tracking-wider text-white/60 font-bold">
+                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold">
                               Requirement
                             </p>
                             <p className="text-lg font-black mt-1">
                               {currentTrustTier.min_transactions}+
                             </p>
-                            <p className="text-[9px] text-white/60">transactions for tier</p>
+                            <p className="text-xs text-white/60">transactions for tier</p>
                           </div>
                         </div>
 
                         <div className="space-y-2 bg-white/10 p-3 rounded-xl border border-white/10">
-                          <div className="flex justify-between text-[10px] font-bold">
+                          <div className="flex justify-between text-xs font-bold">
                             <span className="flex items-center gap-1 uppercase tracking-wider">
                               <ArrowUpRight size={10} /> Next Tier:
                               <span className="text-cyan-300 ml-1">
@@ -3880,7 +3880,7 @@ const SellerDashboard = ({ session }) => {
                             />
                           </div>
                           {nextTrustTier ? (
-                            <div className="flex justify-between text-[9px] text-white/65">
+                            <div className="flex justify-between text-xs text-white/65">
                               <span>
                                 Transactions: {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)}
                               </span>
@@ -3889,7 +3889,7 @@ const SellerDashboard = ({ session }) => {
                               </span>
                             </div>
                           ) : (
-                            <p className="text-[9px] text-emerald-200 font-bold">
+                            <p className="text-xs text-emerald-200 font-bold">
                               You have reached the highest available trust tier.
                             </p>
                           )}
@@ -3897,14 +3897,14 @@ const SellerDashboard = ({ session }) => {
 
                         {currentTrustTier.privileges?.length > 0 && (
                           <div className="mt-3">
-                            <p className="text-[9px] uppercase tracking-wider text-white/60 font-bold mb-2">
+                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold mb-2">
                               Current Privileges
                             </p>
                             <div className="flex flex-wrap gap-1.5">
                               {currentTrustTier.privileges.slice(0, 5).map((privilege, index) => (
                                 <span
                                   key={`${privilege}-${index}`}
-                                  className="text-[9px] bg-white/10 border border-white/10 px-2 py-1 rounded-full text-white/85"
+                                  className="text-xs bg-white/10 border border-white/10 px-2 py-1 rounded-full text-white/85"
                                 >
                                   {privilege}
                                 </span>
@@ -3950,7 +3950,7 @@ const SellerDashboard = ({ session }) => {
                     <h3 className="font-bold text-gray-800 text-sm">
                       My Listings & Bids
                     </h3>
-                    <span className="text-[10px] font-bold text-slate-400">
+                    <span className="text-xs font-bold text-slate-400">
                       {myListings.length} listings
                     </span>
                   </div>
@@ -4000,7 +4000,7 @@ const SellerDashboard = ({ session }) => {
                                   </div>
 
                                   <div className="bg-[#3285a1]/10 text-[#3285a1] px-3 py-2 rounded-full shrink-0">
-                                    <span className="text-[10px] font-black">
+                                    <span className="text-xs font-black">
                                       {activeBids.length}{" "}
                                       {activeBids.length === 1 ? "BID" : "BIDS"}
                                     </span>
@@ -4011,7 +4011,7 @@ const SellerDashboard = ({ session }) => {
                                 <div className="grid grid-cols-2 gap-3 mt-5">
 
                                   <div className="bg-slate-50 rounded-xl p-3">
-                                    <p className="text-[9px] uppercase font-bold text-slate-400">
+                                    <p className="text-xs uppercase font-bold text-slate-400">
                                       Condition
                                     </p>
 
@@ -4021,7 +4021,7 @@ const SellerDashboard = ({ session }) => {
                                   </div>
 
                                   <div className="bg-slate-50 rounded-xl p-3">
-                                    <p className="text-[9px] uppercase font-bold text-slate-400">
+                                    <p className="text-xs uppercase font-bold text-slate-400">
                                       Asking Price
                                     </p>
 
@@ -4042,7 +4042,7 @@ const SellerDashboard = ({ session }) => {
 
                                 <div className="flex items-center justify-between mb-3">
                                   <div>
-                                    <p className="text-[10px] uppercase tracking-wider font-black text-slate-400">
+                                    <p className="text-xs uppercase tracking-wider font-black text-slate-400">
                                       Bids Received
                                     </p>
 
@@ -4114,7 +4114,7 @@ const SellerDashboard = ({ session }) => {
                                                   {bidderName}
                                                 </button>
 
-                                                <span className="text-[9px] font-bold text-[#3285a1]">
+                                                <span className="text-xs font-bold text-[#3285a1]">
                                                   {bidderRole}
                                                 </span>
 
@@ -4126,7 +4126,7 @@ const SellerDashboard = ({ session }) => {
                                             {/* OFFER AMOUNT */}
                                             <div className="text-right shrink-0">
 
-                                              <p className="text-[9px] uppercase font-bold text-slate-400">
+                                              <p className="text-xs uppercase font-bold text-slate-400">
                                                 Offer
                                               </p>
 
@@ -4143,7 +4143,7 @@ const SellerDashboard = ({ session }) => {
                                           <div className="flex items-center justify-between mt-3">
 
                                             <span
-                                              className={`px-2.5 py-1 rounded-full text-[9px] font-black ${bid.status === "accepted"
+                                              className={`px-2.5 py-1 rounded-full text-xs font-black ${bid.status === "accepted"
                                                 ? "bg-emerald-100 text-emerald-700"
                                                 : bid.status === "declined"
                                                   ? "bg-red-100 text-red-600"
@@ -4158,7 +4158,7 @@ const SellerDashboard = ({ session }) => {
                                             </span>
 
                                             {bid.created_at && (
-                                              <span className="text-[9px] text-slate-400">
+                                              <span className="text-xs text-slate-400">
                                                 {new Date(
                                                   bid.created_at
                                                 ).toLocaleDateString("en-US", {
@@ -4181,7 +4181,7 @@ const SellerDashboard = ({ session }) => {
                                                 onClick={() =>
                                                   handleAcceptBid(bid, item)
                                                 }
-                                                className="flex-1 bg-[#3285a1] text-white py-2.5 rounded-xl text-[10px] font-black hover:bg-[#2a7089] transition flex items-center justify-center gap-1.5"
+                                                className="flex-1 bg-[#3285a1] text-white py-2.5 rounded-xl text-xs font-black hover:bg-[#2a7089] transition flex items-center justify-center gap-1.5"
                                               >
                                                 <Check size={13} />
                                                 Accept
@@ -4192,7 +4192,7 @@ const SellerDashboard = ({ session }) => {
                                                 onClick={() =>
                                                   handleDeclineBid(bid, item)
                                                 }
-                                                className="flex-1 bg-white border border-red-200 text-red-500 py-2.5 rounded-xl text-[10px] font-black hover:bg-red-50 transition flex items-center justify-center gap-1.5"
+                                                className="flex-1 bg-white border border-red-200 text-red-500 py-2.5 rounded-xl text-xs font-black hover:bg-red-50 transition flex items-center justify-center gap-1.5"
                                               >
                                                 <X size={13} />
                                                 Decline
@@ -4221,7 +4221,7 @@ const SellerDashboard = ({ session }) => {
                                       No bids received yet
                                     </p>
 
-                                    <p className="text-[10px] text-slate-400 mt-1">
+                                    <p className="text-xs text-slate-400 mt-1">
                                       Offers from verified harvesters will appear here.
                                     </p>
 
@@ -4309,7 +4309,7 @@ const SellerDashboard = ({ session }) => {
         <div className="space-y-4">
           {/* FULL NAME */}
           {/* <div>
-          <label className="text-[11px] font-bold text-slate-700 block mb-2">
+          <label className="text-xs font-bold text-slate-700 block mb-2">
             Full Name
           </label>
 
@@ -4328,7 +4328,7 @@ const SellerDashboard = ({ session }) => {
 
           {/* CONTACT */}
           {/* <div>
-          <label className="text-[11px] font-bold text-slate-700 block mb-2">
+          <label className="text-xs font-bold text-slate-700 block mb-2">
             Contact Number
           </label>
 
@@ -4347,7 +4347,7 @@ const SellerDashboard = ({ session }) => {
 
           {/* BARANGAY */}
           {/* <div>
-          <label className="text-[11px] font-bold text-slate-700 block mb-2">
+          <label className="text-xs font-bold text-slate-700 block mb-2">
             Barangay
           </label>
 
@@ -4374,7 +4374,7 @@ const SellerDashboard = ({ session }) => {
           {/* BUSINESS NAME */}
           {/* {profileData?.role === "harvester" && (
             <div>
-              <label className="text-[11px] font-bold text-slate-700 block mb-2">
+              <label className="text-xs font-bold text-slate-700 block mb-2">
                 Business Name
               </label>
 
@@ -4447,12 +4447,12 @@ const SellerDashboard = ({ session }) => {
 
                     <div className="flex flex-wrap gap-2 mt-2">
 
-                      <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-bold">
+                      <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">
                         Tech Harvester
                       </span>
 
                       {selectedBidder.verification_status === "approved" && (
-                        <span className="bg-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                        <span className="bg-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                           <CheckCircle2 size={11} />
                           Verified
                         </span>
@@ -4481,7 +4481,7 @@ const SellerDashboard = ({ session }) => {
                     <div className="flex items-center gap-2 text-amber-500">
                       <Star size={18} fill="currentColor" />
 
-                      <span className="text-[10px] uppercase font-black">
+                      <span className="text-xs uppercase font-black">
                         Rating
                       </span>
                     </div>
@@ -4492,7 +4492,7 @@ const SellerDashboard = ({ session }) => {
                       ).toFixed(1)}
                     </p>
 
-                    <p className="text-[10px] text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400 mt-1">
                       {selectedBidder.total_reviews || 0} reviews
                     </p>
                   </div>
@@ -4501,7 +4501,7 @@ const SellerDashboard = ({ session }) => {
                     <div className="flex items-center gap-2 text-emerald-600">
                       <Leaf size={18} />
 
-                      <span className="text-[10px] uppercase font-black">
+                      <span className="text-xs uppercase font-black">
                         Eco Points
                       </span>
                     </div>
@@ -4512,7 +4512,7 @@ const SellerDashboard = ({ session }) => {
                       ).toLocaleString()}
                     </p>
 
-                    <p className="text-[10px] text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400 mt-1">
                       Environmental contribution
                     </p>
                   </div>
@@ -4528,7 +4528,7 @@ const SellerDashboard = ({ session }) => {
                   <div className="grid grid-cols-2 gap-3">
 
                     <div className="border border-slate-100 rounded-2xl p-4">
-                      <p className="text-[10px] uppercase font-bold text-slate-400">
+                      <p className="text-xs uppercase font-bold text-slate-400">
                         Recovered Devices
                       </p>
 
@@ -4540,7 +4540,7 @@ const SellerDashboard = ({ session }) => {
                     </div>
 
                     <div className="border border-slate-100 rounded-2xl p-4">
-                      <p className="text-[10px] uppercase font-bold text-slate-400">
+                      <p className="text-xs uppercase font-bold text-slate-400">
                         Completed Pickups
                       </p>
 
@@ -4571,7 +4571,7 @@ const SellerDashboard = ({ session }) => {
                         />
 
                         <div>
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
+                          <p className="text-xs uppercase font-bold text-slate-400">
                             Full Name
                           </p>
 
@@ -4590,7 +4590,7 @@ const SellerDashboard = ({ session }) => {
                         />
 
                         <div>
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
+                          <p className="text-xs uppercase font-bold text-slate-400">
                             Location
                           </p>
 
@@ -4609,7 +4609,7 @@ const SellerDashboard = ({ session }) => {
                         />
 
                         <div>
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
+                          <p className="text-xs uppercase font-bold text-slate-400">
                             Contact Number
                           </p>
 
@@ -4636,7 +4636,7 @@ const SellerDashboard = ({ session }) => {
                       Harvester Verification
                     </p>
 
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       {selectedBidder.verification_status === "approved"
                         ? "This harvester has completed account verification."
                         : "This harvester has not completed verification."}
@@ -4682,7 +4682,7 @@ const SellerDashboard = ({ session }) => {
                 {/* SELLER */}
                 {profileData?.role === "harvester" && (
                   <div>
-                    <label className="text-[11px] font-bold text-slate-700 block mb-2">
+                    <label className="text-xs font-bold text-slate-700 block mb-2">
                       Upload Valid Government ID
                     </label>
 
@@ -4718,7 +4718,7 @@ const SellerDashboard = ({ session }) => {
                           : "Click to upload"}
                       </p>
 
-                      <p className="text-[10px] text-slate-400 mt-1">
+                      <p className="text-xs text-slate-400 mt-1">
                         {verificationFiles.businessPermit
                           ? verificationFiles.businessPermit.name
                           : "PNG, JPG, or PDF"}
@@ -4731,7 +4731,7 @@ const SellerDashboard = ({ session }) => {
                 {profileData?.role === "harvester" && (
                   <>
                     <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-2">
+                      <label className="text-xs font-bold text-slate-700 block mb-2">
                         Business Permit / DTI
                       </label>
 
@@ -4760,7 +4760,7 @@ const SellerDashboard = ({ session }) => {
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-2">
+                      <label className="text-xs font-bold text-slate-700 block mb-2">
                         Technical Certification
                       </label>
 
@@ -4927,7 +4927,7 @@ const SellerDashboard = ({ session }) => {
                     <div>
                       <div className="mb-2 flex items-center gap-2 text-white/80">
                         <Award size={18} />
-                        <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Your achievements</span>
+                        <span className="text-xs font-bold uppercase tracking-[0.18em]">Your achievements</span>
                       </div>
                       <h2 id="seller-achievements-title" className="text-2xl font-black">
                         {trustTierLoading ? "Loading your progress…" : getTrustTierLabel(currentTrustTier.name)}
@@ -4955,15 +4955,15 @@ const SellerDashboard = ({ session }) => {
                         <div className="grid grid-cols-3 gap-2">
                           <div className="rounded-xl bg-slate-50 p-3 text-center">
                             <p className="text-xl font-black text-slate-800">{userTrustStats.completedTransactions}</p>
-                            <p className="text-[10px] text-slate-500">Completed</p>
+                            <p className="text-xs text-slate-500">Completed</p>
                           </div>
                           <div className="rounded-xl bg-slate-50 p-3 text-center">
                             <p className="text-xl font-black text-slate-800">{userTrustStats.averageRating.toFixed(1)} ★</p>
-                            <p className="text-[10px] text-slate-500">Average rating</p>
+                            <p className="text-xs text-slate-500">Average rating</p>
                           </div>
                           <div className="rounded-xl bg-slate-50 p-3 text-center">
                             <p className="text-xl font-black text-slate-800">{userTrustStats.totalReviews}</p>
-                            <p className="text-[10px] text-slate-500">Reviews</p>
+                            <p className="text-xs text-slate-500">Reviews</p>
                           </div>
                         </div>
                         <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
@@ -4977,7 +4977,7 @@ const SellerDashboard = ({ session }) => {
                             <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${progressPercent}%` }} />
                           </div>
                           {nextTrustTier && (
-                            <p className="mt-2 text-[11px] text-emerald-800">
+                            <p className="mt-2 text-xs text-emerald-800">
                               {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)} transactions · Rating {userTrustStats.averageRating.toFixed(1)}/{Number(nextTrustTier.min_rating).toFixed(1)}
                             </p>
                           )}
@@ -5008,11 +5008,11 @@ const SellerDashboard = ({ session }) => {
                                 <div key={tier.id || tier.name} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3">
                                   <div>
                                     <p className="text-sm font-semibold text-slate-700">{getTrustTierLabel(tier.name)}</p>
-                                    <p className="text-[10px] text-slate-500">
+                                    <p className="text-xs text-slate-500">
                                       {Number(tier.min_transactions)}+ transactions · {Number(tier.min_rating).toFixed(1)}+ rating
                                     </p>
                                   </div>
-                                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${achieved ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${achieved ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                                     {achieved ? "Unlocked" : "Locked"}
                                   </span>
                                 </div>
@@ -5080,7 +5080,7 @@ const CancelTransactionModal = ({
                   Cancelling this transaction cannot be undone.
                 </span>
               </p>
-              <p className="text-[10px] text-amber-700 mt-1">
+              <p className="text-xs text-amber-700 mt-1">
                 The buyer ({transaction?.harvester?.full_name}) will be notified
                 immediately.
               </p>
@@ -5089,7 +5089,7 @@ const CancelTransactionModal = ({
 
           {/* Reason Select */}
           <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 block">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2 block">
               Cancellation Reason <span className="text-red-500">*</span>
             </label>
             <select
@@ -5127,23 +5127,23 @@ const CancelTransactionModal = ({
 
           {/* Details Card */}
           <div className="bg-red-50/30 border border-red-50 p-4 rounded-2xl">
-            <p className="text-[10px] font-black text-red-800 uppercase tracking-widest mb-3">
+            <p className="text-xs font-black text-red-800 uppercase tracking-widest mb-3">
               Transaction Details:
             </p>
             <ul className="space-y-1.5">
-              <li className="text-[11px] text-red-700 flex items-center gap-2">
+              <li className="text-xs text-red-700 flex items-center gap-2">
                 <div className="w-1 h-1 bg-red-400 rounded-full" />
                 Device: {transaction?.listing?.device_model}
               </li>
-              <li className="text-[11px] text-red-700 flex items-center gap-2">
+              <li className="text-xs text-red-700 flex items-center gap-2">
                 <div className="w-1 h-1 bg-red-400 rounded-full" />
                 Buyer: {transaction?.harvester?.full_name}
               </li>
-              <li className="text-[11px] text-red-700 flex items-center gap-2">
+              <li className="text-xs text-red-700 flex items-center gap-2">
                 <div className="w-1 h-1 bg-red-400 rounded-full" />
                 Amount: ₱{transaction?.amount?.toLocaleString()}
               </li>
-              <li className="text-[11px] text-red-700 flex items-center gap-2">
+              <li className="text-xs text-red-700 flex items-center gap-2">
                 <div className="w-1 h-1 bg-red-400 rounded-full" />
                 Status: {transaction?.status}
               </li>
@@ -5187,7 +5187,7 @@ const InfoItem = ({ icon, label, val }) => (
   <div className="flex items-start gap-3">
     <div className="text-slate-300 mt-1">{icon}</div>
     <div>
-      <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+      <div className="text-xs text-slate-400 uppercase font-bold tracking-wider">
         {label}
       </div>
       <div className="text-sm text-slate-700 font-medium">{val}</div>
@@ -5216,16 +5216,16 @@ const NotificationItem = ({
     <div className="flex-1 min-w-0">
       <div className="flex justify-between items-start mb-0.5">
         <h4
-          className={`text-[11px] font-black uppercase tracking-tight truncate pr-2 ${unread ? "text-slate-900" : "text-slate-500"
+          className={`text-xs font-black uppercase tracking-tight truncate pr-2 ${unread ? "text-slate-900" : "text-slate-500"
             }`}
         >
           {title}
         </h4>
-        <span className="text-[9px] font-bold text-slate-400 whitespace-nowrap pt-0.5">
+        <span className="text-xs font-bold text-slate-400 whitespace-nowrap pt-0.5">
           {time}
         </span>
       </div>
-      <p className="text-[11px] text-slate-500 leading-snug line-clamp-2 font-medium">
+      <p className="text-xs text-slate-500 leading-snug line-clamp-2 font-medium">
         {desc}
       </p>
     </div>

@@ -91,7 +91,7 @@ const AdminSignup = ({ onBackToLogin }) => {
                           : "border-slate-100 bg-white hover:border-slate-200"
                         }`}
                       >
-                        <p className={`text-[10px] font-black uppercase tracking-widest ${formData.role === r ? "text-[#07A63D]" : "text-slate-400"}`}>
+                        <p className={`text-xs font-black uppercase tracking-widest ${formData.role === r ? "text-[#07A63D]" : "text-slate-400"}`}>
                           {r.replace('_', ' ')}
                         </p>
                       </button>
@@ -100,7 +100,7 @@ const AdminSignup = ({ onBackToLogin }) => {
 
                   <div className="space-y-4">
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
                       <div className="relative mt-1">
                         <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input 
@@ -114,7 +114,7 @@ const AdminSignup = ({ onBackToLogin }) => {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Employee ID / Badge No.</label>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Employee ID / Badge No.</label>
                       <div className="relative mt-1">
                         <BadgeCheck size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input 
@@ -140,7 +140,7 @@ const AdminSignup = ({ onBackToLogin }) => {
                 <>
                   <div className="space-y-4">
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Official Email</label>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Official Email</label>
                       <div className="relative mt-1">
                         <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input 
@@ -154,7 +154,7 @@ const AdminSignup = ({ onBackToLogin }) => {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Secure Password</label>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Secure Password</label>
                       <div className="relative mt-1">
                         <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input 
@@ -168,7 +168,7 @@ const AdminSignup = ({ onBackToLogin }) => {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assigned Barangay</label>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Assigned Barangay</label>
                       <div className="relative mt-1">
                         <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <select 

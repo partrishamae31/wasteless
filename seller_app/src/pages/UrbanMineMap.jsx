@@ -420,7 +420,7 @@ const UrbanMineMap = ({ isVerified }) => {
                   setSelectedBarangay(null);
                   setFilter(option);
                 }}
-                className={`px-4 py-2 rounded-lg text-[10px] font-bold border transition-all ${
+                className={`px-4 py-2 rounded-lg text-xs font-bold border transition-all ${
                   filter === option
                     ? "bg-[#769c2d] border-[#769c2d] text-white shadow-sm"
                     : "bg-white border-slate-200 text-slate-500 hover:border-[#769c2d] hover:text-[#769c2d]"
@@ -560,39 +560,39 @@ const UrbanMineMap = ({ isVerified }) => {
                           className="absolute bottom-10 left-1/2 -translate-x-1/2 w-48 bg-white rounded-xl border border-slate-200 shadow-2xl p-4 z-[100]"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <p className="text-[11px] font-black text-slate-800">
+                          <p className="text-xs font-black text-slate-800">
                             Barangay {barangay.name}
                           </p>
 
-                          <p className="text-[9px] text-slate-400 mt-1">
+                          <p className="text-xs text-slate-400 mt-1">
                             {barangay.count} devices available
                           </p>
 
                           <div className="border-t border-slate-100 mt-3 pt-3 space-y-2">
                             <div className="flex justify-between">
-                              <span className="text-[9px] text-slate-400">
+                              <span className="text-xs text-slate-400">
                                 Total Value
                               </span>
 
-                              <span className="text-[9px] font-bold text-[#3285a1]">
+                              <span className="text-xs font-bold text-[#3285a1]">
                                 ₱
                                 {barangay.totalValue.toLocaleString()}
                               </span>
                             </div>
 
                             <div className="flex justify-between">
-                              <span className="text-[9px] text-slate-400">
+                              <span className="text-xs text-slate-400">
                                 High Value
                               </span>
 
-                              <span className="text-[9px] font-bold text-purple-500">
+                              <span className="text-xs font-bold text-purple-500">
                                 {barangay.highValue} devices
                               </span>
                             </div>
                           </div>
 
                           <div className="mt-3">
-                            <span className="text-[8px] font-bold text-slate-400">
+                            <span className="text-xs font-bold text-slate-400">
                               {density.label} Density
                             </span>
                           </div>
@@ -621,7 +621,7 @@ const UrbanMineMap = ({ isVerified }) => {
                     No active listings found
                   </p>
 
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1">
                     There are currently no listings for this filter.
                   </p>
                 </div>
@@ -635,7 +635,7 @@ const UrbanMineMap = ({ isVerified }) => {
 
           <div className="absolute bottom-5 left-5 bg-white rounded-lg border-2 border-[#163d73] shadow-lg overflow-hidden z-30">
             <div className="bg-[#163d73] px-3 py-2">
-              <p className="text-[10px] font-black text-white uppercase tracking-wide">
+              <p className="text-xs font-black text-white uppercase tracking-wide">
                 Location Category Key
               </p>
             </div>
@@ -657,7 +657,7 @@ const UrbanMineMap = ({ isVerified }) => {
             ===================================================== */}
 
         <div className="border-t border-slate-200 px-5 py-3 flex items-center gap-7">
-          <span className="text-[9px] font-bold text-slate-400">
+          <span className="text-xs font-bold text-slate-400">
             Density:
           </span>
 
@@ -725,7 +725,7 @@ const MapStat = ({ icon, label, value }) => {
       </div>
 
       <div>
-        <p className="text-[9px] font-bold text-slate-400">
+        <p className="text-xs font-bold text-slate-400">
           {label}
         </p>
 
@@ -749,7 +749,7 @@ const MapKeyItem = ({ color, label }) => {
         style={{ backgroundColor: color }}
       />
 
-      <span className="text-[8px] font-black text-slate-600">
+      <span className="text-xs font-black text-slate-600">
         {label}
       </span>
     </div>
@@ -765,7 +765,7 @@ const LegendItem = ({ color, label }) => {
     <div className="flex items-center gap-2">
       <div className={`w-2.5 h-2.5 rounded-full ${color}`} />
 
-      <span className="text-[9px] font-bold text-slate-500">
+      <span className="text-xs font-bold text-slate-500">
         {label}
       </span>
     </div>
@@ -803,7 +803,7 @@ const BarangayCard = ({ barangay, onView }) => {
             Barangay {barangay.name}
           </h4>
 
-          <p className="text-[9px] text-slate-400 mt-1">
+          <p className="text-xs text-slate-400 mt-1">
             {barangay.count} devices available
           </p>
         </div>
@@ -816,21 +816,21 @@ const BarangayCard = ({ barangay, onView }) => {
 
       <div className="mt-4 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-[9px] font-bold text-slate-400">
+          <span className="text-xs font-bold text-slate-400">
             Total Value
           </span>
 
-          <span className="text-[10px] font-bold text-[#3285a1]">
+          <span className="text-xs font-bold text-[#3285a1]">
             ₱{barangay.totalValue.toLocaleString()}
           </span>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-[9px] font-bold text-slate-400">
+          <span className="text-xs font-bold text-slate-400">
             High Value
           </span>
 
-          <span className="text-[10px] font-bold text-purple-500">
+          <span className="text-xs font-bold text-purple-500">
             {barangay.highValue} devices
           </span>
         </div>
@@ -838,7 +838,7 @@ const BarangayCard = ({ barangay, onView }) => {
 
       <button
         onClick={onView}
-        className="w-full mt-4 py-2.5 rounded-lg bg-slate-50 hover:bg-[#769c2d] hover:text-white text-[#769c2d] text-[9px] font-black transition-all flex items-center justify-center gap-1"
+        className="w-full mt-4 py-2.5 rounded-lg bg-slate-50 hover:bg-[#769c2d] hover:text-white text-[#769c2d] text-xs font-black transition-all flex items-center justify-center gap-1"
       >
         View {barangay.count} Listings
         <ArrowRight size={12} />

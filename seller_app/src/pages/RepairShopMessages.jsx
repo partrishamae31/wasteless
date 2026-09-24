@@ -997,7 +997,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                 No conversations yet
               </p>
 
-              <p className="text-[10px] text-slate-300 mt-1">
+              <p className="text-xs text-slate-300 mt-1">
                 Messages and repair appointment requests from
                 harvesters will appear here.
               </p>
@@ -1031,13 +1031,13 @@ const RepairShopMessages = ({ userId, onClose }) => {
                         {conversation.other_party_name}
                       </span>
 
-                      <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-100 text-emerald-700">
+                      <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-100 text-emerald-700">
                         Harvester
                       </span>
 
                     </div>
 
-                    <span className="text-[10px] text-slate-400 ml-2 whitespace-nowrap">
+                    <span className="text-xs text-slate-400 ml-2 whitespace-nowrap">
                       {conversation.created_at
                         ? new Date(
                             conversation.created_at
@@ -1055,7 +1055,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                       conversation.other_party_rating
                     )}
 
-                    <span className="text-[9px] text-slate-500 font-medium">
+                    <span className="text-xs text-slate-500 font-medium">
                       {Number(
                         conversation.other_party_rating || 0
                       ).toFixed(1)}{" "}
@@ -1067,18 +1067,18 @@ const RepairShopMessages = ({ userId, onClose }) => {
                   </div>
 
                   {conversation.hasAppointment ? (
-                    <p className="text-[10px] text-violet-600 font-bold mb-1">
+                    <p className="text-xs text-violet-600 font-bold mb-1">
                       Repair Appointment:{" "}
                       {conversation.repair_device_model ||
                         "Device"}
                     </p>
                   ) : (
-                    <p className="text-[10px] text-teal-600 font-bold mb-1">
+                    <p className="text-xs text-teal-600 font-bold mb-1">
                       Repair Shop Conversation
                     </p>
                   )}
 
-                  <p className="text-[11px] text-slate-500 truncate">
+                  <p className="text-xs text-slate-500 truncate">
                     {conversation.content}
                   </p>
 
@@ -1112,7 +1112,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                 Select a conversation
               </p>
 
-              <p className="text-[10px] text-slate-300 mt-2">
+              <p className="text-xs text-slate-300 mt-2">
                 Select a harvester to view messages and
                 repair appointment requests.
               </p>
@@ -1143,13 +1143,13 @@ const RepairShopMessages = ({ userId, onClose }) => {
                         "Tech Harvester"}
                     </p>
 
-                    <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-100 text-emerald-700">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-100 text-emerald-700">
                       Tech Harvester
                     </span>
 
                   </div>
 
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-xs text-slate-400">
                     Repair Shop Conversation
                   </p>
 
@@ -1158,7 +1158,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                       activeChat.other_party_rating
                     )}
 
-                    <span className="text-[10px] text-slate-500 font-medium">
+                    <span className="text-xs text-slate-500 font-medium">
                       {Number(
                         activeChat.other_party_rating || 0
                       ).toFixed(1)}{" "}
@@ -1216,7 +1216,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                             Repair Appointment
                           </p>
 
-                          <p className="text-[9px] text-slate-400">
+                          <p className="text-xs text-slate-400">
                             Appointment Request
                           </p>
                         </div>
@@ -1224,7 +1224,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                       </div>
 
                       <span
-                        className={`text-[9px] px-2 py-1 rounded-full border font-bold uppercase ${getAppointmentStatusClass(
+                        className={`text-xs px-2 py-1 rounded-full border font-bold uppercase ${getAppointmentStatusClass(
                           appointment.status
                         )}`}
                       >
@@ -1238,11 +1238,11 @@ const RepairShopMessages = ({ userId, onClose }) => {
 
                       <div className="bg-slate-50 rounded-xl p-3">
 
-                        <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400 mb-1">
+                        <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1">
                           Device
                         </p>
 
-                        <p className="text-[11px] font-bold text-slate-700">
+                        <p className="text-xs font-bold text-slate-700">
                           {appointment.device_model ||
                             "Not specified"}
                         </p>
@@ -1251,11 +1251,11 @@ const RepairShopMessages = ({ userId, onClose }) => {
 
                       <div className="bg-slate-50 rounded-xl p-3">
 
-                        <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400 mb-1">
+                        <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1">
                           Category
                         </p>
 
-                        <p className="text-[11px] font-bold text-slate-700">
+                        <p className="text-xs font-bold text-slate-700">
                           {appointment.category ||
                             "Not specified"}
                         </p>
@@ -1266,12 +1266,12 @@ const RepairShopMessages = ({ userId, onClose }) => {
 
                     <div className="mt-3 bg-slate-50 rounded-xl p-3">
 
-                      <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1">
+                      <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1">
                         <FileText size={11} />
                         Issue Description
                       </p>
 
-                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                      <p className="text-xs text-slate-600 leading-relaxed">
                         {appointment.issue_description ||
                           "No issue description provided."}
                       </p>
@@ -1282,12 +1282,12 @@ const RepairShopMessages = ({ userId, onClose }) => {
 
                       <div className="bg-slate-50 rounded-xl p-3">
 
-                        <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1">
+                        <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1">
                           <Calendar size={11} />
                           Preferred Date
                         </p>
 
-                        <p className="text-[11px] font-bold text-slate-700">
+                        <p className="text-xs font-bold text-slate-700">
                           {formatDate(
                             appointment.preferred_date
                           )}
@@ -1297,12 +1297,12 @@ const RepairShopMessages = ({ userId, onClose }) => {
 
                       <div className="bg-slate-50 rounded-xl p-3">
 
-                        <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1">
+                        <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1">
                           <Clock size={11} />
                           Preferred Time
                         </p>
 
-                        <p className="text-[11px] font-bold text-slate-700">
+                        <p className="text-xs font-bold text-slate-700">
                           {formatTime(
                             appointment.preferred_time
                           )}
@@ -1315,11 +1315,11 @@ const RepairShopMessages = ({ userId, onClose }) => {
                     {appointment.notes && (
                       <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl p-3">
 
-                        <p className="text-[9px] uppercase tracking-wider font-bold text-amber-600 mb-1">
+                        <p className="text-xs uppercase tracking-wider font-bold text-amber-600 mb-1">
                           Additional Notes
                         </p>
 
-                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                        <p className="text-xs text-slate-600 leading-relaxed">
                           {appointment.notes}
                         </p>
 
@@ -1351,7 +1351,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                       No messages yet
                     </p>
 
-                    <p className="text-[10px] text-slate-300 mt-1">
+                    <p className="text-xs text-slate-300 mt-1">
                       Send a message to this harvester.
                     </p>
 
@@ -1388,7 +1388,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                         {message.content}
                       </div>
 
-                      <span className="text-[9px] font-bold text-slate-400 mt-2 flex items-center gap-1">
+                      <span className="text-xs font-bold text-slate-400 mt-2 flex items-center gap-1">
                         {message.created_at
                           ? new Date(
                               message.created_at
@@ -1424,7 +1424,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
             >
 
               {error && (
-                <div className="mb-2 text-red-500 text-[10px] font-bold flex items-center gap-1">
+                <div className="mb-2 text-red-500 text-xs font-bold flex items-center gap-1">
                   <ShieldAlert size={12} />
                   {error}
                 </div>

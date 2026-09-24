@@ -352,7 +352,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
             "
           </h2>
 
-          <p className="text-[10px] font-black text-[#769c2d] uppercase tracking-widest">
+          <p className="text-xs font-black text-[#769c2d] uppercase tracking-widest">
             {matches.length} Not Working Results
             Found
           </p>
@@ -422,7 +422,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                 </div>
 
                 <div className="flex flex-wrap gap-3 mt-3">
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase">
+                  <span className="flex items-center gap-1 text-xs font-bold text-slate-400 uppercase">
                     <MapPin
                       size={12}
                       className="text-[#769c2d]"
@@ -432,7 +432,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       "Valenzuela"}
                   </span>
 
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase">
+                  <span className="flex items-center gap-1 text-xs font-bold text-slate-400 uppercase">
                     <Clock size={12} />
 
                     {item.created_at
@@ -445,7 +445,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
 
                 {/* CONDITION */}
                 <div className="mt-3">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-orange-100 text-orange-700 text-[9px] font-black uppercase tracking-wide">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-black uppercase tracking-wide">
                     <CheckCircle2 size={11} />
                     Not Working
                   </span>
@@ -463,7 +463,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                     setMessage("");
                     setQuestion("");
                   }}
-                  className="mt-4 w-full py-3 bg-[#769c2d] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all"
+                  className="mt-4 w-full py-3 bg-[#769c2d] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:opacity-90 transition-all"
                 >
                   View Listing
                 </button>
@@ -491,7 +491,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
             {/* HEADER */}
             <div className="sticky top-0 z-20 bg-white border-b border-slate-100 px-8 py-6 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#769c2d]">
+                <p className="text-xs font-black uppercase tracking-[0.3em] text-[#769c2d]">
                   MATCHED NOT WORKING LISTING
                 </p>
 
@@ -589,7 +589,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
               <div className="space-y-6">
                 {/* PRICE */}
                 <div className="bg-white rounded-[2rem] p-6 border border-slate-100">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                     Asking Price
                   </p>
 
@@ -626,7 +626,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                     />
 
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                         Barangay
                       </p>
 
@@ -644,7 +644,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                     />
 
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                         Listed On
                       </p>
 
@@ -660,7 +660,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-50 rounded-2xl p-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                         Scrap Value
                       </p>
 
@@ -674,7 +674,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                     </div>
 
                     <div className="bg-slate-50 rounded-2xl p-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                         Reusable Parts
                       </p>
 
@@ -691,7 +691,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
 
                 {/* DESCRIPTION */}
                 <div className="bg-white rounded-[2rem] p-6 border border-slate-100">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">
                     Description
                   </p>
 
@@ -742,7 +742,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                 {activeTab === "bid" && (
                   <div className="bg-white rounded-[2rem] p-6 border border-slate-100 space-y-5">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">
                         Quick Bid
                       </p>
 
@@ -770,7 +770,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <label className="text-xs font-black uppercase tracking-widest text-slate-400">
                         Bid Amount
                       </label>
 
@@ -790,7 +790,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <label className="text-xs font-black uppercase tracking-widest text-slate-400">
                         Message
                       </label>
 
@@ -824,7 +824,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                 {activeTab === "question" && (
                   <div className="bg-white rounded-[2rem] p-6 border border-slate-100 space-y-5">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">
                         Quick Questions
                       </p>
 

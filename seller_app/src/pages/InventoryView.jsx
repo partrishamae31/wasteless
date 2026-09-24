@@ -130,7 +130,7 @@ const InventoryView = ({ userId }) => {
                 <div className="flex items-center gap-2 text-orange-700 font-bold text-sm">
                   <ShieldCheck size={16} /> Safe Handling Guidelines
                 </div>
-                <ul className="text-[11px] text-orange-600 space-y-1 list-disc pl-4">
+                <ul className="text-xs text-orange-600 space-y-1 list-disc pl-4">
                   <li>Do not puncture or incinerate this component.</li>
                   <li>
                     Store in a cool, dry place away from flammable materials.
@@ -144,7 +144,7 @@ const InventoryView = ({ userId }) => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
                   Category
                 </p>
                 <div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ const InventoryView = ({ userId }) => {
                 </div>
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
                   Condition
                 </p>
                 <p className="text-slate-700 font-medium capitalize">
@@ -167,7 +167,7 @@ const InventoryView = ({ userId }) => {
             </div>
 
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
                 Acquisition Value
               </p>
               <p className="text-xl font-bold text-slate-800">
@@ -242,7 +242,7 @@ const InventoryView = ({ userId }) => {
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center">
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
               Active Inventory
             </p>
             <h3 className="text-3xl font-black text-slate-700">
@@ -256,7 +256,7 @@ const InventoryView = ({ userId }) => {
 
         <div className="bg-white p-8 rounded-[2rem] border border-red-50 shadow-sm flex justify-between items-center">
           <div>
-            <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">
+            <p className="text-xs font-bold text-red-400 uppercase tracking-widest mb-1">
               Hazardous Flags
             </p>
             <h3 className="text-3xl font-black text-red-600">
@@ -301,7 +301,7 @@ const InventoryView = ({ userId }) => {
             Inventory Items{" "}
             <span className="text-slate-400 ml-1">({inventory.length})</span>
           </h3>
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+          <span className="text-xs text-slate-400 font-bold uppercase tracking-tighter">
             Monitoring e-waste compliance
           </span>
         </div>
@@ -340,32 +340,32 @@ const InventoryView = ({ userId }) => {
                         {item.listing?.device_model}
                       </h4>
                       {hazardous && (
-                        <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[9px] font-black rounded uppercase tracking-tighter animate-pulse">
+                        <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-black rounded uppercase tracking-tighter animate-pulse">
                           Hazardous material
                         </span>
                       )}
                     </div>
 
-                    <p className="text-[11px] font-bold text-slate-400">
+                    <p className="text-xs font-bold text-slate-400">
                       {item.listing?.category} • ₱
                       {item.amount?.toLocaleString()}
                     </p>
 
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-500">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-blue-500">
                       <ArrowUpRight size={12} />
                       Source: {item.seller?.full_name}
                     </div>
 
                     <div className="flex gap-2 pt-2">
-                      <span className="flex items-center gap-1.5 px-3 py-1 border border-slate-200 rounded-lg text-[9px] font-bold text-slate-400 uppercase tracking-tighter bg-white">
+                      <span className="flex items-center gap-1.5 px-3 py-1 border border-slate-200 rounded-lg text-xs font-bold text-slate-400 uppercase tracking-tighter bg-white">
                         <Tag size={10} /> {item.listing?.category}
                       </span>
                       {hazardous ? (
-                        <span className="flex items-center gap-1.5 px-3 py-1 border border-orange-200 rounded-lg text-[9px] font-bold text-orange-600 uppercase tracking-tighter bg-orange-50">
+                        <span className="flex items-center gap-1.5 px-3 py-1 border border-orange-200 rounded-lg text-xs font-bold text-orange-600 uppercase tracking-tighter bg-orange-50">
                           <ShieldCheck size={10} /> Safety Protocol Req.
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 px-3 py-1 border border-slate-200 rounded-lg text-[9px] font-bold text-slate-400 uppercase tracking-tighter bg-white">
+                        <span className="flex items-center gap-1.5 px-3 py-1 border border-slate-200 rounded-lg text-xs font-bold text-slate-400 uppercase tracking-tighter bg-white">
                           <Clock size={10} /> {item.listing?.condition}
                         </span>
                       )}
@@ -377,7 +377,7 @@ const InventoryView = ({ userId }) => {
                   <p className="text-lg font-black text-slate-700">
                     ₱{item.amount?.toLocaleString()}
                   </p>
-                  <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                  <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">
                     Acquisition Price
                   </p>
                 </div>

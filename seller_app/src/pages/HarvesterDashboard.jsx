@@ -1331,7 +1331,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               </button>
 
               {unreadMessageCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold border-2 border-white">
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold border-2 border-white">
                   {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
                 </span>
               )}
@@ -1347,7 +1347,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               </div>
 
               {notifications.filter((n) => !n.is_read).length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold border-2 border-white">
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold border-2 border-white">
                   {notifications.filter((n) => !n.is_read).length}
                 </span>
               )}
@@ -1370,7 +1370,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
                     <button
                       onClick={handleMarkAllRead}
-                      className="text-[10px] font-bold text-[#769c2d] hover:text-[#5d7a24]"
+                      className="text-xs font-bold text-[#769c2d] hover:text-[#5d7a24]"
                     >
                       Mark all read
                     </button>
@@ -1407,15 +1407,15 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               </div>
 
                               <div className="flex-1">
-                                <p className="text-[11px] font-black text-slate-800">
+                                <p className="text-xs font-black text-slate-800">
                                   {n.title}
                                 </p>
 
-                                <p className="text-[10px] text-slate-500 leading-tight mt-1">
+                                <p className="text-xs text-slate-500 leading-tight mt-1">
                                   {n.content}
                                 </p>
 
-                                <p className="text-[8px] text-slate-300 font-bold mt-2 uppercase tracking-widest">
+                                <p className="text-xs text-slate-300 font-bold mt-2 uppercase tracking-widest">
                                   {new Date(n.created_at).toLocaleTimeString(
                                     [],
                                     {
@@ -1434,13 +1434,13 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         );
                       })
                     ) : (
-                      <div className="p-10 text-center text-slate-300 text-[10px] font-bold uppercase tracking-widest">
+                      <div className="p-10 text-center text-slate-300 text-xs font-bold uppercase tracking-widest">
                         No new alerts
                       </div>
                     )}
                   </div>
 
-                  <button className="w-full py-4 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors bg-slate-50/50 border-t border-slate-50">
+                  <button className="w-full py-4 text-xs font-black text-slate-400 hover:text-slate-600 transition-colors bg-slate-50/50 border-t border-slate-50">
                     View All Notifications
                   </button>
                   </div>
@@ -1454,26 +1454,26 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 className="flex items-center gap-3 bg-white/90 backdrop-blur-md p-1 pr-4 rounded-full shadow-sm border border-white/50 cursor-pointer hover:border-slate-300 transition-all"
               >
                 <div className="text-right hidden sm:block pl-3">
-                  <p className="font-bold text-slate-800 text-[11px] leading-none mb-1">
+                  <p className="font-bold text-slate-800 text-xs leading-none mb-1">
                     {((profileData.role === "repair_shop" && profileData.business_name?.trim()) || profileData.full_name)}
                   </p>
 
                   {verificationStatus === "verified" ? (
-                    <p className="text-[#769c2d] text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
+                    <p className="text-[#769c2d] text-xs font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
                       <CheckCircle2 size={10} /> Verified
                     </p>
                   ) : verificationStatus === "rejected" ? (
-                    <p className="text-red-500 text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
+                    <p className="text-red-500 text-xs font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
                       <XCircle size={10} /> Rejected
                     </p>
                   ) : (
-                    <p className="text-orange-400 text-[9px] font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
+                    <p className="text-orange-400 text-xs font-black flex items-center justify-end gap-1 uppercase tracking-tighter">
                       <Clock size={10} /> Pending
                     </p>
                   )}
                 </div>
 
-                <div className="w-9 h-9 bg-[#4a7c59] rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm border border-white/20">
+                <div className="w-9 h-9 bg-[#4a7c59] rounded-full flex items-center justify-center text-white font-black text-xs shadow-sm border border-white/20">
                   {profileData.initials}
                 </div>
               </div>
@@ -1494,7 +1494,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           <p className="font-bold text-xs">
                             {((profileData.role === "repair_shop" && profileData.business_name?.trim()) || profileData.full_name)}
                           </p>
-                          <p className="text-[9px] text-white/80">
+                          <p className="text-xs text-white/80">
                             {session?.user?.email}
                           </p>
                         </div>
@@ -1594,14 +1594,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                       </h2>
 
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
                           <Shield size={10} />
                           {verificationStatus === "verified"
                             ? "Verified Repair Shop"
                             : "Pending Verification"}
                         </span>
 
-                        <span className="text-[10px] opacity-80">
+                        <span className="text-xs opacity-80">
                           Active since {profileData?.joined_date || "2026"}
                         </span>
                       </div>
@@ -1673,7 +1673,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           {stat.val}
                         </div>
 
-                        <div className="text-[9px] text-gray-500 font-medium leading-tight">
+                        <div className="text-xs text-gray-500 font-medium leading-tight">
                           {stat.label}
                         </div>
                       </div>
@@ -1695,7 +1695,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               CO₂ Recovery Contribution
                             </h3>
 
-                            <p className="mt-1 text-[10px] text-[#3b91ad]">
+                            <p className="mt-1 text-xs text-[#3b91ad]">
                               From harvesting & processing e-waste
                             </p>
                           </div>
@@ -1710,7 +1710,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                             <span className="ml-1 text-sm">kg</span>
                           </div>
 
-                          <p className="text-[9px] text-[#3b91ad]">
+                          <p className="text-xs text-[#3b91ad]">
                             CO₂e recovered
                           </p>
                         </div>
@@ -1727,7 +1727,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                             {profileData?.recovered_devices || 0} devices
                           </span>
 
-                          <span className="ml-2 text-[10px] text-[#3b91ad]">
+                          <span className="ml-2 text-xs text-[#3b91ad]">
                             recovered & processed
                           </span>
                         </div>
@@ -1745,7 +1745,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     <div className="relative z-10">
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-purple-200">
+                          <p className="text-xs font-black uppercase tracking-[0.2em] text-purple-200">
                             Trust Tier
                           </p>
                           <h3 className="text-2xl font-black mt-1">
@@ -1753,27 +1753,27 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               ? "Loading..."
                               : currentTrustTier?.name || "NEWCOMER"}
                           </h3>
-                          <p className="text-[10px] text-white/70 mt-1">
+                          <p className="text-xs text-white/70 mt-1">
                             {((profileData?.role === "repair_shop" && profileData?.business_name?.trim()) || profileData?.full_name || "Repair Shop")}
                           </p>
                         </div>
 
                         {!trustTierLoading && currentTrustTier && (
-                          <div className="px-3 py-1.5 rounded-full bg-white/15 border border-white/20 text-[9px] font-black uppercase">
+                          <div className="px-3 py-1.5 rounded-full bg-white/15 border border-white/20 text-xs font-black uppercase">
                             {currentTrustTier.name}
                           </div>
                         )}
                       </div>
 
                       {trustTierError ? (
-                        <div className="mt-4 rounded-2xl bg-red-500/15 border border-red-300/20 p-3 text-[10px] text-red-100">
+                        <div className="mt-4 rounded-2xl bg-red-500/15 border border-red-300/20 p-3 text-xs text-red-100">
                           {trustTierError}
                         </div>
                       ) : (
                         <>
                           <div className="grid grid-cols-3 gap-2 mt-5">
                             <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
-                              <p className="text-[8px] uppercase tracking-wider text-white/50">
+                              <p className="text-xs uppercase tracking-wider text-white/50">
                                 Completed
                               </p>
                               <p className="text-lg font-black mt-1">
@@ -1781,7 +1781,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               </p>
                             </div>
                             <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
-                              <p className="text-[8px] uppercase tracking-wider text-white/50">
+                              <p className="text-xs uppercase tracking-wider text-white/50">
                                 Rating
                               </p>
                               <p className="text-lg font-black mt-1">
@@ -1789,7 +1789,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               </p>
                             </div>
                             <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
-                              <p className="text-[8px] uppercase tracking-wider text-white/50">
+                              <p className="text-xs uppercase tracking-wider text-white/50">
                                 Reviews
                               </p>
                               <p className="text-lg font-black mt-1">
@@ -1801,10 +1801,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           {nextTrustTier ? (
                             <div className="mt-5">
                               <div className="flex items-center justify-between mb-2">
-                                <span className="text-[9px] font-bold text-white/70">
+                                <span className="text-xs font-bold text-white/70">
                                   Next Tier: {nextTrustTier.name}
                                 </span>
-                                <span className="text-[9px] font-black">
+                                <span className="text-xs font-black">
                                   {trustTierProgress}%
                                 </span>
                               </div>
@@ -1816,7 +1816,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                                 />
                               </div>
 
-                              <div className="grid grid-cols-2 gap-2 mt-3 text-[9px] text-white/65">
+                              <div className="grid grid-cols-2 gap-2 mt-3 text-xs text-white/65">
                                 <span>
                                   Transactions: {userTrustStats.completedTransactions}/
                                   {Number(nextTrustTier.min_transactions || 0)}
@@ -1828,20 +1828,20 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               </div>
                             </div>
                           ) : (
-                            <div className="mt-5 rounded-2xl bg-emerald-400/15 border border-emerald-300/20 p-3 text-[10px] font-bold text-emerald-100">
+                            <div className="mt-5 rounded-2xl bg-emerald-400/15 border border-emerald-300/20 p-3 text-xs font-bold text-emerald-100">
                               Maximum Trust Tier reached.
                             </div>
                           )}
 
                           <div className="mt-5">
-                            <p className="text-[9px] font-black uppercase tracking-wider text-white/50 mb-2">
+                            <p className="text-xs font-black uppercase tracking-wider text-white/50 mb-2">
                               Current Privileges
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {(currentTrustTier?.privileges || []).map((privilege, index) => (
                                 <span
                                   key={`${privilege}-${index}`}
-                                  className="px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[9px] font-semibold text-white/80"
+                                  className="px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-xs font-semibold text-white/80"
                                 >
                                   {privilege}
                                 </span>
@@ -1865,24 +1865,24 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         Community Reputation
                       </h3>
 
-                      <p className="text-[11px] opacity-70 mb-4">
+                      <p className="text-xs opacity-70 mb-4">
                         Repair service feedback and completed performance
                       </p>
 
                       <div className="flex items-center gap-3 flex-wrap">
                         {verificationStatus === "verified" && (
-                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                             <CheckCircle2 size={10} />
                             VERIFIED
                           </span>
                         )}
 
-                        <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                        <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                           <Star size={10} />
                           {Number(userTrustStats.averageRating || 0).toFixed(1)} Rating
                         </span>
 
-                        <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1">
+                        <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                           <MessageSquareText size={10} />
                           {userTrustStats.totalReviews} Reviews
                         </span>
@@ -1899,7 +1899,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                       </h3>
 
                       {isEditingProfile && (
-                        <span className="text-[9px] font-bold uppercase text-[#769c2d] bg-lime-50 px-2 py-1 rounded-full">
+                        <span className="text-xs font-bold uppercase text-[#769c2d] bg-lime-50 px-2 py-1 rounded-full">
                           Editing
                         </span>
                       )}
@@ -1914,7 +1914,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         />
 
                         <div className="flex-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          <p className="text-xs font-bold text-slate-400 uppercase">
                             Business Name
                           </p>
                           <p className="text-sm font-semibold text-slate-700 mt-1">
@@ -1931,7 +1931,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         />
 
                         <div className="flex-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          <p className="text-xs font-bold text-slate-400 uppercase">
                             Full Name
                           </p>
 
@@ -1964,7 +1964,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         />
 
                         <div className="flex-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          <p className="text-xs font-bold text-slate-400 uppercase">
                             Email Address
                           </p>
 
@@ -1977,7 +1977,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                                 disabled
                                 className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-500 bg-slate-100 cursor-not-allowed outline-none"
                               />
-                              <p className="text-[9px] text-slate-400 mt-1.5">
+                              <p className="text-xs text-slate-400 mt-1.5">
                                 Email address cannot be changed from Edit Profile.
                               </p>
                             </div>
@@ -1997,7 +1997,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         />
 
                         <div className="flex-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          <p className="text-xs font-bold text-slate-400 uppercase">
                             Phone Number
                           </p>
 
@@ -2030,7 +2030,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         />
 
                         <div className="flex-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          <p className="text-xs font-bold text-slate-400 uppercase">
                             Assigned Area / Barangay
                           </p>
 
@@ -2063,7 +2063,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         />
 
                         <div className="flex-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          <p className="text-xs font-bold text-slate-400 uppercase">
                             Account Role
                           </p>
 
@@ -2073,7 +2073,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               {profileData?.role || "Harvester"}
                             </span>
 
-                            <p className="text-[9px] text-slate-400 mt-1">
+                            <p className="text-xs text-slate-400 mt-1">
                               Account role cannot be changed by the user.
                             </p>
                           </div>
@@ -2088,7 +2088,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         />
 
                         <div className="flex-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          <p className="text-xs font-bold text-slate-400 uppercase">
                             Active Since
                           </p>
 
@@ -2096,7 +2096,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                             {profileData?.joined_date || "2026"}
                           </p>
 
-                          <p className="text-[9px] text-slate-400 mt-1">
+                          <p className="text-xs text-slate-400 mt-1">
                             Automatically based on your account creation date.
                           </p>
                         </div>
@@ -2113,13 +2113,13 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         <h3 className="font-bold text-gray-800 text-sm">
                           Verification Documents
                         </h3>
-                        <p className="text-[9px] text-slate-400 mt-1">
+                        <p className="text-xs text-slate-400 mt-1">
                           {verificationStatus === "rejected" || verificationStatus === "expired"
                             ? "Upload corrected documents to request another administrator review."
                             : "Document replacement is available when your account is rejected or expired."}
                         </p>
                       </div>
-                      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${
+                      <span className={`text-xs font-black uppercase px-2 py-1 rounded-full ${
                         verificationStatus === "rejected"
                           ? "bg-red-50 text-red-600"
                           : verificationStatus === "expired"
@@ -2133,13 +2133,13 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     {(verificationStatus === "rejected" || verificationStatus === "expired") ? (
                       <>
                         <div className="rounded-2xl bg-amber-50 border border-amber-100 p-3">
-                          <p className="text-[10px] text-amber-800 leading-relaxed">
+                          <p className="text-xs text-amber-800 leading-relaxed">
                             <strong>Resubmission:</strong> You do not need a Verified Repair Shop status to resubmit. This action is specifically available after rejection or expiration.
                           </p>
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-2">
+                          <label className="text-xs font-black text-slate-500 uppercase tracking-wider block mb-2">
                             Corrected Business Permit / DTI Registration <span className="text-red-500">*</span>
                           </label>
                           <input
@@ -2162,7 +2162,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                                 <span className="block text-xs font-bold text-slate-700 truncate">
                                   {resubmissionPermitFile?.name || "Choose corrected permit"}
                                 </span>
-                                <span className="block text-[9px] text-slate-400 mt-1">
+                                <span className="block text-xs text-slate-400 mt-1">
                                   PDF, JPEG, PNG, or WebP • maximum 5MB
                                 </span>
                               </span>
@@ -2171,7 +2171,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-2">
+                          <label className="text-xs font-black text-slate-500 uppercase tracking-wider block mb-2">
                             Corrected Technical Certification <span className="text-red-500">*</span>
                           </label>
                           <input
@@ -2194,7 +2194,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                                 <span className="block text-xs font-bold text-slate-700 truncate">
                                   {resubmissionTechCertFile?.name || "Choose corrected certification"}
                                 </span>
-                                <span className="block text-[9px] text-slate-400 mt-1">
+                                <span className="block text-xs text-slate-400 mt-1">
                                   PDF, JPEG, PNG, or WebP • maximum 5MB
                                 </span>
                               </span>
@@ -2212,7 +2212,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         </button>
                       </>
                     ) : (
-                      <p className="text-[10px] text-slate-400 bg-slate-50 rounded-2xl p-4">
+                      <p className="text-xs text-slate-400 bg-slate-50 rounded-2xl p-4">
                         Document resubmission is available when the verification status is <strong>Rejected</strong> or <strong>Expired</strong>.
                       </p>
                     )}
@@ -2324,7 +2324,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     Reason: <span className="font-bold">"{rejectionReason}"</span>
                   </p>
                 )}
-                <p className={`text-[10px] mt-2 ${
+                <p className={`text-xs mt-2 ${
                   verificationStatus === "expired" ? "text-orange-500" : "text-red-400"
                 }`}>
                   Upload corrected Business Permit and Technical Certification documents, then resubmit for administrator approval.
@@ -2333,7 +2333,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               <button
                 type="button"
                 onClick={handleReverify}
-                className={`px-6 py-2 text-white text-[10px] font-black rounded-2xl uppercase tracking-widest transition-colors ${
+                className={`px-6 py-2 text-white text-xs font-black rounded-2xl uppercase tracking-widest transition-colors ${
                   verificationStatus === "expired"
                     ? "bg-orange-600 hover:bg-orange-700"
                     : "bg-red-600 hover:bg-red-700"
@@ -2353,7 +2353,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 <h3 className="text-sm font-black text-blue-800 uppercase tracking-tight">
                   Verification Pending
                 </h3>
-                <p className="text-[10px] text-blue-600 mt-1">
+                <p className="text-xs text-blue-600 mt-1">
                   Your documents are with the Administrator for review. You will be notified when the verification status changes.
                 </p>
               </div>
@@ -2507,12 +2507,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
         {/* RESULT COUNT */}
         <div className="flex justify-between items-center mb-4 px-1">
-          <p className="text-[10px] font-bold text-slate-400">
+          <p className="text-xs font-bold text-slate-400">
             {filteredListings.length}{" "}
             {filteredListings.length === 1 ? "listing" : "listings"} found
           </p>
 
-          <p className="text-[9px] font-bold text-slate-400">
+          <p className="text-xs font-bold text-slate-400">
             Sorted by: <span className="text-slate-600">{sortOption}</span>
           </p>
         </div>
@@ -2543,7 +2543,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   No listings found
                 </p>
 
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-xs text-slate-400 mt-1">
                   Try another search or condition.
                 </p>
               </div>
@@ -2745,7 +2745,7 @@ const MyBidsView = ({ bids, onContactSeller }) => {
         <h3 className="text-lg font-black text-slate-800">
           No Bids Placed Yet
         </h3>
-        <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-2 max-w-[240px] mx-auto leading-relaxed">
+        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2 max-w-[240px] mx-auto leading-relaxed">
           Browse the marketplace and start bidding on e-waste parts to see them
           here.
         </p>
@@ -2760,7 +2760,7 @@ const MyBidsView = ({ bids, onContactSeller }) => {
         <h2 className="text-xl font-black text-slate-800 tracking-tight">
           Track Your Bids
         </h2>
-        <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-1">
+        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
           Manage your active offers and pending approvals
         </p>
       </div>
@@ -2825,7 +2825,7 @@ const MyBidsView = ({ bids, onContactSeller }) => {
                     {bid.listings?.device_model}
                   </h3>
                   <span
-                    className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${bid.status === "accepted"
+                    className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${bid.status === "accepted"
                       ? "bg-emerald-100 text-emerald-600"
                       : bid.status === "countered"
                         ? "bg-blue-100 text-blue-600"
@@ -2835,7 +2835,7 @@ const MyBidsView = ({ bids, onContactSeller }) => {
                     {bid.status || "Pending"}
                   </span>
                 </div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                   Seller: {bid.listings?.profiles?.full_name} • Barangay{" "}
                   {bid.listings?.profiles?.barangay || "Unknown"}
                 </p>
@@ -2857,7 +2857,7 @@ const MyBidsView = ({ bids, onContactSeller }) => {
 
             <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-6 rounded-[2rem] mb-6 border border-slate-100/50">
               <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">
+                <p className="text-xs font-black text-slate-400 uppercase mb-1 tracking-widest">
                   Your Bid
                 </p>
                 <p className="text-2xl font-black text-[#769c2d]">
@@ -2865,7 +2865,7 @@ const MyBidsView = ({ bids, onContactSeller }) => {
                 </p>
               </div>
               <div className="border-l border-slate-100 pl-6">
-                <p className="text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">
+                <p className="text-xs font-black text-slate-400 uppercase mb-1 tracking-widest">
                   Asking Price
                 </p>
                 <p className="text-2xl font-black text-slate-400">
@@ -2888,7 +2888,7 @@ const MyBidsView = ({ bids, onContactSeller }) => {
             {bid.status === "countered" && (
               <div className="bg-blue-50 border border-blue-100 p-6 rounded-[1.5rem] mb-6 flex justify-between items-center">
                 <div>
-                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">
+                  <p className="text-xs font-black text-blue-500 uppercase tracking-widest mb-1">
                     Seller's Counter Offer
                   </p>
                   <p className="text-xl font-black text-blue-700">
@@ -2896,10 +2896,10 @@ const MyBidsView = ({ bids, onContactSeller }) => {
                   </p>
                 </div>
                 <div className="flex gap-3">
-                  <button className="px-8 py-3 bg-[#769c2d] text-white text-[10px] font-black rounded-2xl uppercase tracking-widest hover:scale-105 transition-transform">
+                  <button className="px-8 py-3 bg-[#769c2d] text-white text-xs font-black rounded-2xl uppercase tracking-widest hover:scale-105 transition-transform">
                     Accept
                   </button>
-                  <button className="px-8 py-3 bg-white border border-blue-100 text-blue-400 text-[10px] font-black rounded-2xl uppercase tracking-widest hover:bg-blue-50 transition-colors">
+                  <button className="px-8 py-3 bg-white border border-blue-100 text-blue-400 text-xs font-black rounded-2xl uppercase tracking-widest hover:bg-blue-50 transition-colors">
                     Decline
                   </button>
                 </div>
@@ -2907,7 +2907,7 @@ const MyBidsView = ({ bids, onContactSeller }) => {
             )}
 
             <div className="flex justify-between items-center pt-2">
-              <div className="flex items-center gap-2 text-[9px] font-black text-slate-300 uppercase tracking-widest">
+              <div className="flex items-center gap-2 text-xs font-black text-slate-300 uppercase tracking-widest">
                 <Calendar size={12} />
                 Submitted {new Date(bid.created_at).toLocaleDateString()}
               </div>
@@ -2916,12 +2916,12 @@ const MyBidsView = ({ bids, onContactSeller }) => {
                 <button
                   type="button"
                   onClick={() => onContactSeller?.(bid)}
-                  className="px-6 py-2.5 bg-[#769c2d] text-white text-[9px] font-black rounded-2xl uppercase tracking-widest shadow-lg shadow-lime-100 flex items-center gap-2 hover:scale-105 transition-transform"
+                  className="px-6 py-2.5 bg-[#769c2d] text-white text-xs font-black rounded-2xl uppercase tracking-widest shadow-lg shadow-lime-100 flex items-center gap-2 hover:scale-105 transition-transform"
                 >
                   <MessageSquare size={12} /> Contact Seller
                 </button>
               ) : (
-                <button className="px-6 py-2.5 bg-white border border-slate-100 text-slate-400 text-[9px] font-black rounded-2xl uppercase tracking-widest hover:bg-slate-50 transition-colors">
+                <button className="px-6 py-2.5 bg-white border border-slate-100 text-slate-400 text-xs font-black rounded-2xl uppercase tracking-widest hover:bg-slate-50 transition-colors">
                   View Listing
                 </button>
               )}
@@ -2964,7 +2964,7 @@ const AlertsView = ({ notifications }) => {
             <div className="flex items-center gap-2">
               <h4 className="font-bold text-slate-800 text-sm">{n.title}</h4>
               {n.type === "alert_match" && (
-                <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">
+                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">
                   Match
                 </span>
               )}
@@ -2977,7 +2977,7 @@ const AlertsView = ({ notifications }) => {
           </div>
 
           <div className="text-right">
-            <p className="text-[10px] font-bold text-slate-300 uppercase">
+            <p className="text-xs font-bold text-slate-300 uppercase">
               {new Date(n.created_at).toLocaleDateString([], {
                 month: "short",
                 day: "numeric",
@@ -3614,7 +3614,7 @@ const MessagesView = ({
             />
 
             {loadError && (
-              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-[10px] text-red-600">
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-xs text-red-600">
                 <b>Message loading error:</b>
                 <div className="mt-1 break-words">{loadError}</div>
               </div>
@@ -3631,7 +3631,7 @@ const MessagesView = ({
                   className="mx-auto mb-3 opacity-40"
                 />
                 <p className="text-xs font-semibold">No messages yet</p>
-                <p className="text-[10px] mt-1">
+                <p className="text-xs mt-1">
                   Harvester messages and repair requests will appear here.
                 </p>
               </div>
@@ -3662,13 +3662,13 @@ const MessagesView = ({
                         </p>
 
                         {chat.has_appointment && (
-                          <span className="inline-block mt-2 px-2 py-1 rounded-full bg-amber-50 text-amber-700 text-[9px] font-bold">
+                          <span className="inline-block mt-2 px-2 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-bold">
                             Repair appointment
                           </span>
                         )}
                       </div>
 
-                      <span className="text-[9px] text-slate-400 shrink-0">
+                      <span className="text-xs text-slate-400 shrink-0">
                         {chat.last_at
                           ? new Date(chat.last_at).toLocaleDateString()
                           : ""}
@@ -3702,7 +3702,7 @@ const MessagesView = ({
                     >
                       <div className="flex justify-between gap-3">
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                          <p className="text-xs font-black uppercase tracking-wider text-emerald-700">
                             Repair Appointment Request
                           </p>
                           <h3 className="text-base font-bold text-slate-800 mt-1">
@@ -3710,7 +3710,7 @@ const MessagesView = ({
                           </h3>
                         </div>
 
-                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[9px] font-bold uppercase h-fit">
+                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold uppercase h-fit">
                           {normalizeAppointmentStatus(appointment.status)}
                         </span>
                       </div>
@@ -3752,7 +3752,7 @@ const MessagesView = ({
                                   onClick={() =>
                                     updateAppointment(appointment.id, "accepted")
                                   }
-                                  className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-xs font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   {isUpdating ? "Updating..." : "Accept Request"}
                                 </button>
@@ -3763,7 +3763,7 @@ const MessagesView = ({
                                   onClick={() =>
                                     updateAppointment(appointment.id, "declined")
                                   }
-                                  className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-[10px] font-bold hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   Decline
                                 </button>
@@ -3777,7 +3777,7 @@ const MessagesView = ({
                                 onClick={() =>
                                   updateAppointment(appointment.id, "confirmed")
                                 }
-                                className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-xs font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {isUpdating ? "Confirming..." : "Confirm Appointment"}
                               </button>
@@ -3790,26 +3790,26 @@ const MessagesView = ({
                                 onClick={() =>
                                   updateAppointment(appointment.id, "completed")
                                 }
-                                className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-[10px] font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-xs font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {isUpdating ? "Completing..." : "Mark Completed"}
                               </button>
                             )}
 
                             {status === "declined" && (
-                              <span className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-[10px] font-bold uppercase">
+                              <span className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-xs font-bold uppercase">
                                 Request Declined
                               </span>
                             )}
 
                             {status === "cancelled" && (
-                              <span className="px-4 py-2 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-bold uppercase">
+                              <span className="px-4 py-2 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold uppercase">
                                 Appointment Cancelled
                               </span>
                             )}
 
                             {status === "completed" && (
-                              <span className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase">
+                              <span className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-bold uppercase">
                                 Appointment Completed
                               </span>
                             )}
@@ -4022,11 +4022,11 @@ const AchievementsModal = ({
               <Trophy size={28} />
             </div>
             <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/70">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/70">
                 Wasteless Achievements
               </p>
               <h2 className="text-2xl font-black mt-1">Your Achievements</h2>
-              <p className="text-[11px] text-white/80 mt-1">
+              <p className="text-xs text-white/80 mt-1">
                 {unlockedCount} of {achievements.length} achievements unlocked
               </p>
             </div>
@@ -4064,10 +4064,10 @@ const AchievementsModal = ({
                         {achievement.unlocked ? (
                           <CheckCircle2 size={17} className="text-emerald-500 shrink-0" />
                         ) : (
-                          <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">Locked</span>
+                          <span className="text-xs font-black uppercase tracking-wider text-slate-400">Locked</span>
                         )}
                       </div>
-                      <p className="text-[10px] leading-relaxed text-slate-500 mt-1">
+                      <p className="text-xs leading-relaxed text-slate-500 mt-1">
                         {achievement.description}
                       </p>
 
@@ -4081,11 +4081,11 @@ const AchievementsModal = ({
                           />
                         </div>
                         <div className="flex items-center justify-between mt-1.5">
-                          <span className="text-[8px] font-bold text-slate-400">
+                          <span className="text-xs font-bold text-slate-400">
                             {achievement.progressLabel}
                           </span>
                           {achievement.unlocked && (
-                            <span className="text-[8px] font-black uppercase text-emerald-600">Unlocked</span>
+                            <span className="text-xs font-black uppercase text-emerald-600">Unlocked</span>
                           )}
                         </div>
                       </div>
@@ -4100,7 +4100,7 @@ const AchievementsModal = ({
             <div className="w-9 h-9 rounded-xl bg-lime-50 text-[#769c2d] flex items-center justify-center shrink-0">
               <Award size={18} />
             </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-500 leading-relaxed">
               Keep completing transactions, recovering devices, building community trust, and maintaining your rating to unlock more achievements.
             </p>
           </div>
@@ -4233,7 +4233,7 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
             <Box size={38} />
 
-            <p className="text-[9px] font-bold uppercase tracking-widest mt-2">
+            <p className="text-xs font-bold uppercase tracking-widest mt-2">
               No Image
             </p>
           </div>
@@ -4242,14 +4242,14 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
         {/* CONDITION */}
         <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
           <span
-            className={`px-2.5 py-1 rounded-full border text-[8px] font-black uppercase ${getConditionStyles(
+            className={`px-2.5 py-1 rounded-full border text-xs font-black uppercase ${getConditionStyles(
               item.condition,
             )}`}
           >
             {item.condition || "Unknown"}
           </span>
 
-          <span className="px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-sm text-slate-600 border border-white text-[7px] font-black uppercase shadow-sm">
+          <span className="px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-sm text-slate-600 border border-white text-xs font-black uppercase shadow-sm">
             {item.condition?.toLowerCase() === "working"
               ? "Buyer + Repair Shop"
               : "Repair Shop"}
@@ -4258,7 +4258,7 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
 
         {/* IMAGE COUNT */}
         {listingMedia.length > 1 && (
-          <div className="absolute bottom-3 right-3 bg-black/60 text-white px-2 py-1 rounded-full text-[8px] font-bold">
+          <div className="absolute bottom-3 right-3 bg-black/60 text-white px-2 py-1 rounded-full text-xs font-bold">
             {activeIndex + 1}/{listingMedia.length}
           </div>
         )}
@@ -4307,7 +4307,7 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
             {item.device_model || "Device Name"}
           </h3>
 
-          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-0.5">
             {item.device_type || item.category || "E-waste Device"}
           </p>
         </div>
@@ -4315,16 +4315,16 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
         {/* RATING */}
         {sellerRating > 0 && (
           <div className="flex items-center gap-1 mb-2">
-            <span className="text-yellow-400 text-[10px]">★</span>
+            <span className="text-yellow-400 text-xs">★</span>
 
-            <span className="text-[9px] font-bold text-slate-500">
+            <span className="text-xs font-bold text-slate-500">
               {sellerRating.toFixed(1)}
             </span>
           </div>
         )}
 
         {/* DESCRIPTION */}
-        <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-2 min-h-[30px]">
+        <p className="text-xs text-slate-500 leading-relaxed line-clamp-2 min-h-[30px]">
           {item.description || "No description provided for this listing."}
         </p>
 
@@ -4332,7 +4332,7 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
         <div className="flex items-center gap-1.5 mt-3">
           <MapPin size={11} className="text-slate-400" />
 
-          <span className="text-[9px] font-bold text-slate-400">
+          <span className="text-xs font-bold text-slate-400">
             Barangay {sellerBarangay}
           </span>
         </div>
@@ -4344,7 +4344,7 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
           <div className="grid grid-cols-2 gap-3">
             {/* ASKING */}
             <div>
-              <p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">
+              <p className="text-xs font-black text-slate-400 uppercase tracking-wider">
                 Asking Price
               </p>
 
@@ -4355,7 +4355,7 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
 
             {/* HIGHEST BID */}
             <div>
-              <p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">
+              <p className="text-xs font-black text-slate-400 uppercase tracking-wider">
                 Current Highest Bid
               </p>
 
@@ -4368,12 +4368,12 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
           </div>
 
           <div className="border-t border-blue-100 mt-2 pt-2 flex items-center justify-between">
-            <span className="text-[7px] text-slate-400">
+            <span className="text-xs text-slate-400">
               Total Bids: <strong className="text-slate-600">{bidCount}</strong>
             </span>
 
             <span
-              className={`px-2 py-1 rounded-full text-[7px] font-black ${competitionStyle}`}
+              className={`px-2 py-1 rounded-full text-xs font-black ${competitionStyle}`}
             >
               {competition}
             </span>
@@ -4393,13 +4393,13 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
                 onSellerClick?.();
               }}
             >
-              <p className="text-[7px] text-slate-400 uppercase font-bold">
+              <p className="text-xs text-slate-400 uppercase font-bold">
                 Seller
               </p>
 
               <div className="flex items-center gap-1.5 mt-1">
                 {/* Seller Avatar */}
-                <div className="w-6 h-6 rounded-full bg-[#4a7c59] text-white flex items-center justify-center text-[8px] font-black shrink-0">
+                <div className="w-6 h-6 rounded-full bg-[#4a7c59] text-white flex items-center justify-center text-xs font-black shrink-0">
                   {sellerName
                     .split(" ")
                     .map((n) => n[0])
@@ -4409,13 +4409,13 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
                 </div>
 
                 {/* Seller Name */}
-                <span className="text-[9px] font-bold text-slate-700 truncate max-w-[150px] group-hover:text-[#769c2d] transition-colors">
+                <span className="text-xs font-bold text-slate-700 truncate max-w-[150px] group-hover:text-[#769c2d] transition-colors">
                   {sellerName}
                 </span>
               </div>
 
               {/* Click hint */}
-              <p className="text-[7px] text-slate-300 mt-1 group-hover:text-[#769c2d] transition-colors">
+              <p className="text-xs text-slate-300 mt-1 group-hover:text-[#769c2d] transition-colors">
                 Click to view profile
               </p>
             </div>
@@ -4427,7 +4427,7 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
                 onBid();
               }}
               disabled={!isVerified}
-              className={`px-4 py-2.5 rounded-lg text-[8px] font-black uppercase tracking-wide flex items-center gap-1.5 transition-all ${isVerified
+              className={`px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wide flex items-center gap-1.5 transition-all ${isVerified
                 ? "bg-[#769c2d] text-white hover:bg-[#658724]"
                 : "bg-slate-100 text-slate-400 cursor-not-allowed"
                 }`}

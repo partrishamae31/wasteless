@@ -225,7 +225,7 @@ const BarangayLeaderboard = () => {
             Barangay E-waste Tracker
           </h2>
 
-          <p className="text-[10px] text-slate-400 font-bold mt-1">
+          <p className="text-xs text-slate-400 font-bold mt-1">
             Live rankings based on current e-waste listings
           </p>
         </div>
@@ -233,7 +233,7 @@ const BarangayLeaderboard = () => {
         <button
           onClick={fetchLeaderboardData}
           disabled={refreshing || loading}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black text-slate-500 hover:text-[#769c2d] hover:border-[#769c2d] transition-all disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-black text-slate-500 hover:text-[#769c2d] hover:border-[#769c2d] transition-all disabled:opacity-50"
         >
           <RefreshCw
             size={13}
@@ -261,7 +261,7 @@ const BarangayLeaderboard = () => {
               Unable to load tracker
             </p>
 
-            <p className="text-[10px] text-red-400 mt-1">
+            <p className="text-xs text-red-400 mt-1">
               {error}
             </p>
           </div>
@@ -312,7 +312,7 @@ const BarangayLeaderboard = () => {
                   <div className="mt-5 space-y-2">
 
                     <div className="flex justify-between">
-                      <span className="text-[9px] font-bold opacity-70">
+                      <span className="text-xs font-bold opacity-70">
                         ACTIVE ITEMS
                       </span>
 
@@ -322,7 +322,7 @@ const BarangayLeaderboard = () => {
                     </div>
 
                     <div className="flex justify-between">
-                      <span className="text-[9px] font-bold opacity-70">
+                      <span className="text-xs font-bold opacity-70">
                         COLLECTED
                       </span>
 
@@ -332,7 +332,7 @@ const BarangayLeaderboard = () => {
                     </div>
 
                     <div className="flex justify-between">
-                      <span className="text-[9px] font-bold opacity-70">
+                      <span className="text-xs font-bold opacity-70">
                         HOUSEHOLDS
                       </span>
 
@@ -363,7 +363,7 @@ const BarangayLeaderboard = () => {
               Complete Rankings
             </h3>
 
-            <p className="text-[10px] text-slate-400 font-bold mt-1">
+            <p className="text-xs text-slate-400 font-bold mt-1">
               Rankings automatically update from active listings
             </p>
           </div>
@@ -409,7 +409,7 @@ const BarangayLeaderboard = () => {
               No e-waste listings found
             </p>
 
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 mt-1">
               Barangay rankings will appear once active listings
               are available.
             </p>
@@ -423,7 +423,7 @@ const BarangayLeaderboard = () => {
             <table className="w-full text-left">
 
               <thead>
-                <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <tr className="bg-slate-50/50 text-xs font-black text-slate-400 uppercase tracking-widest">
 
                   <th className="px-8 py-4">
                     Rank
@@ -465,7 +465,7 @@ const BarangayLeaderboard = () => {
                     <td className="px-8 py-5">
 
                       <span
-                        className={`w-7 h-7 flex items-center justify-center rounded-full text-[10px] font-black ${
+                        className={`w-7 h-7 flex items-center justify-center rounded-full text-xs font-black ${
                           index === 0
                             ? "bg-yellow-100 text-yellow-700"
                             : index === 1
@@ -520,7 +520,7 @@ const BarangayLeaderboard = () => {
                     <td className="px-8 py-5">
 
                       <span
-                        className={`px-3 py-1 rounded-full text-[8px] font-black uppercase ${getStockClass(
+                        className={`px-3 py-1 rounded-full text-xs font-black uppercase ${getStockClass(
                           item.stock
                         )}`}
                       >
@@ -590,7 +590,7 @@ const BarangayLeaderboard = () => {
             {totalItems.toLocaleString()}
           </p>
 
-          <p className="text-[9px] text-slate-300 font-bold uppercase tracking-widest mt-1">
+          <p className="text-xs text-slate-300 font-bold uppercase tracking-widest mt-1">
             Active E-waste Items
           </p>
 
@@ -612,7 +612,7 @@ const BarangayLeaderboard = () => {
             {totalCollected.toLocaleString()}
           </p>
 
-          <p className="text-[9px] text-slate-300 font-bold uppercase tracking-widest mt-1">
+          <p className="text-xs text-slate-300 font-bold uppercase tracking-widest mt-1">
             Items Collected
           </p>
 
@@ -634,7 +634,7 @@ const BarangayLeaderboard = () => {
             {leaderboardData.length}
           </p>
 
-          <p className="text-[9px] text-slate-300 font-bold uppercase tracking-widest mt-1">
+          <p className="text-xs text-slate-300 font-bold uppercase tracking-widest mt-1">
             Participating Barangays
           </p>
 

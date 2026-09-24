@@ -149,17 +149,17 @@ const RepairShopMap = ({
   return (
     <div className="relative z-0 isolate w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="absolute left-4 top-4 z-[1000] rounded-xl bg-white px-3 py-2 shadow-lg">
-        <p className="text-[9px] font-black text-slate-700">
+        <p className="text-xs font-black text-slate-700">
           {isAllBarangays ? "Valenzuela City" : `Brgy. ${barangay}`}
         </p>
-        <p className="text-[7px] text-slate-400">
+        <p className="text-xs text-slate-400">
           Repair shop locations
         </p>
       </div>
 
       <div className="absolute right-4 top-4 z-[1000] rounded-xl bg-[#3285a1] px-3 py-2 text-white shadow-lg">
-        <p className="text-[9px] font-black">{shops.length} Repair Shops</p>
-        <p className="mt-0.5 text-[7px] text-white/70">
+        <p className="text-xs font-black">{shops.length} Repair Shops</p>
+        <p className="mt-0.5 text-xs text-white/70">
           Click a pin for details
         </p>
       </div>
@@ -208,12 +208,12 @@ const RepairShopMap = ({
 
                   <div className="mt-2">
                     {exactLocation ? (
-                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600">
                         <CheckCircle2 size={12} />
                         Exact shop location
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-amber-600">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
                         <MapPin size={12} />
                         Barangay location only
                       </div>
@@ -229,11 +229,11 @@ const RepairShopMap = ({
                     {Number(shop.repairReviewCount || 0) +
                       Number(shop.saleReviewCount || 0) >
                     0 ? (
-                      <span className="text-[10px] font-bold">
+                      <span className="text-xs font-bold">
                         {Number(shop.combinedRating || 0).toFixed(1)}
                       </span>
                     ) : (
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-xs text-slate-400">
                         No reviews yet
                       </span>
                     )}
@@ -265,19 +265,19 @@ const RepairShopMap = ({
       </MapContainer>
 
       <div className="absolute bottom-4 right-4 z-[1000] rounded-xl bg-white p-3 shadow-lg">
-        <div className="flex items-center gap-2 text-[9px] text-slate-500">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
           <span className="h-3 w-3 rounded-full bg-[#3285a1]" />
           Repair Shop
         </div>
         {isAllBarangays && (
-          <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-500">
+          <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
             <span className="h-3 w-3 rounded-full bg-emerald-500" />
             City Map Center
           </div>
         )}
       </div>
 
-      <div className="absolute bottom-4 left-4 z-[1000] max-w-[290px] rounded-lg bg-white/95 px-3 py-2 text-[8px] leading-relaxed text-slate-500 shadow">
+      <div className="absolute bottom-4 left-4 z-[1000] max-w-[290px] rounded-lg bg-white/95 px-3 py-2 text-xs leading-relaxed text-slate-500 shadow">
         <span className="font-bold text-slate-600">Location accuracy:</span>{" "}
         exact pins are used when a repair shop has saved latitude and
         longitude. Older accounts fall back to their barangay.
@@ -1445,7 +1445,7 @@ const SellerRepairShopsTab = ({
                 Customer
               </p>
 
-              <p className="text-[8px] text-slate-400">
+              <p className="text-xs text-slate-400">
                 {review.created_at
                   ? new Date(review.created_at).toLocaleDateString()
                   : ""}
@@ -1467,7 +1467,7 @@ const SellerRepairShopsTab = ({
 
         <div className="mt-2">
           <span
-            className={`rounded-full px-2 py-1 text-[7px] font-black ${
+            className={`rounded-full px-2 py-1 text-xs font-black ${
               isRepair
                 ? "bg-violet-50 text-violet-700"
                 : "bg-blue-50 text-blue-700"
@@ -1484,7 +1484,7 @@ const SellerRepairShopsTab = ({
         )}
 
         {review.recommend && (
-          <div className="mt-2 flex items-center gap-1 text-[8px] font-bold text-emerald-600">
+          <div className="mt-2 flex items-center gap-1 text-xs font-bold text-emerald-600">
             <CheckCircle2 size={11} />
             Recommended
           </div>
@@ -1503,7 +1503,7 @@ const SellerRepairShopsTab = ({
       <div className="rounded-[1.25rem] mt-16 bg-gradient-to-r from-[#2d86a3] to-[#14516d] p-5 text-white shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-white/60">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-white/60">
               <MapPin size={11} />
               {currentBarangay}
             </div>
@@ -1512,7 +1512,7 @@ const SellerRepairShopsTab = ({
               Repair Shops in Your Area
             </h2>
 
-            <p className="mt-0.5 text-[10px] text-white/60">
+            <p className="mt-0.5 text-xs text-white/60">
               Find verified repair shops and request a repair appointment
             </p>
           </div>
@@ -1521,7 +1521,7 @@ const SellerRepairShopsTab = ({
             <span className="text-xl font-black leading-none">
               {totalShops}
             </span>
-            <span className="mt-0.5 text-[7px] font-bold uppercase tracking-wider text-white/60">
+            <span className="mt-0.5 text-xs font-bold uppercase tracking-wider text-white/60">
               Shops
             </span>
           </div>
@@ -1536,7 +1536,7 @@ const SellerRepairShopsTab = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search shop, owner, barangay..."
-            className="w-full rounded-xl border border-white/15 bg-white/10 px-9 py-2.5 text-[10px] text-white placeholder:text-white/40 outline-none transition focus:bg-white/15"
+            className="w-full rounded-xl border border-white/15 bg-white/10 px-9 py-2.5 text-xs text-white placeholder:text-white/40 outline-none transition focus:bg-white/15"
           />
         </div>
 
@@ -1544,7 +1544,7 @@ const SellerRepairShopsTab = ({
           <button
             type="button"
             onClick={() => setViewMode("list")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[9px] font-black transition ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-black transition ${
               viewMode === "list"
                 ? "bg-white text-[#2d86a3]"
                 : "bg-white/10 text-white hover:bg-white/20"
@@ -1557,7 +1557,7 @@ const SellerRepairShopsTab = ({
           <button
             type="button"
             onClick={() => setViewMode("map")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[9px] font-black transition ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-black transition ${
               viewMode === "map"
                 ? "bg-white text-[#2d86a3]"
                 : "bg-white/10 text-white hover:bg-white/20"
@@ -1571,7 +1571,7 @@ const SellerRepairShopsTab = ({
             type="button"
             onClick={() => fetchRepairShops(true)}
             disabled={refreshing}
-            className="ml-auto flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-[9px] font-black text-white hover:bg-white/20 disabled:opacity-50"
+            className="ml-auto flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-black text-white hover:bg-white/20 disabled:opacity-50"
           >
             <RefreshCw
               size={11}
@@ -1587,7 +1587,7 @@ const SellerRepairShopsTab = ({
         <select
           value={barangayFilter}
           onChange={(e) => setBarangayFilter(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[9px] font-semibold text-slate-600 outline-none"
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 outline-none"
         >
           {barangays.map((barangay) => (
             <option key={barangay} value={barangay}>
@@ -1599,7 +1599,7 @@ const SellerRepairShopsTab = ({
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[9px] font-semibold text-slate-600 outline-none"
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 outline-none"
         >
           <option value="rating">Top Rated</option>
           <option value="purchases">Most Purchases</option>
@@ -1609,7 +1609,7 @@ const SellerRepairShopsTab = ({
         <button
           type="button"
           onClick={() => setVerifiedOnly((value) => !value)}
-          className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-bold transition ${
+          className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${
             verifiedOnly
               ? "border-emerald-200 bg-emerald-50 text-emerald-700"
               : "border-slate-200 bg-white text-slate-500"
@@ -1626,7 +1626,7 @@ const SellerRepairShopsTab = ({
               setBarangayFilter(sellerBarangay);
               setViewMode("map");
             }}
-            className="rounded-lg border border-[#3285a1]/20 bg-[#3285a1]/5 px-2.5 py-1.5 text-[9px] font-bold text-[#3285a1]"
+            className="rounded-lg border border-[#3285a1]/20 bg-[#3285a1]/5 px-2.5 py-1.5 text-xs font-bold text-[#3285a1]"
           >
             <MapPin size={11} className="mr-1 inline" />
             My Barangay
@@ -1641,54 +1641,54 @@ const SellerRepairShopsTab = ({
             <h3 className="text-sm font-black text-slate-700">
               Repair Shop Overview
             </h3>
-            <p className="text-[9px] text-slate-400">
+            <p className="text-xs text-slate-400">
               Shop activity and separate selling/repair review counts
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-xl bg-blue-50 p-3">
-              <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
                 <Building2 size={11} className="text-[#3285a1]" />
                 Total Shops
               </div>
               <p className="mt-1 text-lg font-black text-slate-700">
                 {totalShops}
               </p>
-              <p className="text-[8px] text-slate-400">selected area</p>
+              <p className="text-xs text-slate-400">selected area</p>
             </div>
 
             <div className="rounded-xl bg-emerald-50 p-3">
-              <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
                 <BadgeCheck size={11} className="text-emerald-500" />
                 Verified
               </div>
               <p className="mt-1 text-lg font-black text-slate-700">
                 {verifiedShopsCount}
               </p>
-              <p className="text-[8px] text-slate-400">admin verified</p>
+              <p className="text-xs text-slate-400">admin verified</p>
             </div>
 
             <div className="rounded-xl bg-blue-50 p-3">
-              <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
                 <Star size={11} className="text-blue-500" />
                 Selling Reviews
               </div>
               <p className="mt-1 text-lg font-black text-slate-700">
                 {totalSaleReviews}
               </p>
-              <p className="text-[8px] text-slate-400">device sales</p>
+              <p className="text-xs text-slate-400">device sales</p>
             </div>
 
             <div className="rounded-xl bg-violet-50 p-3">
-              <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
                 <Wrench size={11} className="text-violet-500" />
                 Repair Reviews
               </div>
               <p className="mt-1 text-lg font-black text-slate-700">
                 {totalRepairReviews}
               </p>
-              <p className="text-[8px] text-slate-400">repair services</p>
+              <p className="text-xs text-slate-400">repair services</p>
             </div>
           </div>
         </div>
@@ -1701,7 +1701,7 @@ const SellerRepairShopsTab = ({
             size={13}
             className="mt-0.5 shrink-0 text-blue-600"
           />
-          <p className="text-[9px] leading-relaxed text-blue-700">
+          <p className="text-xs leading-relaxed text-blue-700">
             <span className="font-black">Repair appointments:</span>{" "}
             Harvester users can open a verified repair shop profile and submit
             a preferred repair date and time. The request starts as{" "}
@@ -1714,7 +1714,7 @@ const SellerRepairShopsTab = ({
       {loading ? (
         <div className="rounded-xl border border-slate-100 bg-white p-12 text-center">
           <div className="mx-auto h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-[#3285a1]" />
-          <p className="mt-3 text-[10px] text-slate-400">
+          <p className="mt-3 text-xs text-slate-400">
             Loading repair shops...
           </p>
         </div>
@@ -1724,7 +1724,7 @@ const SellerRepairShopsTab = ({
           <h4 className="text-sm font-black text-slate-700">
             No repair shops found
           </h4>
-          <p className="mt-1 text-[9px] text-slate-400">
+          <p className="mt-1 text-xs text-slate-400">
             Try changing your search, barangay, or verification filter.
           </p>
           <button
@@ -1733,7 +1733,7 @@ const SellerRepairShopsTab = ({
               setSearch("");
               setBarangayFilter("All Barangays");
             }}
-            className="mt-4 rounded-lg bg-[#3285a1] px-4 py-2 text-[9px] font-black text-white"
+            className="mt-4 rounded-lg bg-[#3285a1] px-4 py-2 text-xs font-black text-white"
           >
             Clear Filters
           </button>
@@ -1746,7 +1746,7 @@ const SellerRepairShopsTab = ({
                 <h3 className="text-sm font-black text-slate-700">
                   Repair Shop Map — {currentBarangay}
                 </h3>
-                <p className="text-[9px] text-slate-400">
+                <p className="text-xs text-slate-400">
                   Click a pin to open the shop profile and request an
                   appointment.
                 </p>
@@ -1768,12 +1768,12 @@ const SellerRepairShopsTab = ({
                   <h3 className="text-sm font-black text-slate-700">
                     Repair Shops
                   </h3>
-                  <p className="text-[9px] text-slate-400">
+                  <p className="text-xs text-slate-400">
                     Open a profile to view reviews and request repair service
                   </p>
                 </div>
 
-                <span className="rounded-lg bg-[#3285a1]/10 px-2 py-1 text-[8px] font-black text-[#3285a1]">
+                <span className="rounded-lg bg-[#3285a1]/10 px-2 py-1 text-xs font-black text-[#3285a1]">
                   {filteredShops.length} Shops
                 </span>
               </div>
@@ -1795,7 +1795,7 @@ const SellerRepairShopsTab = ({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <h4 className="truncate text-[11px] font-black text-slate-800">
+                            <h4 className="truncate text-xs font-black text-slate-800">
                               {getShopName(shop)}
                             </h4>
 
@@ -1808,13 +1808,13 @@ const SellerRepairShopsTab = ({
                             )}
                           </div>
 
-                          <p className="mt-0.5 text-[8px] text-slate-400">
+                          <p className="mt-0.5 text-xs text-slate-400">
                             {shop.purchaseCount || 0} completed purchases
                           </p>
                         </div>
 
                         {rating >= 4.5 && reviewCount > 0 && (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[7px] font-black text-amber-700">
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
                             Top Rated
                           </span>
                         )}
@@ -1838,21 +1838,21 @@ const SellerRepairShopsTab = ({
 
                         {reviewCount > 0 ? (
                           <>
-                            <span className="text-[9px] font-black text-slate-700">
+                            <span className="text-xs font-black text-slate-700">
                               {rating.toFixed(1)}
                             </span>
-                            <span className="text-[8px] text-slate-400">
+                            <span className="text-xs text-slate-400">
                               ({reviewCount} total)
                             </span>
                           </>
                         ) : (
-                          <span className="text-[8px] text-slate-400">
+                          <span className="text-xs text-slate-400">
                             No reviews yet
                           </span>
                         )}
                       </div>
 
-                      <div className="mt-3 space-y-1.5 text-[9px]">
+                      <div className="mt-3 space-y-1.5 text-xs">
                         <div className="flex items-center gap-2 text-slate-400">
                           <MapPin size={10} />
                           <span>
@@ -1873,14 +1873,14 @@ const SellerRepairShopsTab = ({
 
                       <div className="mt-3 flex flex-wrap gap-1">
                         {Number(shop.saleReviewCount || 0) > 0 && (
-                          <span className="rounded-full bg-blue-50 px-2 py-1 text-[7px] font-bold text-blue-600">
+                          <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-600">
                             {shop.saleReviewCount} selling review
                             {shop.saleReviewCount !== 1 ? "s" : ""}
                           </span>
                         )}
 
                         {Number(shop.repairReviewCount || 0) > 0 && (
-                          <span className="rounded-full bg-violet-50 px-2 py-1 text-[7px] font-bold text-violet-600">
+                          <span className="rounded-full bg-violet-50 px-2 py-1 text-xs font-bold text-violet-600">
                             {shop.repairReviewCount} repair review
                             {shop.repairReviewCount !== 1 ? "s" : ""}
                           </span>
@@ -1888,7 +1888,7 @@ const SellerRepairShopsTab = ({
                       </div>
 
                       <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                        <span className="text-[8px] text-slate-400">
+                        <span className="text-xs text-slate-400">
                           View shop profile
                         </span>
                         <ChevronRight
@@ -2070,7 +2070,7 @@ const SellerRepairShopsTab = ({
                       <h3 className="text-base font-black text-slate-700">
                         Repair Appointment
                       </h3>
-                      <p className="mt-1 text-[9px] leading-relaxed text-slate-500">
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500">
                         Request a preferred date and time for your device
                         repair. The appointment remains pending until the
                         repair shop confirms it.
@@ -2112,14 +2112,14 @@ const SellerRepairShopsTab = ({
                                     <p className="text-xs font-black text-slate-700">
                                       {appointment.device_model}
                                     </p>
-                                    <p className="mt-1 text-[8px] text-slate-400">
+                                    <p className="mt-1 text-xs text-slate-400">
                                       {appointment.preferred_date} ·{" "}
                                       {appointment.preferred_time}
                                     </p>
                                   </div>
 
                                   <span
-                                    className={`rounded-full border px-2 py-1 text-[7px] font-black uppercase ${appointmentStatusClass(
+                                    className={`rounded-full border px-2 py-1 text-xs font-black uppercase ${appointmentStatusClass(
                                       appointment.status
                                     )}`}
                                   >
@@ -2127,7 +2127,7 @@ const SellerRepairShopsTab = ({
                                   </span>
                                 </div>
 
-                                <p className="mt-2 text-[9px] text-slate-500">
+                                <p className="mt-2 text-xs text-slate-500">
                                   {appointment.issue_description}
                                 </p>
 
@@ -2141,7 +2141,7 @@ const SellerRepairShopsTab = ({
                                         appointment
                                       )
                                     }
-                                    className="mt-3 flex items-center gap-1.5 text-[8px] font-bold text-red-500 hover:text-red-600"
+                                    className="mt-3 flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-red-600"
                                   >
                                     <XCircle size={11} />
                                     Cancel Request
@@ -2155,7 +2155,7 @@ const SellerRepairShopsTab = ({
                             onClick={() =>
                               openAppointmentModal(selectedShop)
                             }
-                            className="mt-1 text-[8px] font-black text-violet-700 underline underline-offset-2"
+                            className="mt-1 text-xs font-black text-violet-700 underline underline-offset-2"
                           >
                             Request another appointment
                           </button>
@@ -2173,7 +2173,7 @@ const SellerRepairShopsTab = ({
                     <h3 className="text-lg font-black text-slate-700">
                       Devices Purchased
                     </h3>
-                    <p className="text-[9px] text-slate-400">
+                    <p className="text-xs text-slate-400">
                       Categories from completed selling transactions
                     </p>
                   </div>
@@ -2227,7 +2227,7 @@ const SellerRepairShopsTab = ({
                             <p className="truncate text-xs font-black text-slate-700">
                               {transaction.listings?.device_model || "Device"}
                             </p>
-                            <p className="text-[8px] text-slate-400">
+                            <p className="text-xs text-slate-400">
                               {transaction.listings?.category || "Unknown"}
                             </p>
                           </div>
@@ -2240,7 +2240,7 @@ const SellerRepairShopsTab = ({
                               transaction.amount || 0
                             ).toLocaleString()}
                           </p>
-                          <p className="text-[8px] text-emerald-500">
+                          <p className="text-xs text-emerald-500">
                             Completed
                           </p>
                         </div>
@@ -2263,7 +2263,7 @@ const SellerRepairShopsTab = ({
                   <h3 className="text-lg font-black text-slate-700">
                     Customer Reviews
                   </h3>
-                  <p className="text-[9px] text-slate-400">
+                  <p className="text-xs text-slate-400">
                     Selling and repair-service reviews are kept separate.
                   </p>
                 </div>
@@ -2272,7 +2272,7 @@ const SellerRepairShopsTab = ({
                   <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-[8px] font-black uppercase tracking-wider text-blue-600">
+                        <p className="text-xs font-black uppercase tracking-wider text-blue-600">
                           Selling Transactions
                         </p>
                         <p className="mt-1 text-2xl font-black text-slate-700">
@@ -2298,7 +2298,7 @@ const SellerRepairShopsTab = ({
                   <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-[8px] font-black uppercase tracking-wider text-violet-600">
+                        <p className="text-xs font-black uppercase tracking-wider text-violet-600">
                           Repair Services
                         </p>
                         <p className="mt-1 text-2xl font-black text-slate-700">
@@ -2413,7 +2413,7 @@ const SellerRepairShopsTab = ({
                 <p className="text-sm font-black">
                   Request Repair Appointment
                 </p>
-                <p className="mt-0.5 text-[9px] text-white/70">
+                <p className="mt-0.5 text-xs text-white/70">
                   {getShopName(appointmentShop)}
                 </p>
               </div>
@@ -2437,7 +2437,7 @@ const SellerRepairShopsTab = ({
                     size={14}
                     className="mt-0.5 shrink-0 text-violet-600"
                   />
-                  <p className="text-[9px] leading-relaxed text-violet-700">
+                  <p className="text-xs leading-relaxed text-violet-700">
                     Your request will be sent to the repair shop as{" "}
                     <b>Pending</b>. The selected date and time are your
                     preference and are not confirmed until the shop approves
@@ -2447,7 +2447,7 @@ const SellerRepairShopsTab = ({
               </div>
 
               <div>
-                <label className="mb-1 block text-[9px] font-black text-slate-600">
+                <label className="mb-1 block text-xs font-black text-slate-600">
                   Device Model *
                 </label>
                 <input
@@ -2464,7 +2464,7 @@ const SellerRepairShopsTab = ({
               </div>
 
               <div>
-                <label className="mb-1 block text-[9px] font-black text-slate-600">
+                <label className="mb-1 block text-xs font-black text-slate-600">
                   Device Category *
                 </label>
                 <select
@@ -2488,7 +2488,7 @@ const SellerRepairShopsTab = ({
               </div>
 
               <div>
-                <label className="mb-1 block text-[9px] font-black text-slate-600">
+                <label className="mb-1 block text-xs font-black text-slate-600">
                   Repair Issue *
                 </label>
                 <textarea
@@ -2507,7 +2507,7 @@ const SellerRepairShopsTab = ({
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-[9px] font-black text-slate-600">
+                  <label className="mb-1 block text-xs font-black text-slate-600">
                     Preferred Date *
                   </label>
                   <input
@@ -2525,7 +2525,7 @@ const SellerRepairShopsTab = ({
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-[9px] font-black text-slate-600">
+                  <label className="mb-1 block text-xs font-black text-slate-600">
                     Preferred Time *
                   </label>
                   <input
@@ -2543,7 +2543,7 @@ const SellerRepairShopsTab = ({
               </div>
 
               <div>
-                <label className="mb-1 block text-[9px] font-black text-slate-600">
+                <label className="mb-1 block text-xs font-black text-slate-600">
                   Additional Notes
                 </label>
                 <textarea
@@ -2617,7 +2617,7 @@ const SellerRepairShopsTab = ({
                   <p className="truncate text-sm font-black">
                     {getShopName(messageShop)}
                   </p>
-                  <p className="mt-0.5 text-[9px] text-white/60">
+                  <p className="mt-0.5 text-xs text-white/60">
                     Repair Shop
                   </p>
                 </div>
@@ -2647,7 +2647,7 @@ const SellerRepairShopsTab = ({
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 px-1">
                         <ClipboardList size={13} className="text-violet-600" />
-                        <p className="text-[9px] font-black uppercase tracking-wide text-slate-500">
+                        <p className="text-xs font-black uppercase tracking-wide text-slate-500">
                           Repair Appointments
                         </p>
                       </div>
@@ -2662,13 +2662,13 @@ const SellerRepairShopsTab = ({
                               <p className="truncate text-xs font-black text-slate-700">
                                 {appointment.device_model || "Device"}
                               </p>
-                              <p className="mt-0.5 text-[8px] font-semibold text-violet-600">
+                              <p className="mt-0.5 text-xs font-semibold text-violet-600">
                                 {appointment.category || "Repair request"}
                               </p>
                             </div>
 
                             <span
-                              className={`shrink-0 rounded-full border px-2 py-1 text-[7px] font-black uppercase ${
+                              className={`shrink-0 rounded-full border px-2 py-1 text-xs font-black uppercase ${
                                 String(appointment.status || "pending").toLowerCase() === "confirmed" ||
                                 String(appointment.status || "pending").toLowerCase() === "approved"
                                   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -2684,19 +2684,19 @@ const SellerRepairShopsTab = ({
 
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <div className="rounded-lg bg-slate-50 p-2">
-                              <div className="flex items-center gap-1 text-[7px] font-bold uppercase text-slate-400">
+                              <div className="flex items-center gap-1 text-xs font-bold uppercase text-slate-400">
                                 <Calendar size={10} /> Date
                               </div>
-                              <p className="mt-1 text-[9px] font-bold text-slate-600">
+                              <p className="mt-1 text-xs font-bold text-slate-600">
                                 {appointment.preferred_date || "Not set"}
                               </p>
                             </div>
 
                             <div className="rounded-lg bg-slate-50 p-2">
-                              <div className="flex items-center gap-1 text-[7px] font-bold uppercase text-slate-400">
+                              <div className="flex items-center gap-1 text-xs font-bold uppercase text-slate-400">
                                 <Clock size={10} /> Time
                               </div>
-                              <p className="mt-1 text-[9px] font-bold text-slate-600">
+                              <p className="mt-1 text-xs font-bold text-slate-600">
                                 {appointment.preferred_time || "Not set"}
                               </p>
                             </div>
@@ -2704,8 +2704,8 @@ const SellerRepairShopsTab = ({
 
                           {appointment.issue_description && (
                             <div className="mt-2 rounded-lg bg-slate-50 p-2">
-                              <p className="text-[7px] font-bold uppercase text-slate-400">Issue</p>
-                              <p className="mt-1 text-[9px] leading-relaxed text-slate-600">
+                              <p className="text-xs font-bold uppercase text-slate-400">Issue</p>
+                              <p className="mt-1 text-xs leading-relaxed text-slate-600">
                                 {appointment.issue_description}
                               </p>
                             </div>
@@ -2713,8 +2713,8 @@ const SellerRepairShopsTab = ({
 
                           {appointment.notes && (
                             <div className="mt-2 rounded-lg bg-slate-50 p-2">
-                              <p className="text-[7px] font-bold uppercase text-slate-400">Notes</p>
-                              <p className="mt-1 text-[9px] leading-relaxed text-slate-600">
+                              <p className="text-xs font-bold uppercase text-slate-400">Notes</p>
+                              <p className="mt-1 text-xs leading-relaxed text-slate-600">
                                 {appointment.notes}
                               </p>
                             </div>
@@ -2732,7 +2732,7 @@ const SellerRepairShopsTab = ({
                           ? "No messages yet"
                           : "Start a conversation"}
                       </p>
-                      <p className="mt-1 max-w-[250px] text-[9px] text-slate-400">
+                      <p className="mt-1 max-w-[250px] text-xs text-slate-400">
                         You can discuss the device or repair appointment with {getShopName(messageShop)}.
                       </p>
                     </div>
@@ -2759,7 +2759,7 @@ const SellerRepairShopsTab = ({
                                 {message.content}
                               </p>
                               <p
-                                className={`mt-1 text-[7px] ${
+                                className={`mt-1 text-xs ${
                                   isMine ? "text-white/60" : "text-slate-400"
                                 }`}
                               >
@@ -2810,7 +2810,7 @@ const SellerRepairShopsTab = ({
                 </button>
               </div>
 
-              <p className="mt-1.5 px-1 text-[7px] text-slate-400">
+              <p className="mt-1.5 px-1 text-xs text-slate-400">
                 Press Enter to send · Shift + Enter for a new line
               </p>
             </div>
