@@ -8,7 +8,7 @@ import {
   X,
   Gavel,
   MessageSquareText,
-  XCircle,
+  CheckCircle2,
 } from "lucide-react";
 
 const MatchingListingsView = ({ alerts, onBack }) => {
@@ -24,6 +24,14 @@ const MatchingListingsView = ({ alerts, onBack }) => {
 
   const [submitting, setSubmitting] = useState(false);
 
+  /*
+   * During your condition transition, some listings may still
+   * use "Defective" while new listings may use "Not Working".
+   *
+   * Both are treated as Not Working here.
+   */
+  const NOT_WORKING_CONDITIONS = ["Not Working", "Defective"];
+
   const quickQuestions = [
     "Is the battery still functional?",
     "Can you provide more photos?",
@@ -34,129 +42,289 @@ const MatchingListingsView = ({ alerts, onBack }) => {
   const handleQuickSelect = (modifier) => {
     if (!selectedListing) return;
 
+    const askingPrice = Number(
+      selectedListing.asking_price || 0
+    );
+
     const amount =
-      selectedListing.asking_price + selectedListing.asking_price * modifier;
+      askingPrice + askingPrice * modifier;
 
     setBidAmount(Math.round(amount));
   };
+
   const handleFormSubmit = async () => {
     if (!selectedListing) return;
+
+    /*
+     * FINAL SAFETY CHECK
+     *
+     * Repair Shop alerts are only for Not Working listings.
+     */
+    if (
+      !NOT_WORKING_CONDITIONS.includes(
+        selectedListing.condition
+      )
+    ) {
+      alert(
+        "Repair Shops can only purchase Not Working listings."
+      );
+      return;
+    }
 
     try {
       setSubmitting(true);
 
-      // GET CURRENT USER
+      /*
+       * GET CURRENT USER
+       */
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error("Get user error:", userError);
+        alert("Unable to verify your login session.");
+        return;
+      }
 
       if (!user) {
         alert("You must be logged in.");
         return;
       }
 
-      // PLACE BID
+      /*
+       * PLACE BID
+       */
       if (activeTab === "bid") {
-        const { error } = await supabase.from("bids").insert([
-          {
-            listing_id: selectedListing.id,
-            seller_id: selectedListing.seller_id,
-            harvester_id: user.id, // FIXED
-            bid_amount: Number(bidAmount),
-            message,
-            status: "pending",
-          },
-        ]);
+        const amount = Number(bidAmount);
+
+        if (!amount || amount <= 0) {
+          alert("Please enter a valid bid amount.");
+          return;
+        }
+
+        /*
+         * IMPORTANT:
+         *
+         * Your Supabase bids table does NOT contain
+         * "bid_amount".
+         *
+         * Use "amount" instead.
+         */
+        const bidPayload = {
+  listing_id: selectedListing.id,
+  bidder_id: user.id,
+  amount: Number(bidAmount),
+  message: message || null,
+  status: "pending",
+};
+
+        console.log("SUBMITTING BID:", bidPayload);
+
+        const { data, error } = await supabase
+          .from("bids")
+          .insert([bidPayload])
+          .select()
+          .single();
 
         if (error) {
           console.error("BID ERROR:", error);
-          alert(error.message);
+          alert(
+            error.message ||
+              "Unable to submit the bid."
+          );
           return;
         }
 
-        setSuccessMessage("Bid submitted successfully!");
+        console.log("BID CREATED:", data);
+
+        setSuccessMessage(
+          "Bid submitted successfully!"
+        );
       }
 
-      // SEND MESSAGE
+      /*
+       * SEND MESSAGE
+       */
       if (activeTab === "question") {
-        const { error } = await supabase.from("messages").insert([
-          {
-            listing_id: selectedListing.id,
-            sender_id: user.id, // FIXED
-            receiver_id: selectedListing.seller_id,
-            content: question,
-          },
-        ]);
+        if (!question.trim()) {
+          alert("Please enter a question.");
+          return;
+        }
+
+        const messagePayload = {
+          listing_id: selectedListing.id,
+          sender_id: user.id,
+          receiver_id: selectedListing.seller_id,
+          content: question.trim(),
+        };
+
+        console.log(
+          "SENDING MESSAGE:",
+          messagePayload
+        );
+
+        const { error } = await supabase
+          .from("messages")
+          .insert([messagePayload]);
 
         if (error) {
-          console.error(error);
-          alert(error.message);
+          console.error(
+            "MESSAGE ERROR:",
+            error
+          );
+
+          alert(
+            error.message ||
+              "Unable to send the message."
+          );
+
           return;
         }
 
-        setSuccessMessage("Message sent successfully!");
+        setSuccessMessage(
+          "Message sent successfully!"
+        );
       }
 
+      /*
+       * Close modal after successful submission.
+       */
       setSelectedListing(null);
       setBidAmount(0);
       setMessage("");
       setQuestion("");
+
       setTimeout(() => {
         setSuccessMessage("");
       }, 3000);
     } catch (err) {
-      console.error(err);
+      console.error(
+        "SUBMISSION ERROR:",
+        err
+      );
+
+      alert(
+        "Something went wrong while submitting your request."
+      );
     } finally {
       setSubmitting(false);
     }
   };
-  console.log("SELECTED LISTING:", selectedListing);
 
   useEffect(() => {
     if (!alerts) return;
 
     const fetchMatches = async () => {
-      setLoading(true);
+      try {
+        setLoading(true);
 
-      let query = supabase.from("listings").select("*").eq("status", "active");
+        /*
+         * ONLY NOT WORKING LISTINGS
+         */
+        let query = supabase
+          .from("listings")
+          .select("*")
+          .eq("status", "active")
+          .in(
+            "condition",
+            NOT_WORKING_CONDITIONS
+          );
 
-      // DEVICE MODEL
-      if (alerts?.device_model?.trim()) {
-        query = query.ilike("device_model", `%${alerts.device_model.trim()}%`);
-      }
+        /*
+         * DEVICE MODEL
+         */
+        if (alerts?.device_model?.trim()) {
+          query = query.ilike(
+            "device_model",
+            `%${alerts.device_model.trim()}%`
+          );
+        }
 
-      // PRICE
-      if (
-        alerts?.max_price !== null &&
-        alerts?.max_price !== undefined &&
-        alerts?.max_price !== ""
-      ) {
-        query = query.lte("asking_price", Number(alerts.max_price));
-      }
+        /*
+         * PRICE
+         */
+        if (
+          alerts?.max_price !== null &&
+          alerts?.max_price !== undefined &&
+          alerts?.max_price !== ""
+        ) {
+          query = query.lte(
+            "asking_price",
+            Number(alerts.max_price)
+          );
+        }
 
-      // CONDITION
-      if (alerts?.condition && alerts.condition !== "Any Condition") {
-        query = query.eq("condition", alerts.condition);
-      }
+        /*
+         * IMPORTANT:
+         *
+         * We intentionally DO NOT filter using
+         * alerts.condition anymore.
+         *
+         * Repair Shop alerts always use Not Working.
+         */
 
-      // BARANGAY
-      if (
-        alerts?.preferred_barangay &&
-        alerts.preferred_barangay.trim() !== ""
-      ) {
-        query = query.ilike(
-          "barangay",
-          `%${alerts.preferred_barangay.trim()}%`,
+        /*
+         * BARANGAY
+         */
+        if (
+          alerts?.preferred_barangay &&
+          alerts.preferred_barangay.trim() !== ""
+        ) {
+          query = query.ilike(
+            "barangay",
+            `%${alerts.preferred_barangay.trim()}%`
+          );
+        }
+
+        const {
+          data,
+          error,
+        } = await query;
+
+        console.log(
+          "MATCH VIEW DATA:",
+          data
         );
+
+        console.log(
+          "MATCH VIEW ERROR:",
+          error
+        );
+
+        if (error) {
+          console.error(
+            "FETCH MATCHES ERROR:",
+            error
+          );
+
+          setMatches([]);
+          return;
+        }
+
+        /*
+         * Extra frontend safety:
+         * only keep Not Working/Defective listings.
+         */
+        const filteredMatches =
+          (data || []).filter((listing) =>
+            NOT_WORKING_CONDITIONS.includes(
+              listing.condition
+            )
+          );
+
+        setMatches(filteredMatches);
+      } catch (err) {
+        console.error(
+          "FETCH MATCHES EXCEPTION:",
+          err
+        );
+
+        setMatches([]);
+      } finally {
+        setLoading(false);
       }
-
-      const { data, error } = await query;
-
-      console.log("MATCH VIEW DATA:", data);
-      console.log("MATCH VIEW ERROR:", error);
-
-      setMatches(data || []);
-      setLoading(false);
     };
 
     fetchMatches();
@@ -164,25 +332,53 @@ const MatchingListingsView = ({ alerts, onBack }) => {
 
   return (
     <div className="animate-in fade-in slide-in-from-right duration-300">
-      {/* Header */}
+      {/* HEADER */}
       <div className="flex items-center gap-4 mb-8">
         <button
           onClick={onBack}
           className="p-3 bg-white rounded-2xl shadow-sm hover:bg-slate-50 transition-colors"
         >
-          <ArrowLeft size={20} className="text-slate-600" />
+          <ArrowLeft
+            size={20}
+            className="text-slate-600"
+          />
         </button>
+
         <div>
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-            Matches for "{alerts?.device_model || "Unknown Device"}"
+            Matches for "
+            {alerts?.device_model ||
+              "Unknown Device"}
+            "
           </h2>
+
           <p className="text-[10px] font-black text-[#769c2d] uppercase tracking-widest">
-            {matches.length} Results Found
+            {matches.length} Not Working Results
+            Found
           </p>
         </div>
       </div>
 
-      {/* Results Grid */}
+      {/* REPAIR SHOP CONDITION NOTICE */}
+      <div className="mb-6 bg-orange-50 border border-orange-100 rounded-2xl px-5 py-4 flex items-center gap-3">
+        <CheckCircle2
+          size={20}
+          className="text-orange-500 shrink-0"
+        />
+
+        <div>
+          <p className="text-sm font-bold text-slate-800">
+            Not Working listings only
+          </p>
+
+          <p className="text-xs text-slate-500 mt-1">
+            Repair Shops can purchase only Not Working
+            components through Component Alerts.
+          </p>
+        </div>
+      </div>
+
+      {/* RESULTS GRID */}
       {loading ? (
         <div className="flex justify-center py-20">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#769c2d]"></div>
@@ -194,35 +390,78 @@ const MatchingListingsView = ({ alerts, onBack }) => {
               key={item.id}
               className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-white flex gap-6 hover:shadow-md transition-shadow"
             >
-              {/* Image Placeholder */}
-              <div className="w-24 h-24 bg-slate-50 rounded-3xl flex items-center justify-center text-slate-300 shrink-0">
-                <Package size={32} strokeWidth={1.5} />
+              {/* IMAGE */}
+              <div className="w-24 h-24 bg-slate-50 rounded-3xl overflow-hidden flex items-center justify-center text-slate-300 shrink-0">
+                {item.images &&
+                item.images.length > 0 ? (
+                  <img
+                    src={item.images[0]}
+                    alt={item.device_model}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Package
+                    size={32}
+                    strokeWidth={1.5}
+                  />
+                )}
               </div>
 
               <div className="flex-1">
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start gap-3">
                   <h3 className="font-bold text-slate-800 text-lg">
                     {item.device_model}
                   </h3>
-                  <span className="text-[#3285a1] font-black text-lg">
-                    ₱{item.asking_price}
+
+                  <span className="text-[#3285a1] font-black text-lg whitespace-nowrap">
+                    ₱
+                    {Number(
+                      item.asking_price || 0
+                    ).toLocaleString()}
                   </span>
                 </div>
 
                 <div className="flex flex-wrap gap-3 mt-3">
                   <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase">
-                    <MapPin size={12} className="text-[#769c2d]" />{" "}
-                    {item.barangay || "Valenzuela"}
+                    <MapPin
+                      size={12}
+                      className="text-[#769c2d]"
+                    />
+
+                    {item.barangay ||
+                      "Valenzuela"}
                   </span>
+
                   <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase">
-                    <Clock size={12} /> Just now
+                    <Clock size={12} />
+
+                    {item.created_at
+                      ? new Date(
+                          item.created_at
+                        ).toLocaleDateString()
+                      : "Recently"}
+                  </span>
+                </div>
+
+                {/* CONDITION */}
+                <div className="mt-3">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-orange-100 text-orange-700 text-[9px] font-black uppercase tracking-wide">
+                    <CheckCircle2 size={11} />
+                    Not Working
                   </span>
                 </div>
 
                 <button
                   onClick={() => {
                     setSelectedListing(item);
-                    setBidAmount(item.asking_price || 0);
+                    setBidAmount(
+                      Number(
+                        item.asking_price || 0
+                      )
+                    );
+                    setActiveTab("bid");
+                    setMessage("");
+                    setQuestion("");
                   }}
                   className="mt-4 w-full py-3 bg-[#769c2d] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all"
                 >
@@ -234,12 +473,18 @@ const MatchingListingsView = ({ alerts, onBack }) => {
         </div>
       ) : (
         <div className="bg-white rounded-[3rem] p-20 text-center border-2 border-dashed border-slate-100">
-          <Package size={48} className="mx-auto mb-4 text-slate-200" />
+          <Package
+            size={48}
+            className="mx-auto mb-4 text-slate-200"
+          />
+
           <p className="font-bold text-slate-400 uppercase text-xs tracking-widest">
-            No matching listings yet
+            No matching Not Working listings yet
           </p>
         </div>
       )}
+
+      {/* LISTING MODAL */}
       {selectedListing && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#f8fafc] w-full max-w-4xl rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[95vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
@@ -247,7 +492,7 @@ const MatchingListingsView = ({ alerts, onBack }) => {
             <div className="sticky top-0 z-20 bg-white border-b border-slate-100 px-8 py-6 flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#769c2d]">
-                  MATCHED LISTING
+                  MATCHED NOT WORKING LISTING
                 </p>
 
                 <h2 className="text-3xl font-black text-slate-800 leading-tight">
@@ -256,12 +501,19 @@ const MatchingListingsView = ({ alerts, onBack }) => {
               </div>
 
               <button
-                onClick={() => setSelectedListing(null)}
+                onClick={() =>
+                  setSelectedListing(null)
+                }
                 className="w-12 h-12 rounded-2xl bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center"
               >
-                <X size={20} className="text-slate-500" />
+                <X
+                  size={20}
+                  className="text-slate-500"
+                />
               </button>
             </div>
+
+            {/* SUCCESS */}
             {successMessage && (
               <div className="mx-8 mt-6 animate-in slide-in-from-top fade-in duration-300">
                 <div className="bg-emerald-500 text-white rounded-2xl px-5 py-4 flex items-center gap-3 shadow-lg">
@@ -274,7 +526,9 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       Success
                     </p>
 
-                    <p className="font-bold text-sm">{successMessage}</p>
+                    <p className="font-bold text-sm">
+                      {successMessage}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -289,12 +543,18 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                   selectedListing.images.length > 0 ? (
                     <img
                       src={selectedListing.images[0]}
-                      alt={selectedListing.device_model}
+                      alt={
+                        selectedListing.device_model
+                      }
                       className="w-full h-full object-cover"
                     />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
-                      <Package size={64} strokeWidth={1.5} />
+                      <Package
+                        size={64}
+                        strokeWidth={1.5}
+                      />
+
                       <p className="mt-4 text-xs font-black uppercase tracking-widest">
                         No Image
                       </p>
@@ -304,20 +564,23 @@ const MatchingListingsView = ({ alerts, onBack }) => {
 
                 {/* EXTRA IMAGES */}
                 {selectedListing.images &&
-                  selectedListing.images.length > 1 && (
+                  selectedListing.images.length >
+                    1 && (
                     <div className="grid grid-cols-4 gap-3 mt-4">
-                      {selectedListing.images.map((img, idx) => (
-                        <div
-                          key={idx}
-                          className="aspect-square rounded-2xl overflow-hidden border border-slate-100"
-                        >
-                          <img
-                            src={img}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ))}
+                      {selectedListing.images.map(
+                        (img, idx) => (
+                          <div
+                            key={idx}
+                            className="aspect-square rounded-2xl overflow-hidden border border-slate-100"
+                          >
+                            <img
+                              src={img}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
               </div>
@@ -331,22 +594,26 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                   </p>
 
                   <h1 className="text-5xl font-black text-[#3285a1] mt-2">
-                    ₱{selectedListing.asking_price}
+                    ₱
+                    {Number(
+                      selectedListing.asking_price ||
+                        0
+                    ).toLocaleString()}
                   </h1>
                 </div>
 
                 {/* BADGES */}
                 <div className="flex flex-wrap gap-3">
-                  <div className="px-4 py-2 rounded-2xl bg-[#769c2d]/10 text-[#769c2d] text-xs font-black uppercase tracking-widest">
-                    {selectedListing.condition}
+                  <div className="px-4 py-2 rounded-2xl bg-orange-100 text-orange-600 text-xs font-black uppercase tracking-widest">
+                    Not Working
                   </div>
 
                   <div className="px-4 py-2 rounded-2xl bg-[#3285a1]/10 text-[#3285a1] text-xs font-black uppercase tracking-widest">
                     {selectedListing.category}
                   </div>
 
-                  <div className="px-4 py-2 rounded-2xl bg-orange-100 text-orange-600 text-xs font-black uppercase tracking-widest">
-                    {selectedListing.status}
+                  <div className="px-4 py-2 rounded-2xl bg-green-100 text-green-600 text-xs font-black uppercase tracking-widest">
+                    Active
                   </div>
                 </div>
 
@@ -364,7 +631,8 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       </p>
 
                       <p className="font-bold text-slate-700">
-                        {selectedListing.barangay || "Unknown"}
+                        {selectedListing.barangay ||
+                          "Unknown"}
                       </p>
                     </div>
                   </div>
@@ -381,9 +649,11 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       </p>
 
                       <p className="font-bold text-slate-700">
-                        {new Date(
-                          selectedListing.created_at,
-                        ).toLocaleDateString()}
+                        {selectedListing.created_at
+                          ? new Date(
+                              selectedListing.created_at
+                            ).toLocaleDateString()
+                          : "Unknown"}
                       </p>
                     </div>
                   </div>
@@ -395,7 +665,11 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       </p>
 
                       <p className="text-xl font-black text-slate-700 mt-1">
-                        ₱{selectedListing.scrap_value || 0}
+                        ₱
+                        {Number(
+                          selectedListing.scrap_value ||
+                            0
+                        ).toLocaleString()}
                       </p>
                     </div>
 
@@ -405,7 +679,11 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       </p>
 
                       <p className="text-xl font-black text-slate-700 mt-1">
-                        ₱{selectedListing.reusable_part_value || 0}
+                        ₱
+                        {Number(
+                          selectedListing.reusable_part_value ||
+                            0
+                        ).toLocaleString()}
                       </p>
                     </div>
                   </div>
@@ -418,14 +696,17 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                   </p>
 
                   <p className="text-sm leading-relaxed text-slate-600">
-                    {selectedListing.description || "No description provided."}
+                    {selectedListing.description ||
+                      "No description provided."}
                   </p>
                 </div>
 
                 {/* TABS */}
                 <div className="flex gap-3">
                   <button
-                    onClick={() => setActiveTab("bid")}
+                    onClick={() =>
+                      setActiveTab("bid")
+                    }
                     className={`flex-1 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
                       activeTab === "bid"
                         ? "bg-[#769c2d] text-white shadow-lg"
@@ -439,7 +720,9 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                   </button>
 
                   <button
-                    onClick={() => setActiveTab("question")}
+                    onClick={() =>
+                      setActiveTab("question")
+                    }
                     className={`flex-1 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
                       activeTab === "question"
                         ? "bg-[#3285a1] text-white shadow-lg"
@@ -447,7 +730,9 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                     }`}
                   >
                     <div className="flex items-center justify-center gap-2">
-                      <MessageSquareText size={14} />
+                      <MessageSquareText
+                        size={14}
+                      />
                       Ask Seller
                     </div>
                   </button>
@@ -462,15 +747,25 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       </p>
 
                       <div className="grid grid-cols-3 gap-3">
-                        {[0, 0.05, 0.1].map((modifier) => (
-                          <button
-                            key={modifier}
-                            onClick={() => handleQuickSelect(modifier)}
-                            className="py-3 rounded-2xl bg-slate-100 hover:bg-[#769c2d] hover:text-white transition-all text-xs font-black"
-                          >
-                            {modifier === 0 ? "Base" : `+${modifier * 100}%`}
-                          </button>
-                        ))}
+                        {[0, 0.05, 0.1].map(
+                          (modifier) => (
+                            <button
+                              key={modifier}
+                              onClick={() =>
+                                handleQuickSelect(
+                                  modifier
+                                )
+                              }
+                              className="py-3 rounded-2xl bg-slate-100 hover:bg-[#769c2d] hover:text-white transition-all text-xs font-black"
+                            >
+                              {modifier === 0
+                                ? "Base"
+                                : `+${
+                                    modifier * 100
+                                  }%`}
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
 
@@ -481,8 +776,15 @@ const MatchingListingsView = ({ alerts, onBack }) => {
 
                       <input
                         type="number"
+                        min="1"
                         value={bidAmount}
-                        onChange={(e) => setBidAmount(Number(e.target.value))}
+                        onChange={(e) =>
+                          setBidAmount(
+                            Number(
+                              e.target.value
+                            )
+                          )
+                        }
                         className="mt-2 w-full rounded-2xl border border-slate-200 p-4 font-bold focus:outline-none focus:ring-2 focus:ring-[#769c2d]"
                       />
                     </div>
@@ -495,17 +797,25 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       <textarea
                         placeholder="Add an optional message..."
                         value={message}
-                        onChange={(e) => setMessage(e.target.value)}
+                        onChange={(e) =>
+                          setMessage(
+                            e.target.value
+                          )
+                        }
                         className="mt-2 w-full rounded-2xl border border-slate-200 p-4 h-32 resize-none focus:outline-none focus:ring-2 focus:ring-[#769c2d]"
                       />
                     </div>
 
                     <button
-                      onClick={handleFormSubmit}
+                      onClick={
+                        handleFormSubmit
+                      }
                       disabled={submitting}
-                      className="w-full py-4 rounded-2xl bg-[#769c2d] hover:opacity-90 text-white text-xs font-black uppercase tracking-widest transition-all"
+                      className="w-full py-4 rounded-2xl bg-[#769c2d] hover:opacity-90 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50"
                     >
-                      {submitting ? "Submitting..." : "Submit Bid"}
+                      {submitting
+                        ? "Submitting..."
+                        : "Submit Bid"}
                     </button>
                   </div>
                 )}
@@ -519,31 +829,43 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       </p>
 
                       <div className="flex flex-wrap gap-2">
-                        {quickQuestions.map((q) => (
-                          <button
-                            key={q}
-                            onClick={() => setQuestion(q)}
-                            className="px-4 py-2 rounded-2xl bg-slate-100 hover:bg-[#3285a1] hover:text-white transition-all text-xs font-bold"
-                          >
-                            {q}
-                          </button>
-                        ))}
+                        {quickQuestions.map(
+                          (q) => (
+                            <button
+                              key={q}
+                              onClick={() =>
+                                setQuestion(q)
+                              }
+                              className="px-4 py-2 rounded-2xl bg-slate-100 hover:bg-[#3285a1] hover:text-white transition-all text-xs font-bold"
+                            >
+                              {q}
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
 
                     <textarea
                       placeholder="Ask seller something..."
                       value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
+                      onChange={(e) =>
+                        setQuestion(
+                          e.target.value
+                        )
+                      }
                       className="w-full rounded-2xl border border-slate-200 p-4 h-36 resize-none focus:outline-none focus:ring-2 focus:ring-[#3285a1]"
                     />
 
                     <button
-                      onClick={handleFormSubmit}
+                      onClick={
+                        handleFormSubmit
+                      }
                       disabled={submitting}
-                      className="w-full py-4 rounded-2xl bg-[#3285a1] hover:opacity-90 text-white text-xs font-black uppercase tracking-widest transition-all"
+                      className="w-full py-4 rounded-2xl bg-[#3285a1] hover:opacity-90 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50"
                     >
-                      {submitting ? "Sending..." : "Send Message"}
+                      {submitting
+                        ? "Sending..."
+                        : "Send Message"}
                     </button>
                   </div>
                 )}

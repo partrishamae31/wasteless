@@ -10,9 +10,7 @@ import {
   Search,
   Package,
   Eye,
-  Clock3,
   X,
-  Star,
 } from "lucide-react";
 import MatchingListingsView from "./MatchingListingsView";
 
@@ -20,117 +18,157 @@ const HarvesterAlerts = ({ session, isVerified }) => {
   const [alerts, setAlerts] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedAlertForMatches, setSelectedAlertForMatches] = useState(null);
+  const [selectedAlertForMatches, setSelectedAlertForMatches] =
+    useState(null);
 
   const [formData, setFormData] = useState({
     device_model: "",
-    condition: "Defective",
     max_price: "",
     preferred_barangay: "",
   });
 
   const [error, setError] = useState("");
 
+  /*
+   * IMPORTANT:
+   * Repair Shop alerts are ONLY for Not Working listings.
+   *
+   * Your database may still contain older records using "Defective".
+   * Therefore matching supports BOTH:
+   *
+   *   "Not Working"
+   *   "Defective"
+   *
+   * New alerts are saved as "Not Working".
+   */
+  const NOT_WORKING_CONDITIONS = ["Not Working", "Defective"];
+
   useEffect(() => {
+    if (!session?.user?.id) return;
+
     fetchAlerts();
-  }, [session.user.id]);
+  }, [session?.user?.id]);
 
   const fetchAlerts = async () => {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const { data: alertsData, error: alertsError } = await supabase
-      .from("alerts")
-      .select("*")
-      .eq("harvester_id", session.user.id);
+      const { data: alertsData, error: alertsError } = await supabase
+        .from("alerts")
+        .select("*")
+        .eq("harvester_id", session.user.id)
+        .order("created_at", { ascending: false });
 
-    if (alertsError) {
-      console.error("Alerts fetch error:", alertsError);
-      return;
+      if (alertsError) {
+        console.error("Alerts fetch error:", alertsError);
+        setAlerts([]);
+        return;
+      }
+
+      if (!alertsData || alertsData.length === 0) {
+        setAlerts([]);
+        return;
+      }
+
+      const alertsWithMatches = await Promise.all(
+        alertsData.map(async (alert) => {
+          let query = supabase
+            .from("listings")
+            .select(
+              "id, device_model, asking_price, condition, barangay, status, seller_id"
+            )
+            .eq("status", "active")
+            .in("condition", NOT_WORKING_CONDITIONS);
+
+          /*
+           * DEVICE MODEL
+           */
+          if (alert.device_model?.trim()) {
+            query = query.ilike(
+              "device_model",
+              `%${alert.device_model.trim()}%`
+            );
+          }
+
+          /*
+           * MAXIMUM PRICE
+           */
+          if (
+            alert.max_price !== null &&
+            alert.max_price !== undefined &&
+            alert.max_price !== ""
+          ) {
+            query = query.lte(
+              "asking_price",
+              Number(alert.max_price)
+            );
+          }
+
+          /*
+           * BARANGAY
+           */
+          if (
+            alert.preferred_barangay &&
+            alert.preferred_barangay.trim() !== ""
+          ) {
+            query = query.ilike(
+              "barangay",
+              `%${alert.preferred_barangay.trim()}%`
+            );
+          }
+
+          const { data: matchedListings, error: matchError } =
+            await query;
+
+          if (matchError) {
+            console.error(
+              "Matching listings error:",
+              matchError
+            );
+          }
+
+          console.log("ALERT:", alert);
+          console.log("MATCHED:", matchedListings);
+
+          return {
+            ...alert,
+
+            /*
+             * Normalize the old "Defective" value for display.
+             */
+            condition: "Not Working",
+
+            matchCount: matchedListings?.length || 0,
+          };
+        })
+      );
+
+      console.log("FINAL ALERTS:", alertsWithMatches);
+
+      setAlerts(alertsWithMatches);
+    } catch (err) {
+      console.error("Fetch alerts error:", err);
+    } finally {
+      setLoading(false);
     }
-
-    if (!alertsData || alertsData.length === 0) {
-      setAlerts([]);
-      return;
-    }
-
-    const alertsWithMatches = await Promise.all(
-      alertsData.map(async (alert) => {
-        let query = supabase
-          .from("listings")
-          .select("id, device_model, asking_price, condition, barangay, status")
-          .eq("status", "active");
-
-        if (alert.device_model?.trim()) {
-          query = query.ilike(
-            "device_model",
-            `%${alert.device_model.trim()}%`
-          );
-        }
-
-        if (
-          alert.condition &&
-          alert.condition !== "Any Condition"
-        ) {
-          query = query.eq("condition", alert.condition);
-        }
-
-        if (
-          alert.max_price !== null &&
-          alert.max_price !== undefined &&
-          alert.max_price !== ""
-        ) {
-          query = query.lte(
-            "asking_price",
-            Number(alert.max_price)
-          );
-        }
-
-        if (
-          alert.preferred_barangay &&
-          alert.preferred_barangay.trim() !== ""
-        ) {
-          query = query.ilike(
-            "barangay",
-            `%${alert.preferred_barangay.trim()}%`
-          );
-        }
-
-        const { data: matchedListings, error: matchError } =
-          await query;
-
-        if (matchError) {
-          console.error(
-            "Matching listings error:",
-            matchError
-          );
-        }
-
-        console.log("ALERT:", alert.device_model);
-        console.log("MATCHED:", matchedListings);
-
-        return {
-          ...alert,
-          matchCount: matchedListings?.length || 0,
-        };
-      })
-    );
-
-    console.log("FINAL ALERTS:", alertsWithMatches);
-
-    setAlerts(alertsWithMatches);
-  } catch (err) {
-    console.error("Fetch alerts error:", err);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleCreateAlert = async (e) => {
     e.preventDefault();
 
     setError("");
 
+    /*
+     * DEVICE MODEL
+     */
+    if (!formData.device_model.trim()) {
+      setError("Please enter a device model.");
+      return;
+    }
+
+    /*
+     * PRICE
+     */
     const price = parseFloat(formData.max_price);
 
     if (isNaN(price) || price <= 0) {
@@ -138,33 +176,75 @@ const HarvesterAlerts = ({ session, isVerified }) => {
       return;
     }
 
-    const { error: insertError } = await supabase.from("alerts").insert([
-      {
-        harvester_id: session.user.id,
-        device_model: formData.device_model,
-        condition: formData.condition,
-        max_price: price,
-        preferred_barangay: formData.preferred_barangay || null,
-      },
-    ]);
+    /*
+     * NEW ALERT
+     *
+     * No condition is selected by the user.
+     * Repair Shop alerts automatically target Not Working listings.
+     */
+    const { error: insertError } = await supabase
+      .from("alerts")
+      .insert([
+        {
+          harvester_id: session.user.id,
+          device_model: formData.device_model.trim(),
 
-    if (!insertError) {
-      setIsModalOpen(false);
+          // Automatically set for Repair Shop alert flow.
+          condition: "Not Working",
 
-      setFormData({
-        device_model: "",
-        condition: "Defective",
-        max_price: "",
-        preferred_barangay: "",
-      });
+          max_price: price,
+          preferred_barangay:
+            formData.preferred_barangay.trim() || null,
+        },
+      ]);
 
-      fetchAlerts();
+    if (insertError) {
+      console.error("CREATE ALERT ERROR:", insertError);
+
+      setError(
+        insertError.message ||
+          "Unable to create the component alert."
+      );
+
+      return;
     }
+
+    /*
+     * RESET
+     */
+    setIsModalOpen(false);
+
+    setFormData({
+      device_model: "",
+      max_price: "",
+      preferred_barangay: "",
+    });
+
+    await fetchAlerts();
   };
 
   const deleteAlert = async (id) => {
-    await supabase.from("alerts").delete().eq("id", id);
-    fetchAlerts();
+    const { error: deleteError } = await supabase
+      .from("alerts")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.error("Delete alert error:", deleteError);
+      return;
+    }
+
+    await fetchAlerts();
+  };
+
+  const openCreateModal = () => {
+    if (!isVerified) {
+      alert("Verification required.");
+      return;
+    }
+
+    setError("");
+    setIsModalOpen(true);
   };
 
   return (
@@ -182,17 +262,15 @@ const HarvesterAlerts = ({ session, isVerified }) => {
               <h1 className="text-[22px] font-bold text-gray-800">
                 Component Alerts
               </h1>
+
               <p className="text-sm text-gray-400 mt-1">
-                Get notified when matching listings are posted
+                Get notified when matching not working components
+                are posted
               </p>
             </div>
 
             <button
-              onClick={() =>
-                isVerified
-                  ? setIsModalOpen(true)
-                  : alert("Verification required.")
-              }
+              onClick={openCreateModal}
               className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
                 isVerified
                   ? "bg-[#78A22F] hover:bg-[#6d9328] text-white shadow-md"
@@ -211,12 +289,17 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                 <h2 className="text-base font-semibold text-gray-800">
                   Component Alerts
                 </h2>
+
                 <p className="text-xs text-gray-400 mt-1">
-                  Get notified whenever new matching listings are found
+                  Monitor new Not Working listings that match
+                  your criteria
                 </p>
               </div>
 
-              <button className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all">
+              <button
+                onClick={openCreateModal}
+                className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all"
+              >
                 Create New
               </button>
             </div>
@@ -224,22 +307,36 @@ const HarvesterAlerts = ({ session, isVerified }) => {
             {/* STATS */}
             <div className="grid grid-cols-4 gap-4 mb-5">
               <div className="border border-gray-100 rounded-xl p-4 text-center bg-[#fafafa]">
-                <Bell className="mx-auto text-[#78A22F] mb-2" size={18} />
+                <Bell
+                  className="mx-auto text-[#78A22F] mb-2"
+                  size={18}
+                />
+
                 <h3 className="text-lg font-bold text-gray-800">
                   {alerts.length}
                 </h3>
-                <p className="text-[11px] text-gray-400">Active Alerts</p>
+
+                <p className="text-[11px] text-gray-400">
+                  Active Alerts
+                </p>
               </div>
 
               <div className="border border-gray-100 rounded-xl p-4 text-center bg-[#fafafa]">
-                <Search className="mx-auto text-blue-500 mb-2" size={18} />
+                <Search
+                  className="mx-auto text-blue-500 mb-2"
+                  size={18}
+                />
+
                 <h3 className="text-lg font-bold text-gray-800">
                   {alerts.reduce(
                     (acc, curr) => acc + (curr.matchCount || 0),
-                    0,
+                    0
                   )}
                 </h3>
-                <p className="text-[11px] text-gray-400">New Matches</p>
+
+                <p className="text-[11px] text-gray-400">
+                  New Matches
+                </p>
               </div>
 
               <div className="border border-gray-100 rounded-xl p-4 text-center bg-[#fafafa]">
@@ -247,33 +344,52 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                   className="mx-auto text-orange-500 mb-2"
                   size={18}
                 />
+
                 <h3 className="text-lg font-bold text-gray-800">
-                  {alerts.filter((item) => item.matchCount > 0).length}
+                  {
+                    alerts.filter(
+                      (item) => item.matchCount > 0
+                    ).length
+                  }
                 </h3>
-                <p className="text-[11px] text-gray-400">High Priority</p>
+
+                <p className="text-[11px] text-gray-400">
+                  Alerts With Matches
+                </p>
               </div>
 
               <div className="border border-gray-100 rounded-xl p-4 text-center bg-[#fafafa]">
-                <Package className="mx-auto text-gray-500 mb-2" size={18} />
+                <Package
+                  className="mx-auto text-gray-500 mb-2"
+                  size={18}
+                />
+
                 <h3 className="text-lg font-bold text-gray-800">
                   {alerts.length}
                 </h3>
-                <p className="text-[11px] text-gray-400">Total Monitors</p>
+
+                <p className="text-[11px] text-gray-400">
+                  Total Monitors
+                </p>
               </div>
             </div>
 
             {/* MATCHES SECTION */}
             <div className="bg-[#edf8ed] border border-[#cce8cc] rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-4">
-                <CheckCircle2 size={18} className="text-[#78A22F]" />
+                <CheckCircle2
+                  size={18}
+                  className="text-[#78A22F]"
+                />
 
                 <div>
                   <h3 className="text-sm font-semibold text-[#3b6b18]">
-                    New Listings Match Your Alerts!
+                    New Not Working Listings Match Your Alerts!
                   </h3>
 
                   <p className="text-xs text-[#5d7d4b]">
-                    We found listings that match your monitoring criteria.
+                    Matching listings are limited to Not Working
+                    components for Repair Shops.
                   </p>
                 </div>
               </div>
@@ -303,17 +419,26 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                               size={12}
                               className="text-green-500"
                             />
-                            {alert.condition}
+                            Not Working
                           </span>
 
                           <span className="flex items-center gap-1">
-                            <Search size={12} className="text-blue-500" />₱
-                            {alert.max_price.toLocaleString()}
+                            <Search
+                              size={12}
+                              className="text-blue-500"
+                            />
+                            ₱
+                            {Number(
+                              alert.max_price || 0
+                            ).toLocaleString()}
                           </span>
 
                           {alert.preferred_barangay && (
                             <span className="flex items-center gap-1">
-                              <MapPin size={12} className="text-orange-500" />
+                              <MapPin
+                                size={12}
+                                className="text-orange-500"
+                              />
                               {alert.preferred_barangay}
                             </span>
                           )}
@@ -321,7 +446,9 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                       </div>
 
                       <button
-                        onClick={() => setSelectedAlertForMatches(alert)}
+                        onClick={() =>
+                          setSelectedAlertForMatches(alert)
+                        }
                         className="flex items-center gap-2 bg-[#78A22F] hover:bg-[#6d9328] text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
                       >
                         <Eye size={14} />
@@ -330,9 +457,12 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                     </div>
                   ))}
 
-                {alerts.filter((a) => a.matchCount > 0).length === 0 && (
+                {alerts.filter(
+                  (a) => a.matchCount > 0
+                ).length === 0 && (
                   <div className="text-center py-6 text-sm text-gray-500">
-                    No new matches available right now.
+                    No new Not Working matches available right
+                    now.
                   </div>
                 )}
               </div>
@@ -349,7 +479,10 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex gap-4">
                     <div className="w-11 h-11 rounded-xl bg-orange-50 flex items-center justify-center">
-                      <Bell size={18} className="text-orange-500" />
+                      <Bell
+                        size={18}
+                        className="text-orange-500"
+                      />
                     </div>
 
                     <div>
@@ -362,56 +495,80 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                           Active
                         </span>
 
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold flex items-center gap-1">
-                          <span className="text-xs">☆</span> High Priority
-                        </span>
-
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">
-                          {alert.condition}
+                          Not Working
                         </span>
                       </div>
 
                       <div className="space-y-1">
                         <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <Search size={14} className="opacity-60" />
+                          <Search
+                            size={14}
+                            className="opacity-60"
+                          />
+
                           <span>
-                            Max Price: ₱{alert.max_price.toLocaleString()}
+                            Max Price: ₱
+                            {Number(
+                              alert.max_price || 0
+                            ).toLocaleString()}
                           </span>
                         </div>
+
                         <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <MapPin size={14} className="opacity-60" />
-                          <span>{alert.preferred_barangay || "Anywhere"}</span>
+                          <MapPin
+                            size={14}
+                            className="opacity-60"
+                          />
+
+                          <span>
+                            {alert.preferred_barangay ||
+                              "Anywhere"}
+                          </span>
                         </div>
+
                         <p className="text-[10px] text-gray-400 mt-2">
-                          Created 5/1/2026 • Last match: 4/28/2026
+                          Only Not Working listings are monitored.
                         </p>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex gap-2">
-                    <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
-                      <CheckCircle2 size={16} />
+                    <button
+                      onClick={() =>
+                        setSelectedAlertForMatches(alert)
+                      }
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                      title="View matches"
+                    >
+                      <Eye size={16} />
                     </button>
+
                     <button
                       onClick={() => deleteAlert(alert.id)}
                       className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                      title="Delete alert"
                     >
                       <Trash2 size={16} />
                     </button>
                   </div>
                 </div>
 
-                {/* NEW MATCHES BANNER (As seen in mockup) */}
+                {/* MATCH BANNER */}
                 {alert.matchCount > 0 && (
                   <div className="mt-4 bg-[#e8f9ee] border border-[#d1f2db] rounded-xl p-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-[#1a7a3a] font-bold text-sm">
-                        {alert.matchCount} matching listings found
+                        {alert.matchCount} matching Not Working
+                        listings found
                       </span>
                     </div>
+
                     <button
-                      onClick={() => setSelectedAlertForMatches(alert)}
+                      onClick={() =>
+                        setSelectedAlertForMatches(alert)
+                      }
                       className="bg-[#00a843] hover:bg-[#008f39] text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
                     >
                       View & Bid
@@ -420,21 +577,25 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                 )}
 
                 <p className="text-[10px] text-gray-400 mt-3 px-1">
-                  Triggered {alert.matchCount} times
+                  Triggered {alert.matchCount || 0} times
                 </p>
               </div>
             ))}
 
             {!loading && alerts.length === 0 && (
               <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-16 text-center">
-                <Bell size={40} className="mx-auto text-gray-300 mb-3" />
+                <Bell
+                  size={40}
+                  className="mx-auto text-gray-300 mb-3"
+                />
 
                 <h3 className="font-semibold text-gray-500 mb-1">
                   No Active Alerts
                 </h3>
 
                 <p className="text-sm text-gray-400">
-                  Create your first monitoring alert.
+                  Create your first Not Working component
+                  monitoring alert.
                 </p>
               </div>
             )}
@@ -442,11 +603,11 @@ const HarvesterAlerts = ({ session, isVerified }) => {
         </div>
       )}
 
-      {/* MODAL */}
+      {/* CREATE ALERT MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden">
-            {/* HEADER WITH GRADIENT */}
+            {/* HEADER */}
             <div className="bg-gradient-to-r from-[#FF833D] to-[#FF3D3D] p-8 text-white relative">
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -454,16 +615,20 @@ const HarvesterAlerts = ({ session, isVerified }) => {
               >
                 <X size={24} />
               </button>
+
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
                   <Bell size={24} />
                 </div>
+
                 <div>
                   <h2 className="text-2xl font-bold">
                     Configure Component Alert
                   </h2>
+
                   <p className="text-white/80 text-sm">
-                    Get notified when matching components are listed
+                    Get notified when Not Working components
+                    are listed
                   </p>
                 </div>
               </div>
@@ -477,17 +642,23 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                 </div>
               )}
 
-              <form onSubmit={handleCreateAlert} className="space-y-6">
+              <form
+                onSubmit={handleCreateAlert}
+                className="space-y-6"
+              >
                 {/* DEVICE MODEL */}
                 <div>
-                  <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center gap-1">
-                    Device Model <span className="text-red-500">*</span>
+                  <label className="text-sm font-bold text-slate-700 mb-2 block">
+                    Device Model{" "}
+                    <span className="text-red-500">*</span>
                   </label>
+
                   <div className="relative">
                     <Package
                       className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
                       size={18}
                     />
+
                     <input
                       type="text"
                       required
@@ -502,46 +673,30 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                       className="w-full border border-slate-200 rounded-xl pl-12 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
                     />
                   </div>
+
                   <p className="text-[11px] text-slate-400 mt-1.5">
-                    Enter the device model you're looking for
+                    Enter the device model you're looking for.
                   </p>
                 </div>
 
-                {/* COMPONENT CONDITION GRID */}
-                <div>
-                  <label className="text-sm font-bold text-slate-700 mb-3 block">
-                    Component Condition <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      {
-                        id: "Any Condition",
-                        sub: "Working, defective, or parts-only",
-                      },
-                      { id: "Working", sub: "Fully functional devices" },
-                      { id: "Defective", sub: "Some parts not working" },
-                      { id: "Parts Only", sub: "For harvesting components" },
-                    ].map((cond) => (
-                      <button
-                        key={cond.id}
-                        type="button"
-                        onClick={() =>
-                          setFormData({ ...formData, condition: cond.id })
-                        }
-                        className={`text-left p-4 rounded-xl border-2 transition-all ${
-                          formData.condition === cond.id
-                            ? "border-orange-500 bg-orange-50/50"
-                            : "border-slate-100 hover:border-slate-200"
-                        }`}
-                      >
-                        <p className="text-sm font-bold text-slate-800">
-                          {cond.id}
-                        </p>
-                        <p className="text-[10px] text-slate-500 leading-tight">
-                          {cond.sub}
-                        </p>
-                      </button>
-                    ))}
+                {/* AUTOMATIC CONDITION */}
+                <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2
+                      size={20}
+                      className="text-orange-500 shrink-0"
+                    />
+
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">
+                        Condition: Not Working
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Repair Shops can only purchase Not
+                        Working listings through this alert.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -549,16 +704,20 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="text-sm font-bold text-slate-700 mb-2 block">
-                      Maximum Price (₱) <span className="text-red-500">*</span>
+                      Maximum Price (₱){" "}
+                      <span className="text-red-500">*</span>
                     </label>
+
                     <div className="relative">
                       <Search
                         className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
                         size={18}
                       />
+
                       <input
                         type="number"
                         required
+                        min="1"
                         placeholder="e.g., 5000"
                         value={formData.max_price}
                         onChange={(e) =>
@@ -579,14 +738,16 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                         (Optional)
                       </span>
                     </label>
+
                     <div className="relative">
                       <MapPin
                         className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
                         size={18}
                       />
+
                       <input
                         type="text"
-                        placeholder="e.g., Barangay Marulas"
+                        placeholder="e.g., Marulas"
                         value={formData.preferred_barangay}
                         onChange={(e) =>
                           setFormData({
@@ -600,7 +761,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                   </div>
                 </div>
 
-                {/* FOOTER BUTTONS */}
+                {/* FOOTER */}
                 <div className="flex gap-4 pt-4 border-t border-slate-100">
                   <button
                     type="button"
@@ -609,6 +770,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                   >
                     Cancel
                   </button>
+
                   <button
                     type="submit"
                     className="flex-1 bg-gradient-to-r from-[#FF833D] to-[#FF3D3D] hover:opacity-90 text-white rounded-2xl py-4 text-sm font-bold shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2"

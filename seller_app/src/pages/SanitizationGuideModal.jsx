@@ -167,7 +167,7 @@ const SanitizationGuideModal = ({ isOpen, onClose, deviceModel }) => {
   };
 
   return (
-    <div className="fixed inset--12 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="bg-[#ff1744] p-6 text-white relative">
           <div className="flex items-center gap-4">
