@@ -77,6 +77,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const isRepairShop = accountRole === "repair_shop";
   const [sortOption, setSortOption] = useState("Newest");
   const [selectedListing, setSelectedListing] = useState(null);
+  const [contactSellerChat, setContactSellerChat] = useState(null);
   const [selectedSellerId, setSelectedSellerId] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -1194,6 +1195,22 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       alert("Error placing bid: " + err.message);
     }
   };
+  // Opens the Messages tab pre-loaded with a chat to the seller of an accepted bid.
+  const handleContactSeller = (bid) => {
+    const sellerId = bid?.listings?.seller_id;
+
+    if (!sellerId) {
+      alert("Seller information is unavailable for this bid.");
+      return;
+    }
+
+    setContactSellerChat({
+      other_party_id: sellerId,
+      name: bid.listings?.profiles?.full_name || "Seller",
+    });
+    setActiveTab("messages");
+  };
+
   const handleSendMessageOnly = async (listingId, message) => {
     if (!message.trim()) return;
 
@@ -2547,7 +2564,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         ) : activeTab === "leaderboard" ? (
           <BarangayLeaderboard />
         ) : activeTab === "bids" ? (
-          <MyBidsView bids={myBids} />
+          <MyBidsView bids={myBids} onContactSeller={handleContactSeller} />
         ) : activeTab === "transactions" ? (
           <TransactionsView
             transactions={transactions}
@@ -2561,7 +2578,11 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         ) : activeTab === "map" ? ( // ADD THIS BLOCK
           <UrbanMineMap isVerified={isVerified} />
         ) : activeTab === "messages" ? (
-          <MessagesView session={session} />
+          <MessagesView
+            session={session}
+            initialChat={contactSellerChat}
+            onInitialChatConsumed={() => setContactSellerChat(null)}
+          />
         ) : activeTab === "alerts" ? (
           <div className="space-y-8">
             {/* This allows you to both manage alert settings AND see your matches */}
@@ -2709,7 +2730,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     </div>
   );
 };
-const MyBidsView = ({ bids }) => {
+const MyBidsView = ({ bids, onContactSeller }) => {
   const stats = {
     pending: bids.filter((b) => b.status === "pending").length,
     accepted: bids.filter((b) => b.status === "accepted").length,
@@ -2892,7 +2913,11 @@ const MyBidsView = ({ bids }) => {
               </div>
 
               {bid.status === "accepted" ? (
-                <button className="px-6 py-2.5 bg-[#769c2d] text-white text-[9px] font-black rounded-2xl uppercase tracking-widest shadow-lg shadow-lime-100 flex items-center gap-2 hover:scale-105 transition-transform">
+                <button
+                  type="button"
+                  onClick={() => onContactSeller?.(bid)}
+                  className="px-6 py-2.5 bg-[#769c2d] text-white text-[9px] font-black rounded-2xl uppercase tracking-widest shadow-lg shadow-lime-100 flex items-center gap-2 hover:scale-105 transition-transform"
+                >
                   <MessageSquare size={12} /> Contact Seller
                 </button>
               ) : (
@@ -2967,7 +2992,11 @@ const AlertsView = ({ notifications }) => {
 
 // --- MESSAGES VIEW COMPONENT ---
 
-const MessagesView = ({ session }) => {
+const MessagesView = ({
+  session,
+  initialChat = null,
+  onInitialChatConsumed,
+}) => {
   const userId = session?.user?.id;
 
   const [conversations, setConversations] = useState([]);
@@ -3140,6 +3169,39 @@ const MessagesView = ({ session }) => {
   useEffect(() => {
     loadConversations();
   }, [userId]);
+
+  // Auto-open the chat requested by another tab (e.g. "Contact Seller" from
+  // My Bids). Waits for conversations to load so the entry exists, otherwise
+  // synthesizes a placeholder chat for the seller.
+  useEffect(() => {
+    if (!initialChat || !userId) return;
+
+    if (selectedChat?.other_party_id === initialChat.other_party_id) {
+      onInitialChatConsumed?.();
+      return;
+    }
+
+    const existing = conversations.find(
+      (c) => c.other_party_id === initialChat.other_party_id
+    );
+
+    if (existing) {
+      setSelectedChat(existing);
+    } else if (!loading) {
+      setSelectedChat({
+        id: `contact-${initialChat.other_party_id}`,
+        other_party_id: initialChat.other_party_id,
+        profile: { full_name: initialChat.name || "Seller" },
+        last_message: "No messages yet",
+        last_at: null,
+      });
+    } else {
+      return; // conversations still loading, retry on next render
+    }
+
+    onInitialChatConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialChat, conversations, loading, userId]);
 
   // Load the selected Harvester's messages and repair appointments.
   useEffect(() => {

@@ -377,7 +377,7 @@ localStorage.setItem("wasteless_login_role", role);
 
           {/* TAGLINE */}
           <div className="w-full">
-            <h2 className="text-white text-4xl xl:text-5xl font-extrabold tracking-tight text-center">
+            <h2 className="text-white text-4xl xl:text-5xl font-bold tracking-tight text-center">
               Recover More. Waste Less.
             </h2>
           </div>
@@ -473,7 +473,7 @@ localStorage.setItem("wasteless_login_role", role);
                   {item.title}
                 </p>
 
-                <p className="text-[9px] text-[#7c8494] leading-tight mt-1">
+                <p className="text-[12px] text-[#7c8494] leading-tight mt-1">
                   {item.desc}
                 </p>
               </button>

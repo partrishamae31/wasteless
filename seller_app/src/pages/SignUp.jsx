@@ -1772,7 +1772,7 @@ const SignUp = ({ onLoginClick }) => {
                   }`}
               >
                 Community User / Tech-Dealer
-                <span className="block text-[10px] font-normal text-gray-400 mt-1">
+                <span className="block text-[12px] font-normal text-gray-400 mt-1">
                   Buy working items or sell unused/non-working electronics
                 </span>
               </button>
@@ -1785,7 +1785,7 @@ const SignUp = ({ onLoginClick }) => {
                   }`}
               >
                 Repair Shop
-                <span className="block text-[10px] font-normal text-gray-400 mt-1">
+                <span className="block text-[12px] font-normal text-gray-400 mt-1">
                   Buy items for parts or request repair services
                 </span>
               </button>
@@ -1796,13 +1796,13 @@ const SignUp = ({ onLoginClick }) => {
                   onChange={(e) => setPrivacyConsent(e.target.checked)}
                   className="mt-0.5 h-4 w-4 accent-[#2d7a7f]"
                 />
-                <span className="text-[10px] leading-relaxed text-gray-600">
+                <span className="text-[12px] leading-relaxed text-gray-600">
                   I consent to the collection and processing of my registration and verification information for Wasteless account creation and verification.
                 </span>
               </label>
 
               {!privacyConsent && accountType && (
-                <p className="text-[10px] text-red-500 -mt-2">You must consent to data collection to proceed.</p>
+                <p className="text-[12px] text-red-500 -mt-2">You must consent to data collection to proceed.</p>
               )}
 
               <button
@@ -1822,7 +1822,7 @@ const SignUp = ({ onLoginClick }) => {
               </h3>
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  <label className="text-[15px] font-semibold text-gray-700 mb-1 block">
                     Email Address <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1834,14 +1834,14 @@ const SignUp = ({ onLoginClick }) => {
                     value={formData.email}
                   />
                   {errors.email && (
-                    <p className="text-[10px] text-red-500 mt-1">
+                    <p className="text-[12px] text-red-500 mt-1">
                       {errors.email}
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  <label className="text-[15px] font-semibold text-gray-700 mb-1 block">
                     Password <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1852,13 +1852,13 @@ const SignUp = ({ onLoginClick }) => {
                     onChange={handleChange}
                     value={formData.password}
                   />
-                  <p className="text-[9px] text-gray-400 mt-1.5">
+                  <p className="text-[12px] text-gray-400 mt-1.5">
                     Minimum 8 characters with uppercase, lowercase, number, and symbol
                   </p>
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  <label className="text-[15px] font-semibold text-gray-700 mb-1 block">
                     Confirm Password <span className="text-red-500">*</span>
                   </label>
                   <input
