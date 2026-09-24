@@ -2734,8 +2734,8 @@ const SellerDashboard = ({ session }) => {
           {[
             "listings",
             "transactions",
-            "donation",
             "repair-shops",
+            "donation",
           ].map((tab) => (
             <button
               key={tab}
@@ -2747,8 +2747,9 @@ const SellerDashboard = ({ session }) => {
             >
               {tab === "listings" && <Package size={18} />}
               {tab === "transactions" && <ArrowLeftRight size={18} />}
-              {tab === "donation" && <Gift size={18} />}
               {tab === "repair-shops" && <Wrench size={18} />}
+              {tab === "donation" && <Gift size={18} />}
+              
 
               {tab === "listings"
                 ? "Listings"

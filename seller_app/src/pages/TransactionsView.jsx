@@ -21,6 +21,7 @@ const TransactionsView = ({
   selectedTransaction,
   onSelect,
   handleCompleteHandover,
+  onOpenMessages,
   session,
 }) => {
   // Helper to determine status styling
@@ -888,7 +889,9 @@ const TransactionsView = ({
                     width:
                       selectedTransaction.status === "completed"
                         ? "100%"
-                        : "50%",
+                        : selectedTransaction.status === "meetup_scheduled"
+                          ? "50%"
+                          : "0%",
                   }}
                 />
 
@@ -901,7 +904,11 @@ const TransactionsView = ({
                     const isPast =
                       selectedTransaction.status === "completed"
                         ? true
-                        : i <= 1;
+                        : selectedTransaction.status === "cancelled"
+                          ? false
+                          : selectedTransaction.status === "meetup_scheduled"
+                            ? i <= 1
+                            : i === 0;
 
                     return (
                       <div
@@ -1018,6 +1025,70 @@ const TransactionsView = ({
                       Cancel
                     </button>
                   </div>
+                </div>
+              )}
+
+            {/* Pending: bid accepted but meetup not yet arranged */}
+            {!isRepairTransaction(selectedTransaction) &&
+              selectedTransaction.status === "pending" && (
+                <div className="bg-orange-50 border border-orange-100 rounded-[2rem] p-8 space-y-6">
+                  <div className="flex items-center gap-2 text-orange-500 font-black text-xs uppercase">
+                    <Clock size={16} /> Awaiting Meetup Details
+                  </div>
+
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                    Your bid has been accepted and the sale is confirmed. The
+                    seller is arranging the meetup — the schedule and location
+                    will appear here once it has been set.
+                  </p>
+
+                  <div className="bg-white rounded-2xl p-5 border border-orange-100 space-y-3">
+                    <p className="text-xs font-black text-orange-500 uppercase">
+                      While you wait
+                    </p>
+                    <p className="text-xs text-slate-600 font-medium flex items-center gap-2">
+                      <MessageSquare
+                        size={12}
+                        className="text-orange-400 shrink-0"
+                      />
+                      Message the seller to agree on a time and meeting spot.
+                    </p>
+                    <p className="text-xs text-slate-600 font-medium flex items-center gap-2">
+                      <CheckCircle
+                        size={12}
+                        className="text-orange-400 shrink-0"
+                      />
+                      Prepare the ₱
+                      {Number(
+                        selectedTransaction.amount || 0,
+                      ).toLocaleString()}{" "}
+                      payment for the handover.
+                    </p>
+                  </div>
+
+                  {onOpenMessages && (
+                    <button
+                      onClick={onOpenMessages}
+                      className="w-full bg-[#3285a1] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-900/10 hover:bg-[#286f88] transition flex items-center justify-center gap-2"
+                    >
+                      <MessageSquare size={14} />
+                      Message the Seller
+                    </button>
+                  )}
+                </div>
+              )}
+
+            {/* Cancelled: closed, nothing left to do */}
+            {!isRepairTransaction(selectedTransaction) &&
+              selectedTransaction.status === "cancelled" && (
+                <div className="bg-red-50 border border-red-100 rounded-[2rem] p-8">
+                  <div className="flex items-center gap-2 text-red-500 font-black text-xs uppercase">
+                    <XCircle size={16} /> Transaction Cancelled
+                  </div>
+                  <p className="text-xs text-slate-600 font-medium mt-3">
+                    This transaction was cancelled and no further action is
+                    needed.
+                  </p>
                 </div>
               )}
 
