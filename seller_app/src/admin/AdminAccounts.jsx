@@ -14,8 +14,10 @@ import {
   Eye,
   EyeOff,
   X,
-  Upload,
   CheckCircle2,
+  ChevronDown,
+  Building2,
+  BadgeCheck,
 } from "lucide-react";
 
 const AdminAccounts = () => {
@@ -23,10 +25,10 @@ const AdminAccounts = () => {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  const [toast, setToast] = useState("");
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const [idFile, setIdFile] = useState(null);
 
   const valenzuelaBarangays = [
     "Arkong Bato",
@@ -63,10 +65,21 @@ const AdminAccounts = () => {
     "Wawang Pulo",
   ];
 
+  const departments = [
+    "City Environment and Natural Resources Office (CENRO)",
+    "General Services Office (GSO)",
+    "Information and Communications Technology Office (ICTO)",
+    "City Planning and Development Office (CPDO)",
+    "Public Order and Safety Office (POSO)",
+    "City Health Office (CHO)",
+  ];
+
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
     contact_number: "",
+    department: "",
+    employee_id: "",
     barangay: "",
     password: "",
     confirmPassword: "",
@@ -84,12 +97,12 @@ const AdminAccounts = () => {
       full_name: "",
       email: "",
       contact_number: "",
+      department: "",
+      employee_id: "",
       barangay: "",
       password: "",
       confirmPassword: "",
     });
-
-    setIdFile(null);
   };
 
   const handleCreateAdmin = async () => {
@@ -103,6 +116,8 @@ const AdminAccounts = () => {
         !formData.full_name ||
         !formData.email ||
         !formData.contact_number ||
+        !formData.department ||
+        !formData.employee_id ||
         !formData.barangay ||
         !formData.password ||
         !formData.confirmPassword
@@ -118,11 +133,6 @@ const AdminAccounts = () => {
 
       if (formData.password !== formData.confirmPassword) {
         alert("Passwords do not match.");
-        return;
-      }
-
-      if (!idFile) {
-        alert("Please upload a valid ID.");
         return;
       }
 
@@ -173,33 +183,6 @@ const AdminAccounts = () => {
       }
 
       // =========================
-      // UPLOAD FILE
-      // =========================
-      let uploadedFileUrl = "";
-
-      const fileExt = idFile.name.split(".").pop();
-
-      const filePath = `admin_ids/${userId}/id_${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("verifications")
-        .upload(filePath, idFile, {
-          upsert: true,
-        });
-
-      if (uploadError) {
-        console.error(uploadError);
-        alert("Failed to upload ID.");
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("verifications")
-        .getPublicUrl(filePath);
-
-      uploadedFileUrl = publicUrlData.publicUrl;
-
-      // =========================
       // UPDATE PROFILE
       // =========================
       const { error: profileError } = await supabase
@@ -210,6 +193,9 @@ const AdminAccounts = () => {
           contact_number: formData.contact_number,
           barangay: formData.barangay,
 
+          department: formData.department,
+          employee_id: formData.employee_id,
+
           role: "admin",
 
           // CHANGE THESE IF YOU WANT
@@ -217,8 +203,6 @@ const AdminAccounts = () => {
           status: "Active",
           verification_status: "verified",
           is_verified: true,
-
-          business_permit_url: uploadedFileUrl,
 
           average_rating: 0,
           total_reviews: 0,
@@ -235,6 +219,9 @@ const AdminAccounts = () => {
       // SUCCESS
       // =========================
       setSuccess(true);
+      setToast("Administrator account created and activated successfully.");
+      setTimeout(() => setToast(""), 5000);
+
       setShowForm(false);
 
       resetForm();
@@ -337,14 +324,14 @@ const AdminAccounts = () => {
           </h1>
 
           <p className="text-slate-500 mt-1">
-            Create and manage platform administrator accounts
+            Create new administrator accounts for the platform
           </p>
         </div>
 
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
-            className="bg-[#2387A5] hover:bg-[#1f7690] transition-all text-white px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg"
+            className="bg-purple-600 hover:bg-purple-700 transition-all text-white px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-purple-200"
           >
             <Plus size={18} />
             Create New Admin
@@ -368,7 +355,7 @@ const AdminAccounts = () => {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* FULL NAME */}
+            {/* ROW 1: FULL NAME | EMAIL */}
             <InputField
               icon={<User size={18} />}
               label="Full Name"
@@ -378,7 +365,6 @@ const AdminAccounts = () => {
               placeholder="Juan Dela Cruz"
             />
 
-            {/* EMAIL */}
             <InputField
               icon={<Mail size={18} />}
               label="Email Address"
@@ -389,7 +375,7 @@ const AdminAccounts = () => {
               placeholder="admin@valenzuela.gov.ph"
             />
 
-            {/* CONTACT */}
+            {/* ROW 2: CONTACT | DEPARTMENT */}
             <InputField
               icon={<Phone size={18} />}
               label="Contact Number"
@@ -399,36 +385,37 @@ const AdminAccounts = () => {
               placeholder="+63 917 123 4567"
             />
 
-            {/* BARANGAY */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Barangay Assignment
-              </label>
+            <SelectField
+              icon={<Building2 size={18} />}
+              label="Department"
+              name="department"
+              value={formData.department}
+              onChange={handleChange}
+              placeholder="Select Department"
+              options={departments}
+            />
 
-              <div className="relative">
-                <MapPin
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10"
-                />
+            {/* ROW 3: EMPLOYEE ID | BARANGAY */}
+            <InputField
+              icon={<BadgeCheck size={18} />}
+              label="Employee ID"
+              name="employee_id"
+              value={formData.employee_id}
+              onChange={handleChange}
+              placeholder="EMP-2026-12345"
+            />
 
-                <select
-                  name="barangay"
-                  value={formData.barangay}
-                  onChange={handleChange}
-                  className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-4 outline-none focus:ring-2 focus:ring-cyan-500 appearance-none text-slate-700"
-                >
-                  <option value="">Select barangay</option>
+            <SelectField
+              icon={<MapPin size={18} />}
+              label="Barangay Assignment"
+              name="barangay"
+              value={formData.barangay}
+              onChange={handleChange}
+              placeholder="Select Barangay"
+              options={valenzuelaBarangays}
+            />
 
-                  {valenzuelaBarangays.map((barangay) => (
-                    <option key={barangay} value={barangay}>
-                      {barangay}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* PASSWORD */}
+            {/* ROW 4: PASSWORD | CONFIRM PASSWORD */}
             <PasswordField
               label="Password"
               name="password"
@@ -438,7 +425,6 @@ const AdminAccounts = () => {
               toggle={() => setShowPassword(!showPassword)}
             />
 
-            {/* CONFIRM PASSWORD */}
             <PasswordField
               label="Confirm Password"
               name="confirmPassword"
@@ -449,26 +435,23 @@ const AdminAccounts = () => {
             />
           </div>
 
-          {/* FILE */}
-          <div className="mt-8">
-            <label className="border-2 border-dashed border-slate-300 rounded-3xl h-44 flex flex-col items-center justify-center text-center cursor-pointer hover:border-cyan-400 transition-all">
-              <Upload size={38} className="text-slate-400 mb-3" />
+          {/* IMMEDIATE ACCESS NOTICE */}
+          <div className="mt-8 bg-purple-50 border border-purple-200 rounded-2xl p-5 flex items-start gap-4">
+            <Shield
+              size={22}
+              className="text-purple-600 shrink-0 mt-0.5"
+            />
 
-              <p className="font-semibold text-slate-700">
-                {idFile ? idFile.name : "Click to upload ID"}
+            <div>
+              <p className="font-bold text-purple-700">
+                Immediate Access
               </p>
 
-              <span className="text-sm text-slate-400 mt-1">
-                PNG, JPG, or PDF (Max 5MB)
-              </span>
-
-              <input
-                type="file"
-                hidden
-                accept=".png,.jpg,.jpeg,.pdf"
-                onChange={(e) => setIdFile(e.target.files[0])}
-              />
-            </label>
+              <p className="text-purple-600 text-sm mt-1">
+                This account will be created immediately with full
+                administrator privileges. No approval required.
+              </p>
+            </div>
           </div>
 
           {/* BUTTONS */}
@@ -483,11 +466,19 @@ const AdminAccounts = () => {
             <button
               onClick={handleCreateAdmin}
               disabled={loading}
-              className="h-14 rounded-2xl bg-[#2387A5] hover:bg-[#1f7690] transition-all text-white font-semibold shadow-lg disabled:opacity-50"
+              className="h-14 rounded-2xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 transition-all text-white font-semibold shadow-lg shadow-purple-200 disabled:opacity-50"
             >
               {loading ? "Creating..." : "Create Admin Account"}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* SUCCESS TOAST */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <CheckCircle2 size={20} />
+          <span className="font-semibold text-sm">{toast}</span>
         </div>
       )}
     </div>
@@ -511,8 +502,52 @@ const InputField = ({ icon, label, type = "text", ...props }) => {
 
         <input
           type={type}
-          className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-4 outline-none focus:ring-2 focus:ring-cyan-500"
+          className="w-full h-14 rounded-2xl border border-slate-200 bg-white pl-12 pr-4 outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 placeholder:text-slate-400 text-slate-700 transition"
           {...props}
+        />
+      </div>
+    </div>
+  );
+};
+
+// =========================
+// REUSABLE SELECT
+// =========================
+const SelectField = ({
+  icon,
+  label,
+  options = [],
+  ...props
+}) => {
+  return (
+    <div>
+      <label className="text-sm font-medium text-slate-700 block mb-2">
+        {label}
+      </label>
+
+      <div className="relative">
+        {icon && (
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10">
+            {icon}
+          </div>
+        )}
+
+        <select
+          className="w-full h-14 rounded-2xl border border-slate-200 bg-white pl-12 pr-11 outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 appearance-none text-slate-700 transition"
+          {...props}
+        >
+          <option value="">{props.placeholder || "Select an option"}</option>
+
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+
+        <ChevronDown
+          size={18}
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
         />
       </div>
     </div>
@@ -537,7 +572,7 @@ const PasswordField = ({ label, show, toggle, ...props }) => {
 
         <input
           type={show ? "text" : "password"}
-          className="w-full h-14 rounded-2xl border border-slate-300 bg-white pl-12 pr-12 outline-none focus:ring-2 focus:ring-cyan-500"
+          className="w-full h-14 rounded-2xl border border-slate-200 bg-white pl-12 pr-12 outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 placeholder:text-slate-400 text-slate-700 transition"
           {...props}
         />
 

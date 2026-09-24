@@ -9,6 +9,7 @@ import bannerBg from "./assets/banner.png";
 import DonationTab from "./DonationTab";
 import SellerProfileModal from "./SellerProfileModal";
 import RepairShopMessages from "./RepairShopMessages";
+import SiteFooter from "./SiteFooter";
 
 import {
   Search,
@@ -2630,103 +2631,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           />
         )}
       </div>
-      <footer className="mt-20 bg-[#07122b] text-white overflow-hidden">
-        <div className="max-w-7xl mx-auto px-10 py-16">
-          <div className="grid grid-cols-4 gap-12">
-            {/* LEFT */}
-            <div>
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center">
-                  <Leaf size={18} />
-                </div>
-
-                <h2 className="text-3xl font-bold">Wasteless</h2>
-              </div>
-
-              <p className="text-slate-400 leading-relaxed text-sm mb-6">
-                Valenzuela City's official e-waste management platform promoting
-                circular economy and sustainable electronics disposal.
-              </p>
-
-              <div className="flex gap-3">
-                <span className="px-4 py-2 rounded-full border border-emerald-500 text-emerald-400 text-xs">
-                  Eco-Certified
-                </span>
-
-                <span className="px-4 py-2 rounded-full border border-blue-500 text-blue-400 text-xs">
-                  City Partner
-                </span>
-              </div>
-            </div>
-
-            {/* QUICK LINKS */}
-            <div>
-              <h3 className="text-xl font-semibold mb-6">Quick Links</h3>
-
-              <div className="space-y-4 text-slate-400 text-sm">
-                <p>About Wasteless</p>
-                <p>How It Works</p>
-                <p>Environmental Impact</p>
-                <p>Partner Shops</p>
-                <p>Help Center</p>
-                <p>FAQs</p>
-              </div>
-            </div>
-
-            {/* LEGAL */}
-            <div>
-              <h3 className="text-xl font-semibold mb-6">Legal</h3>
-
-              <div className="space-y-4 text-slate-400 text-sm">
-                <p>Terms of Service</p>
-                <p>Privacy Policy</p>
-                <p>Cookie Policy</p>
-                <p>Data Protection</p>
-                <p>E-Waste Guidelines</p>
-                <p>Accessibility</p>
-              </div>
-            </div>
-
-            {/* CONTACT */}
-            <div>
-              <h3 className="text-xl font-semibold mb-6">Contact Us</h3>
-
-              <div className="space-y-5 text-slate-400 text-sm">
-                <div className="flex gap-3">
-                  <MapPin size={18} className="mt-1" />
-                  <p>
-                    Valenzuela City Hall
-                    <br />
-                    MacArthur Highway, Valenzuela City
-                    <br />
-                    Metro Manila, Philippines
-                  </p>
-                </div>
-
-                <div className="flex gap-3 items-center">
-                  <Phone size={16} />
-                  <p>(02) 123-4567</p>
-                </div>
-
-                <div className="flex gap-3 items-center">
-                  <Mail size={16} />
-                  <p>wasteless@valenzuela.gov.ph</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* BOTTOM */}
-          <div className="border-t border-white/10 mt-16 pt-8 flex justify-between items-center text-slate-500 text-sm">
-            <p>© 2026 Wasteless - Valenzuela City. All rights reserved.</p>
-
-            <div className="flex gap-8">
-              <p>Valenzuela City Government</p>
-              <p>DENR</p>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 };
