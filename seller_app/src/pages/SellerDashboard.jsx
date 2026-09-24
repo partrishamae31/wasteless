@@ -1717,7 +1717,7 @@ const SellerDashboard = ({ session }) => {
       );
 
       alert("Bid accepted! The listing is now closed.");
-      await fetchActiveListings();
+      // await fetchActiveListings();
     } catch (error) {
       console.error("Error in bid acceptance:", error);
       alert(`Error: ${error.message}`);
