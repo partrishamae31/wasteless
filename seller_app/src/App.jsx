@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
+import { readSignupProgress, clearSignupProgress } from "./signupProgress";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 import SellerDashboard from "./pages/SellerDashboard";
@@ -19,7 +20,17 @@ function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState("login");
+  const [currentPage, setCurrentPage] = useState(() => {
+  const progress = readSignupProgress();
+  const savedStep = Number(progress?.step);
+
+  // Restore unfinished registration after refreshing.
+  if (savedStep >= 1 && savedStep <= 4) {
+    return "signup";
+  }
+
+  return "login";
+});
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);

@@ -797,22 +797,13 @@ const extractDocument = async ({ file, documentType, barangays, onStatus, localP
 };
 
 const SignUp = ({ onLoginClick }) => {
-  // Restore typed signup progress after refresh. Passwords and uploaded files
-  // are deliberately not persisted; users must re-enter/re-upload those.
-  const savedProgress = readSignupProgress() || {};
-  // If the user refreshed on the summary screen, return them to verification
-  // because browser file inputs cannot be restored safely.
-  const restoredStep =
-    savedProgress.step >= 1 && savedProgress.step <= 5
-      ? savedProgress.step === 5
-        ? 4
-        : savedProgress.step
-      : 1;
+  // A refresh mid-signup restores the saved step and typed text instead of
+  // starting over (and instead of landing in a dashboard via the old session).
+  const savedProgress = readSignupProgress();
 
-  const [step, setStep] = useState(restoredStep);
-  const [accountType, setAccountType] = useState(savedProgress.accountType || "");
-  const [shopLocation, setShopLocation] = useState(savedProgress.shopLocation || null);
-  const [privacyConsent, setPrivacyConsent] = useState(savedProgress.step >= 2);
+  const [step, setStep] = useState(savedProgress?.step >= 1 && savedProgress?.step <= 4 ? savedProgress.step : 1);
+  const [accountType, setAccountType] = useState(savedProgress?.accountType || "");
+  const [privacyConsent, setPrivacyConsent] = useState(savedProgress?.step >= 2 ? true : false);
   const [idScanCompleted, setIdScanCompleted] = useState(false);
   const [permitScanCompleted, setPermitScanCompleted] = useState(false);
   const [techCertScanCompleted, setTechCertScanCompleted] = useState(false);
@@ -824,54 +815,77 @@ const SignUp = ({ onLoginClick }) => {
   const [scanningTechCert, setScanningTechCert] = useState(false);
   const [scanMessage, setScanMessage] = useState("");
   const [otp, setOtp] = useState("");
-  const [otpError, setOtpError] = useState("");
-  const [emailVerified, setEmailVerified] = useState(Boolean(savedProgress.emailVerified));
-  const [authUserId, setAuthUserId] = useState(savedProgress.authUserId || null);
+  const [emailVerified, setEmailVerified] = useState(Boolean(savedProgress?.emailVerified));
+  const [authUserId, setAuthUserId] = useState(savedProgress?.authUserId || null);
+  const [shopLocation, setShopLocation] = useState(null);
   const governmentIdRef = React.useRef();
   const permitRef = React.useRef();
   const techRef = React.useRef();
   const scanInFlightRef = React.useRef(false);
   const valenzuelaBarangays = [
-    "Arkong Bato", "Bagbaguin", "Balangkas", "Bignay", "Bisig",
-    "Canumay East", "Canumay West", "Coloong", "Dalandanan",
-    "Gen. T. de Leon", "Isla", "Karuhatan", "Lawang Bato", "Lingunan",
-    "Mabolo", "Malanday", "Malinta", "Mapulang Lupa", "Marulas", "Maysan",
-    "Palasan", "Pariancillo Villa", "Paso de Blas", "Pasolo", "Poblacion",
-    "Pulo", "Punturin", "Rincon", "Tagalag", "Ugong", "Veinte Reales",
+    "Arkong Bato",
+    "Bagbaguin",
+    "Balangkas",
+    "Bignay",
+    "Bisig",
+    "Canumay East",
+    "Canumay West",
+    "Coloong",
+    "Dalandanan",
+    "Gen. T. de Leon",
+    "Isla",
+    "Karuhatan",
+    "Lawang Bato",
+    "Lingunan",
+    "Mabolo",
+    "Malanday",
+    "Malinta",
+    "Mapulang Lupa",
+    "Marulas",
+    "Maysan",
+    "Palasan",
+    "Pariancillo Villa",
+    "Paso de Blas",
+    "Pasolo",
+    "Poblacion",
+    "Pulo",
+    "Punturin",
+    "Rincon",
+    "Tagalag",
+    "Ugong",
+    "Veinte Reales",
     "Wawang Pulo",
   ];
 
-  const [formData, setFormData] = useState(() => {
-    const saved = savedProgress.formData || {};
-    return {
-      ...saved,
-      fullName: saved.fullName || "",
-      email: saved.email || "",
-      contactNumber: saved.contactNumber || "",
-      barangay: saved.barangay || "",
-      businessName: saved.businessName || "",
-      address: saved.address || "",
-      businessPermitNumber: saved.businessPermitNumber || "",
-      permitType: saved.permitType || "",
-      permitIssuingLgu: saved.permitIssuingLgu || "",
-      permitIssueDate: saved.permitIssueDate || "",
-      permitExpiryDate: saved.permitExpiryDate || "",
-      businessActivity: saved.businessActivity || "",
-      certificationType: saved.certificationType || "",
-      otherCertification: saved.otherCertification || "",
-      techCertificateNumber: saved.techCertificateNumber || "",
-      techCertificateIssuer: saved.techCertificateIssuer || "",
-      techCertificateTitle: saved.techCertificateTitle || "",
-      techCertificateIssueDate: saved.techCertificateIssueDate || "",
-      techCertificateExpiryDate: saved.techCertificateExpiryDate || "",
-      techSpecialization: saved.techSpecialization || "",
-      // Never restore credentials or File objects from localStorage.
-      password: "",
-      confirmPassword: "",
-      governmentId: null,
-      businessPermit: null,
-      techCert: null,
-    };
+  const [formData, setFormData] = useState({
+    fullName: savedProgress?.formData?.fullName || "",
+    email: savedProgress?.formData?.email || "",
+    contactNumber: savedProgress?.formData?.contactNumber || "",
+    barangay: savedProgress?.formData?.barangay || "",
+    // Passwords are never persisted; the user re-enters them after a refresh.
+    password: "",
+    confirmPassword: "",
+
+    // Repair Shop
+    businessName: "",
+    address: "",
+    governmentId: null,
+    businessPermit: null,
+    businessPermitNumber: "",
+    permitType: "",
+    permitIssuingLgu: "",
+    permitIssueDate: "",
+    permitExpiryDate: "",
+    businessActivity: "",
+    certificationType: "",
+    otherCertification: "",
+    techCert: null,
+    techCertificateNumber: "",
+    techCertificateIssuer: "",
+    techCertificateTitle: "",
+    techCertificateIssueDate: "",
+    techCertificateExpiryDate: "",
+    techSpecialization: "",
   });
 
   const certificationOptions = [
@@ -911,39 +925,37 @@ const SignUp = ({ onLoginClick }) => {
   // fire a second signUp() call (it looked like "account already exists").
   const signupInFlightRef = React.useRef(false);
 
-  // In-flight final submission. A double click on "Create Account" must not
-  // run handleFinalSubmit twice (it would duplicate profile updates/uploads).
-  const finalSubmitInFlightRef = React.useRef(false);
-
   // Persist the minimal signup state (no passwords, no files) after each change.
-  // Save registration progress whenever the user changes data or steps.
-// Passwords and uploaded documents are intentionally excluded.
-React.useEffect(() => {
-  const {
-    password,
-    confirmPassword,
-    governmentId,
-    businessPermit,
-    techCert,
-    ...savedFormData
-  } = formData;
-
-  saveSignupProgress({
-    step,
-    accountType,
-    emailVerified,
-    authUserId,
-    formData: savedFormData,
-    shopLocation,
-  });
-}, [
-  step,
-  accountType,
-  emailVerified,
-  authUserId,
-  formData,
-  shopLocation,
-]);
+  React.useEffect(() => {
+    saveSignupProgress({
+      step,
+      accountType,
+      emailVerified,
+      authUserId,
+      formData: {
+        fullName: formData.fullName,
+        email: formData.email,
+        contactNumber: formData.contactNumber,
+        barangay: formData.barangay,
+        businessName: formData.businessName,
+        address: formData.address,
+        businessPermitNumber: formData.businessPermitNumber,
+        permitType: formData.permitType,
+        permitIssuingLgu: formData.permitIssuingLgu,
+        permitIssueDate: formData.permitIssueDate,
+        permitExpiryDate: formData.permitExpiryDate,
+        businessActivity: formData.businessActivity,
+        certificationType: formData.certificationType,
+        otherCertification: formData.otherCertification,
+        techCertificateNumber: formData.techCertificateNumber,
+        techCertificateIssuer: formData.techCertificateIssuer,
+        techCertificateTitle: formData.techCertificateTitle,
+        techCertificateIssueDate: formData.techCertificateIssueDate,
+        techCertificateExpiryDate: formData.techCertificateExpiryDate,
+        techSpecialization: formData.techSpecialization,
+      },
+    });
+  }, [step, accountType, emailVerified, authUserId, formData]);
 
   // =========================
   // Turn a raw Supabase/Auth error into something a
@@ -1388,17 +1400,6 @@ React.useEffect(() => {
     }
 
     if (step === 2) {
-      // If this email already passed the account-creation step, do not call
-      // supabase.auth.signUp() again when the user navigates backward.
-      // Continue to OTP when the email is still unverified, or return directly
-      // to the details step when verification is already complete. This also
-      // supports a page refresh, where passwords are intentionally not restored.
-      if (authUserId) {
-        setErrors((prev) => ({ ...prev, email: "" }));
-        setStep(emailVerified ? 4 : 3);
-        return;
-      }
-
       if (!formData.email.trim() || !formData.password || !formData.confirmPassword) { alert("Please enter your email and password, then confirm your password."); return; }
       if (formData.password !== formData.confirmPassword) { alert("Passwords do not match."); return; }
       if (formData.password.length < 8 || !/[A-Z]/.test(formData.password) || !/[a-z]/.test(formData.password) || !/[0-9]/.test(formData.password) || !/[^A-Za-z0-9]/.test(formData.password)) { alert("Password must be at least 8 characters and include uppercase, lowercase, number, and symbol."); return; }
@@ -1415,31 +1416,14 @@ React.useEffect(() => {
         });
         if (error) throw error;
         if (!data?.user) throw new Error("Could not create the account.");
-
-        // Supabase may return a user with no identities when the email is
-        // already registered (especially when email-enumeration protection is enabled).
-        // Stop here so the user never advances to the email OTP step.
-        if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-          setErrors((prev) => ({
-            ...prev,
-            email: "An account with this email already exists. Please log in instead, or use a different email address.",
-          }));
-          return;
-        }
-
         setAuthUserId(data.user.id);
         setStep(3);
         alert("A verification code has been sent to your email. Check your inbox and spam folder.");
       } catch (err) {
         // Full technical detail stays in the console for debugging;
-        // show an inline email error for duplicate-email cases and keep the user on Step 2.
+        // the user only ever sees the friendly translation.
         console.error("Signup error details:", err);
-        const friendlyMessage = getFriendlyErrorMessage(err, "We couldn't create your account right now. Please try again in a moment.");
-        if (friendlyMessage.toLowerCase().includes("account with this email already exists")) {
-          setErrors((prev) => ({ ...prev, email: friendlyMessage }));
-        } else {
-          alert(friendlyMessage);
-        }
+        alert(getFriendlyErrorMessage(err, "We couldn't create your account right now. Please try again in a moment."));
       } finally {
         signupInFlightRef.current = false;
         setLoading(false);
@@ -1447,38 +1431,21 @@ React.useEffect(() => {
     }
 
     if (step === 3) {
-      const normalizedOtp = otp.trim();
-      if (!/^\d{6}$/.test(normalizedOtp)) {
-        setOtpError("Enter the complete 6-digit verification code sent to your email.");
-        return;
-      }
-
-      setOtpError("");
+      if (!/^\d{6}$/.test(otp.trim())) { alert("Enter the 6-digit code sent to your email."); return; }
       setLoading(true);
       try {
-        const { data, error } = await supabase.auth.verifyOtp({
-          email: formData.email.trim().toLowerCase(),
-          token: normalizedOtp,
-          type: "signup",
-        });
+        const { data, error } = await supabase.auth.verifyOtp({ email: formData.email.trim().toLowerCase(), token: otp.trim(), type: "signup" });
         if (error) throw error;
         if (!data?.user?.id) throw new Error("Email verification could not be confirmed.");
         setEmailVerified(true);
         setAuthUserId(data.user.id);
-        setOtpError("");
-        setStep(4);
+        setStep(accountType === "repair_shop" ? 4 : 4);
         alert("Email verified! Please complete your account verification details.");
       } catch (err) {
         console.error("OTP verification error:", err);
-        const message = getFriendlyErrorMessage(
-          err,
-          "We couldn't verify that code. Please check it and try again.",
-        );
-        setOtpError(message);
-        alert(message);
-      } finally {
-        setLoading(false);
+        alert(getFriendlyErrorMessage(err, "We couldn't verify that code. Please try again."));
       }
+      finally { setLoading(false); }
       return;
     }
 
@@ -1606,8 +1573,6 @@ React.useEffect(() => {
   };
 
   const handleFinalSubmit = async () => {
-    if (finalSubmitInFlightRef.current) return;
-    finalSubmitInFlightRef.current = true;
     setLoading(true);
 
     try {
@@ -1772,26 +1737,16 @@ React.useEffect(() => {
       // through the Login screen rather than being silently logged in after signup.
       await supabase.auth.signOut();
 
-      // Registration is done: forget the saved progress so a later visit
-      // to /signup starts a fresh registration instead of restoring old data.
-      clearSignupProgress();
-
       setIsSubmitted(true);
       alert("Account created successfully. Your badge is New User while verification is pending. Please log in with your email and password.");
     } catch (err) {
       console.error("Final registration submit error:", err);
       alert(getFriendlyErrorMessage(err, "We couldn't finish creating your account. Please try again in a moment."));
     } finally {
-      finalSubmitInFlightRef.current = false;
       setLoading(false);
     }
   };
   const steps = [1, 2, 3, 4, 5];
-
-  const handleBackToLogin = () => {
-  clearSignupProgress();
-  onLoginClick();
-};
 
   const governmentIdReady =
     accountType !== "harvester" ||
@@ -1976,17 +1931,15 @@ React.useEffect(() => {
               <div className="flex gap-4 pt-6">
                 <button
                   onClick={() => setStep(1)}
-                  disabled={loading}
-                  className="flex-1 py-3 border border-gray-200 text-gray-500 rounded-xl font-bold text-sm hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="flex-1 py-3 border border-gray-200 text-gray-500 rounded-xl font-bold text-sm hover:bg-gray-50 transition-colors"
                 >
                   Back
                 </button>
                 <button
                   onClick={handleContinue}
-                  disabled={loading}
-                  className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm hover:bg-[#246367] transition-all shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm hover:bg-[#246367] transition-all shadow-md"
                 >
-                  {loading ? "Creating account..." : "Continue"}
+                  Continue
                 </button>
               </div>
             </div>
@@ -1995,34 +1948,10 @@ React.useEffect(() => {
             <div className="space-y-4 animate-fadeIn text-left">
               <h3 className="text-lg font-bold text-gray-800">Verify your email</h3>
               <p className="text-sm text-gray-600">We sent a 6-digit code to <strong>{formData.email}</strong>. Enter it below to continue.</p>
-              <div>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={otp}
-                  aria-invalid={Boolean(otpError)}
-                  aria-describedby={otpError ? "otp-error" : undefined}
-                  onChange={(e) => {
-                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
-                    if (otpError) setOtpError("");
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !loading) handleContinue();
-                  }}
-                  placeholder="Enter 6-digit code"
-                  className={`w-full px-4 py-3 border rounded-lg text-center text-xl tracking-widest focus:outline-none focus:ring-2 ${otpError ? "border-red-500 focus:ring-red-100" : "border-gray-200 focus:ring-teal-500/20"}`}
-                />
-                {otpError && (
-                  <p id="otp-error" role="alert" aria-live="polite" className="mt-2 text-sm text-red-600">
-                    {otpError}
-                  </p>
-                )}
-              </div>
+              <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Enter 6-digit code" className="w-full px-4 py-3 border border-gray-200 rounded-lg text-center text-xl tracking-widest" />
               <div className="flex gap-3">
-                <button type="button" onClick={() => { setOtpError(""); setStep(2); }} disabled={loading} className="flex-1 py-3 border rounded-xl text-sm disabled:opacity-50">Back</button>
-                <button type="button" onClick={handleContinue} disabled={loading} className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Verifying..." : "Verify code"}</button>
+                <button type="button" onClick={() => setStep(2)} className="flex-1 py-3 border rounded-xl text-sm">Back</button>
+                <button type="button" onClick={handleContinue} disabled={loading || otp.length !== 6} className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Verifying..." : "Verify code"}</button>
               </div>
               <button type="button" disabled={loading} onClick={async () => { setLoading(true); try { const { error } = await supabase.auth.resend({ type: "signup", email: formData.email.trim().toLowerCase() }); if (error) throw error; alert("A new verification code has been sent."); } catch (err) { console.error("Resend code error:", err); alert(getFriendlyErrorMessage(err, "We couldn't resend the code. Please try again shortly.")); } finally { setLoading(false); } }} className="w-full text-sm text-teal-700 font-semibold disabled:opacity-50">Resend code</button>
             </div>
@@ -2038,7 +1967,7 @@ React.useEffect(() => {
                 <p className="text-xs text-blue-800 leading-relaxed">
                   {accountType === "harvester"
                     ? "Upload your personal government ID so Wasteless can suggest your details. Review the information before continuing."
-                    : "First choose your technical certification (type, document, then details), then upload your business permit and confirm its details. A personal government ID is not required for repair-shop registration."}
+                    : "Provide your shop details, business registration, and technical certification. A personal government ID is not required for repair-shop registration."}
                 </p>
               </div>
 
@@ -2165,6 +2094,73 @@ React.useEffect(() => {
               )}
               {accountType === "repair_shop" && (
                 <>
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-2">
+                      Business Permit / DTI Registration{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+
+                    <div
+                      onClick={() => permitRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
+                        ? "border-emerald-400 bg-emerald-50/10"
+                        : "border-gray-200"
+                        }`}
+                      >
+                      <input
+                        type="file"
+                        ref={permitRef}
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleFileChange(e, "businessPermit")
+                        }
+                      />
+
+                      <Upload
+                        className={
+                          formData.businessPermit
+                            ? "text-emerald-500 mb-2"
+                            : "text-gray-400 mb-2"
+                        }
+                        size={24}
+                      />
+
+                      <span className="text-teal-600 font-semibold text-sm">
+                        {formData.businessPermit
+                          ? "Permit uploaded!"
+                          : "Click to upload"}
+                      </span>
+
+                      <span className="text-gray-400 text-xs mt-1">
+                        {formData.businessPermit
+                          ? formData.businessPermit.name
+                          : "PDF, JPEG, PNG, or WebP (max 5MB)"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={scanBusinessPermit}
+                      disabled={scanningPermit || scanningTechCert || !formData.businessPermit}
+                      className="w-full mt-3 py-2.5 rounded-lg border border-teal-600 text-teal-700 font-semibold text-sm disabled:opacity-50"
+                    >
+                      {scanningPermit ? "Scanning permit…" : "Scan permit and autofill details"}
+                    </button>
+                    {permitScanCompleted ? (
+                      <div role="status" aria-live="polite" className="mt-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3">
+                        <p className="text-xs font-black text-emerald-900">✓ Business Permit Scan Complete</p>
+                        <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
+                          Business name, shop address, and owner's name were extracted where available. Please review the fields below.
+                        </p>
+                      </div>
+                    ) : scanMessage && !scanningPermit && (
+                      <div role="alert" aria-live="polite" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-semibold text-amber-900">{scanMessage}</p>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">OCR assists with data entry. Review the extracted details; scanning does not verify permit authenticity.</p>
+                  </div>
+
                   {/* CERTIFICATION TYPE */}
                   <div>
                     <label className="text-xs font-bold text-gray-700 block mb-2">
@@ -2279,110 +2275,6 @@ React.useEffect(() => {
                     </p>
                   </div>
 
-                  <div className="space-y-4 rounded-xl border border-blue-100 bg-blue-50/30 p-4">
-                    <p className="text-xs font-semibold text-gray-700">Technical Certification Details</p>
-                    <p className="text-xs text-gray-500">Review the fields extracted from your technical certificate before submitting.</p>
-
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-2">Certificate Number <span className="text-red-500">*</span></label>
-                      <input name="techCertificateNumber" type="text" value={formData.techCertificateNumber} onChange={handleChange} placeholder="Certificate number" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-2">Issuing Organization <span className="text-red-500">*</span></label>
-                      <input name="techCertificateIssuer" type="text" value={formData.techCertificateIssuer} onChange={handleChange} placeholder="e.g. TESDA" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-2">Certification / Qualification Title <span className="text-red-500">*</span></label>
-                      <input name="techCertificateTitle" type="text" value={formData.techCertificateTitle} onChange={handleChange} placeholder="Certification or qualification title" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs font-bold text-gray-700 block mb-2">Issue Date</label>
-                        <input name="techCertificateIssueDate" type="date" value={formData.techCertificateIssueDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold text-gray-700 block mb-2">Expiry Date</label>
-                        <input name="techCertificateExpiryDate" type="date" value={formData.techCertificateExpiryDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-2">Specialization / Competency</label>
-                      <input name="techSpecialization" type="text" value={formData.techSpecialization} onChange={handleChange} placeholder="Specialization or competency" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 block mb-2">
-                      Business Permit / DTI Registration{" "}
-                      <span className="text-red-500">*</span>
-                    </label>
-
-                    <div
-                      onClick={() => permitRef.current?.click()}
-                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.businessPermit
-                        ? "border-emerald-400 bg-emerald-50/10"
-                        : "border-gray-200"
-                        }`}
-                      >
-                      <input
-                        type="file"
-                        ref={permitRef}
-                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(e) =>
-                          handleFileChange(e, "businessPermit")
-                        }
-                      />
-
-                      <Upload
-                        className={
-                          formData.businessPermit
-                            ? "text-emerald-500 mb-2"
-                            : "text-gray-400 mb-2"
-                        }
-                        size={24}
-                      />
-
-                      <span className="text-teal-600 font-semibold text-sm">
-                        {formData.businessPermit
-                          ? "Permit uploaded!"
-                          : "Click to upload"}
-                      </span>
-
-                      <span className="text-gray-400 text-xs mt-1">
-                        {formData.businessPermit
-                          ? formData.businessPermit.name
-                          : "PDF, JPEG, PNG, or WebP (max 5MB)"}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={scanBusinessPermit}
-                      disabled={scanningPermit || scanningTechCert || !formData.businessPermit}
-                      className="w-full mt-3 py-2.5 rounded-lg border border-teal-600 text-teal-700 font-semibold text-sm disabled:opacity-50"
-                    >
-                      {scanningPermit ? "Scanning permit…" : "Scan permit and autofill details"}
-                    </button>
-                    {permitScanCompleted ? (
-                      <div role="status" aria-live="polite" className="mt-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3">
-                        <p className="text-xs font-black text-emerald-900">✓ Business Permit Scan Complete</p>
-                        <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
-                          Business name, shop address, and owner's name were extracted where available. Please review the fields below.
-                        </p>
-                      </div>
-                    ) : scanMessage && !scanningPermit && (
-                      <div role="alert" aria-live="polite" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-semibold text-amber-900">{scanMessage}</p>
-                      </div>
-                    )}
-                    <p className="text-xs text-gray-500 mt-1">OCR assists with data entry. Review the extracted details; scanning does not verify permit authenticity.</p>
-                  </div>
-
-                  
                   <div className="space-y-4 rounded-xl border border-emerald-100 bg-emerald-50/30 p-4">
                     <p className="text-xs font-semibold text-gray-700">Business Permit Details</p>
                     <p className="text-xs text-gray-500">Review the fields extracted from your business permit before submitting.</p>
@@ -2419,6 +2311,41 @@ React.useEffect(() => {
                     </div>
                   </div>
 
+                  <div className="space-y-4 rounded-xl border border-blue-100 bg-blue-50/30 p-4">
+                    <p className="text-xs font-semibold text-gray-700">Technical Certification Details</p>
+                    <p className="text-xs text-gray-500">Review the fields extracted from your technical certificate before submitting.</p>
+
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Certificate Number <span className="text-red-500">*</span></label>
+                      <input name="techCertificateNumber" type="text" value={formData.techCertificateNumber} onChange={handleChange} placeholder="Certificate number" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Issuing Organization <span className="text-red-500">*</span></label>
+                      <input name="techCertificateIssuer" type="text" value={formData.techCertificateIssuer} onChange={handleChange} placeholder="e.g. TESDA" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Certification / Qualification Title <span className="text-red-500">*</span></label>
+                      <input name="techCertificateTitle" type="text" value={formData.techCertificateTitle} onChange={handleChange} placeholder="Certification or qualification title" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 block mb-2">Issue Date</label>
+                        <input name="techCertificateIssueDate" type="date" value={formData.techCertificateIssueDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 block mb-2">Expiry Date</label>
+                        <input name="techCertificateExpiryDate" type="date" value={formData.techCertificateExpiryDate} onChange={handleChange} className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 block mb-2">Specialization / Competency</label>
+                      <input name="techSpecialization" type="text" value={formData.techSpecialization} onChange={handleChange} placeholder="Specialization or competency" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                    </div>
+                  </div>
                 </>
               )}
 
@@ -2647,14 +2574,14 @@ React.useEffect(() => {
                   [accountType === "repair_shop" ? "Business Barangay" : "Barangay of Residence", formData.barangay],
                   ...(accountType === "repair_shop" ? [
                     ["Business / Shop Name", formData.businessName],
-                    ["Certification", formData.certificationType === "Other Certification" ? formData.otherCertification : formData.certificationType],
-                    ["Certificate Number", formData.techCertificateNumber],
-                    ["Certificate Issuer", formData.techCertificateIssuer],
-                    ["Certificate Title", formData.techCertificateTitle],
                     ["Business Permit Number", formData.businessPermitNumber],
                     ["Permit Type", formData.permitType],
                     ["Permit Issuing LGU", formData.permitIssuingLgu],
                     ["Business Activity", formData.businessActivity],
+                    ["Certification", formData.certificationType === "Other Certification" ? formData.otherCertification : formData.certificationType],
+                    ["Certificate Number", formData.techCertificateNumber],
+                    ["Certificate Issuer", formData.techCertificateIssuer],
+                    ["Certificate Title", formData.techCertificateTitle],
                   ] : []),
                 ].map(([label, value]) => {
                   const highlighted =
