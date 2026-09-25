@@ -62,11 +62,11 @@ const EnvOfficerPanel = ({ onLogout, user }) => {
       label: "User Activity",
       icon: <BarChart3 size={16} />,
     },
-    {
-      id: "create_account",
-      label: "Create Account",
-      icon: <ShieldCheck size={16} />,
-    },
+    // {
+    //   id: "create_account",
+    //   label: "Create Account",
+    //   icon: <ShieldCheck size={16} />,
+    // },
     {
       id: "admin_management",
       label: "Admin Management",
