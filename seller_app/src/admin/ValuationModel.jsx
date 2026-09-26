@@ -92,7 +92,7 @@ const formatCurrency = (value) =>
     maximumFractionDigits: 0,
   })}`;
 
-const ValuationModel = () => {
+const ValuationModel = ({ adminBarangay }) => {
   const [listings, setListings] = useState([]);
   const [factors, setFactors] = useState(DEFAULT_FACTORS);
   const [activeTab, setActiveTab] = useState("market");
@@ -137,7 +137,21 @@ const ValuationModel = () => {
       setLoading(true);
       setLoadError("");
 
-      const { data, error } = await supabase
+      // BARANGAY COORDINATOR SCOPE:
+      // Listings carry no barangay, so scope through the seller's profile
+      // (listings.seller_id -> profiles.barangay).
+      let sellerIds = null;
+
+      if (adminBarangay) {
+        const { data: sellers } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("barangay", adminBarangay);
+
+        sellerIds = (sellers || []).map((s) => s.id);
+      }
+
+      let listingQuery = supabase
         .from("listings")
         .select(`
           id,
@@ -148,23 +162,48 @@ const ValuationModel = () => {
           reusable_part_value,
           created_at,
           category,
-          status
+          status,
+          profiles:seller_id (
+            barangay
+          )
         `)
         .order("created_at", { ascending: false });
+
+      if (sellerIds !== null) {
+        listingQuery = listingQuery.in(
+          "seller_id",
+          sellerIds.length ? sellerIds : ["00000000-0000-0000-0000-000000000000"],
+        );
+      }
+
+      const { data, error } = await listingQuery;
+
+      let scoped = data || [];
+
+      // Defense-in-depth: also drop rows whose joined profile is in a
+      // different barangay (handles pagination edge cases).
+      if (adminBarangay) {
+        scoped = scoped.filter(
+          (item) =>
+            (item.profiles?.barangay || "").trim().toLowerCase() ===
+            adminBarangay.trim().toLowerCase(),
+        );
+      }
 
       if (error) {
         console.error("Error loading listings:", error);
         setListings([]);
         setLoadError(`Unable to load listings: ${error.message}`);
       } else {
-        setListings(data || []);
+        setListings(scoped);
       }
 
       setLoading(false);
     };
 
     loadListings();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminBarangay]);
 
   const totalWeight = useMemo(
     () => factors.reduce((sum, factor) => sum + Number(factor.value || 0), 0),
@@ -464,7 +503,7 @@ const ValuationModel = () => {
                 <p className="text-[12px] text-[#15803D] mt-2 leading-relaxed">
                   Final Value = Asking Price × (Weighted Valuation Score ÷ 100)
                 </p>
-                <p className="text-[11px] text-[#15803D] mt-2">
+                <p className="text-xs text-[#15803D] mt-2">
                   Weighted Score = Σ (Factor Score × Factor Weight)
                 </p>
               </div>
@@ -524,17 +563,17 @@ const ValuationModel = () => {
 
                     <div className="flex items-center gap-10 shrink-0">
                       <div className="text-right">
-                        <p className="text-[11px] text-[#9CA3AF]">Market</p>
+                        <p className="text-xs text-[#9CA3AF]">Market</p>
                         <p className="text-sm font-semibold text-emerald-600">{formatCurrency(item.marketValue)}</p>
                       </div>
 
                       <div className="text-right">
-                        <p className="text-[11px] text-[#9CA3AF]">Scrap</p>
+                        <p className="text-xs text-[#9CA3AF]">Scrap</p>
                         <p className="text-sm font-semibold text-orange-500">{formatCurrency(item.scrapValue)}</p>
                       </div>
 
                       <div className="text-right">
-                        <p className="text-[11px] text-[#9CA3AF]">Score</p>
+                        <p className="text-xs text-[#9CA3AF]">Score</p>
                         <p className="text-sm font-semibold text-violet-600">{item.weightedScore}%</p>
                       </div>
 

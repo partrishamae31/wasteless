@@ -15,6 +15,8 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
+import { VALENZUELA_BARANGAYS } from "./barangayScope";
+
 const AdminSignup = ({ onLoginClick }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -249,14 +251,23 @@ const AdminSignup = ({ onLoginClick }) => {
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
                 />
 
-                <input
-                  type="text"
+                {/* Canonical list keeps barangay scoping reliable — a free-text
+                    typo would silently break coordinator data isolation. */}
+                <select
                   name="barangay"
                   value={formData.barangay}
                   onChange={handleChange}
                   required
-                  className="w-full h-[58px] rounded-2xl border border-gray-300 bg-white pl-12 pr-4 text-[15px] outline-none focus:border-[#2f8f46] focus:ring-2 focus:ring-[#2f8f46]/20"
-                />
+                  className="w-full h-[58px] rounded-2xl border border-gray-300 bg-white pl-12 pr-10 text-[15px] outline-none focus:border-[#2f8f46] focus:ring-2 focus:ring-[#2f8f46]/20 appearance-none"
+                >
+                  <option value="">Select barangay</option>
+
+                  {VALENZUELA_BARANGAYS.map((barangay) => (
+                    <option key={barangay} value={barangay}>
+                      {barangay}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

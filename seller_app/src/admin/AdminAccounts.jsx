@@ -8,6 +8,7 @@ import {
   Plus,
   User,
   Mail,
+  MailWarning,
   Phone,
   MapPin,
   Lock,
@@ -18,9 +19,12 @@ import {
   ChevronDown,
   Building2,
   BadgeCheck,
+  Info,
 } from "lucide-react";
 
-const AdminAccounts = () => {
+import { VALENZUELA_BARANGAYS } from "./barangayScope";
+
+const AdminAccounts = ({ adminBarangay }) => {
   const [showForm, setShowForm] = useState(true);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -30,57 +34,20 @@ const AdminAccounts = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const valenzuelaBarangays = [
-    "Arkong Bato",
-    "Bagbaguin",
-    "Balangkas",
-    "Bignay",
-    "Bisig",
-    "Canumay East",
-    "Canumay West",
-    "Coloong",
-    "Dalandanan",
-    "Gen. T. de Leon",
-    "Isla",
-    "Karuhatan",
-    "Lawang Bato",
-    "Lingunan",
-    "Mabolo",
-    "Malanday",
-    "Malinta",
-    "Mapulang Lupa",
-    "Marulas",
-    "Maysan",
-    "Palasan",
-    "Pariancillo Villa",
-    "Paso de Blas",
-    "Pasolo",
-    "Poblacion",
-    "Pulo",
-    "Punturin",
-    "Rincon",
-    "Tagalag",
-    "Ugong",
-    "Viente Reales",
-    "Wawang Pulo",
-  ];
+  // Info about the last created admin, shown on the success screen.
+  const [createdInfo, setCreatedInfo] = useState(null);
 
-  const departments = [
-    "City Environment and Natural Resources Office (CENRO)",
-    "General Services Office (GSO)",
-    "Information and Communications Technology Office (ICTO)",
-    "City Planning and Development Office (CPDO)",
-    "Public Order and Safety Office (POSO)",
-    "City Health Office (CHO)",
-  ];
+  // EMAIL CONFIRMATION: when "Confirm email" is enabled in Supabase Auth,
+  // signUp returns no session and the new admin must open the confirmation
+  // link before their password login works.
+  const [createdNeedsConfirmation, setCreatedNeedsConfirmation] = useState(false);
+  const [resendState, setResendState] = useState("idle"); // idle | sending | sent
 
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
     contact_number: "",
-    department: "",
-    employee_id: "",
-    barangay: "",
+    barangay: adminBarangay || "",
     password: "",
     confirmPassword: "",
   });
@@ -97,9 +64,7 @@ const AdminAccounts = () => {
       full_name: "",
       email: "",
       contact_number: "",
-      department: "",
-      employee_id: "",
-      barangay: "",
+      barangay: adminBarangay || "",
       password: "",
       confirmPassword: "",
     });
@@ -116,8 +81,6 @@ const AdminAccounts = () => {
         !formData.full_name ||
         !formData.email ||
         !formData.contact_number ||
-        !formData.department ||
-        !formData.employee_id ||
         !formData.barangay ||
         !formData.password ||
         !formData.confirmPassword
@@ -172,6 +135,10 @@ const AdminAccounts = () => {
 
       const userId = authData.user.id;
 
+      // With email confirmation enabled, Supabase returns no session and
+      // sends a "confirm your email" link to the new admin.
+      const needsConfirmation = !authData.session;
+
       // =========================
       // RESTORE CURRENT ADMIN SESSION
       // =========================
@@ -192,9 +159,6 @@ const AdminAccounts = () => {
           email: formData.email,
           contact_number: formData.contact_number,
           barangay: formData.barangay,
-
-          department: formData.department,
-          employee_id: formData.employee_id,
 
           role: "admin",
 
@@ -218,8 +182,21 @@ const AdminAccounts = () => {
       // =========================
       // SUCCESS
       // =========================
+      setCreatedInfo({
+        name: formData.full_name,
+        email: formData.email,
+        barangay: formData.barangay,
+      });
+
+      setCreatedNeedsConfirmation(needsConfirmation);
+      setResendState("idle");
+
       setSuccess(true);
-      setToast("Administrator account created and activated successfully.");
+      setToast(
+        needsConfirmation
+          ? "Administrator created. A confirmation email was sent to their inbox."
+          : "Administrator account created and activated successfully.",
+      );
       setTimeout(() => setToast(""), 5000);
 
       setShowForm(false);
@@ -230,6 +207,30 @@ const AdminAccounts = () => {
       alert("Something went wrong.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!createdInfo?.email || resendState !== "idle") return;
+
+    try {
+      setResendState("sending");
+
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: createdInfo.email,
+      });
+
+      if (error) {
+        alert(error.message);
+        setResendState("idle");
+        return;
+      }
+
+      setResendState("sent");
+    } catch (err) {
+      console.error(err);
+      setResendState("idle");
     }
   };
 
@@ -273,14 +274,82 @@ const AdminAccounts = () => {
             The new administrator account has been created and activated.
           </p>
 
+          {createdInfo && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 mb-6">
+              <p className="font-semibold mb-3 text-slate-700">
+                Account Details
+              </p>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-400">Name</span>
+
+                  <span className="font-semibold text-slate-700 text-right">
+                    {createdInfo.name}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-400">Email</span>
+
+                  <span className="font-semibold text-slate-700 text-right break-all">
+                    {createdInfo.email}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-400">Assigned Barangay</span>
+
+                  <span className="font-semibold text-blue-700 text-right">
+                    {createdInfo.barangay}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-emerald-700 mb-6">
             <p className="font-semibold mb-2">Account Activated</p>
 
             <p className="text-sm">
-              The administrator can now log in using the registered email and
-              password.
+              {createdNeedsConfirmation
+                ? "The account was created, but the new admin must first confirm their email before logging in."
+                : "The administrator can now log in using the registered email and password."}
             </p>
           </div>
+
+          {createdNeedsConfirmation && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-700 mb-6">
+              <div className="flex items-start gap-4">
+                <MailWarning size={22} className="text-amber-500 shrink-0 mt-0.5" />
+
+                <div className="flex-1">
+                  <p className="font-semibold mb-1">Email Confirmation Required</p>
+
+                  <p className="text-sm leading-relaxed">
+                    A <strong>Confirm your email</strong> link was sent to{" "}
+                    <strong>{createdInfo?.email}</strong>. The new admin can log
+                    in with their email and password only after opening that
+                    link.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={resendState !== "idle"}
+                    className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-100 hover:bg-amber-200 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-amber-800 transition"
+                  >
+                    <Mail size={14} />
+                    {resendState === "sending"
+                      ? "Resending..."
+                      : resendState === "sent"
+                        ? "Confirmation email sent again ✓"
+                        : "Resend confirmation email"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={() => {
@@ -385,26 +454,10 @@ const AdminAccounts = () => {
               placeholder="+63 917 123 4567"
             />
 
-            <SelectField
-              icon={<Building2 size={18} />}
-              label="Department"
-              name="department"
-              value={formData.department}
-              onChange={handleChange}
-              placeholder="Select Department"
-              options={departments}
-            />
+            
 
-            {/* ROW 3: EMPLOYEE ID | BARANGAY */}
-            <InputField
-              icon={<BadgeCheck size={18} />}
-              label="Employee ID"
-              name="employee_id"
-              value={formData.employee_id}
-              onChange={handleChange}
-              placeholder="EMP-2026-12345"
-            />
-
+            {/* Barangay assignment: defaults to the creating admin's barangay,
+                but any of the 32 barangays can be selected. */}
             <SelectField
               icon={<MapPin size={18} />}
               label="Barangay Assignment"
@@ -412,8 +465,19 @@ const AdminAccounts = () => {
               value={formData.barangay}
               onChange={handleChange}
               placeholder="Select Barangay"
-              options={valenzuelaBarangays}
+              options={VALENZUELA_BARANGAYS}
             />
+
+            <div className="md:col-span-2 -mt-2 flex items-start gap-2 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
+              <Info size={15} className="text-blue-500 shrink-0 mt-0.5" />
+
+              <p className="text-xs text-blue-600 leading-relaxed">
+                The new admin will only see users, transactions, and analytics
+                for their assigned barangay. Your own barangay
+                {adminBarangay ? ` (${adminBarangay})` : ""} is pre-selected;
+                you may assign them to any of the 32 barangays.
+              </p>
+            </div>
 
             {/* ROW 4: PASSWORD | CONFIRM PASSWORD */}
             <PasswordField

@@ -32,7 +32,9 @@ import {
   Building2,
 } from "lucide-react";
 
-const AdminDashboard = () => {
+import { scopeQuery } from "./barangayScope";
+
+const AdminDashboard = ({ adminBarangay }) => {
   const [stats, setStats] = useState({
     users: 0,
     listings: 0,
@@ -84,7 +86,7 @@ const AdminDashboard = () => {
   ];
   const exportAnalytics = async () => {
     try {
-      const { data, error } = await supabase.from("transactions").select(`
+      let query = supabase.from("transactions").select(`
         id,
         created_at,
         amount,
@@ -97,6 +99,11 @@ const AdminDashboard = () => {
           asking_price
         )
       `);
+
+      // BARANGAY COORDINATOR SCOPE
+      query = scopeQuery(query, adminBarangay);
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -153,30 +160,70 @@ const AdminDashboard = () => {
       try {
         setLoading(true);
 
-        // COUNTS
-        const { count: userCount } = await supabase
+        // BARANGAY COORDINATOR SCOPE:
+        // Listings have no barangay column, so they are filtered through the
+        // seller's profile barangay (listings.seller_id -> profiles.id).
+        let sellerIds = null;
+
+        if (adminBarangay) {
+          const { data: sellers } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("barangay", adminBarangay);
+
+          sellerIds = (sellers || []).map((s) => s.id);
+        }
+
+        // COUNTS (scoped users)
+        let profileQuery = supabase
           .from("profiles")
           .select("*", { count: "exact", head: true });
 
-        const { count: listCount } = await supabase
+        profileQuery = scopeQuery(profileQuery, adminBarangay);
+
+        const { count: userCount } = await profileQuery;
+
+        let listQuery = supabase
           .from("listings")
           .select("*", { count: "exact", head: true });
 
-        const { data, error } = await supabase.from("transactions").select("*");
+        if (sellerIds !== null) {
+          // No sellers in this barangay yet -> force an empty result.
+          listQuery = listQuery.in(
+            "seller_id",
+            sellerIds.length ? sellerIds : ["00000000-0000-0000-0000-000000000000"],
+          );
+        }
 
-        const { count: verifiedCount } = await supabase
+        const { count: listCount } = await listQuery;
+
+        let txQuery = supabase.from("transactions").select("*");
+
+        txQuery = scopeQuery(txQuery, adminBarangay);
+
+        const { data, error } = await txQuery;
+
+        let verifiedQuery = supabase
           .from("profiles")
           .select("*", { count: "exact", head: true })
           .eq("role", "repair_shop")
           .eq("is_verified", true);
 
-        // PENDING REQUESTS
-        const { data: pendingData } = await supabase
+        verifiedQuery = scopeQuery(verifiedQuery, adminBarangay);
+
+        const { count: verifiedCount } = await verifiedQuery;
+
+        // PENDING REQUESTS (scoped)
+        let pendingQuery = supabase
           .from("profiles")
           .select("*")
           .eq("role", "repair_shop")
           .eq("is_verified", false)
           .limit(3);
+
+        pendingQuery = scopeQuery(pendingQuery, adminBarangay);
+
+        const { data: pendingData } = await pendingQuery;
 
         setPendingRequests(pendingData || []);
 
@@ -187,11 +234,15 @@ const AdminDashboard = () => {
           verifiedShops: verifiedCount || 0,
         });
 
-        // LOAD LOCATIONS (Completed Transactions Only)
-        const { data: locationData, error: locationError } = await supabase
+        // LOAD LOCATIONS (Completed Transactions Only, scoped)
+        let locationQuery = supabase
           .from("transactions")
           .select("barangay")
           .eq("status", "completed");
+
+        locationQuery = scopeQuery(locationQuery, adminBarangay);
+
+        const { data: locationData, error: locationError } = await locationQuery;
 
         if (locationError) throw locationError;
 
@@ -210,10 +261,14 @@ const AdminDashboard = () => {
 
         setLocations(uniqueLocations);
 
-        // TRANSACTION CHART
-        const { data: transactionItems } = await supabase
+        // TRANSACTION CHART (scoped)
+        let chartQuery = supabase
           .from("transactions")
           .select("created_at");
+
+        chartQuery = scopeQuery(chartQuery, adminBarangay);
+
+        const { data: transactionItems } = await chartQuery;
 
         const monthlyTransactions = {};
 
@@ -249,7 +304,7 @@ const AdminDashboard = () => {
             })),
         );
 
-        // RECOVERY QUERY
+        // RECOVERY QUERY (scoped)
         let recoveryQuery = supabase
           .from("transactions")
           .select(
@@ -261,6 +316,8 @@ const AdminDashboard = () => {
 `,
           )
           .eq("status", "completed");
+
+        recoveryQuery = scopeQuery(recoveryQuery, adminBarangay);
 
         // DATE FILTER
         if (selectedDate === "7days") {
@@ -403,6 +460,7 @@ const AdminDashboard = () => {
 
     fetchStats();
 
+
     const channel = supabase
       .channel("dashboard-updates")
       .on(
@@ -421,7 +479,8 @@ const AdminDashboard = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedCategory, selectedLocation, selectedDate]);
+    // Re-run when the admin's barangay scope is known/changes.
+  }, [selectedCategory, selectedLocation, selectedDate, adminBarangay]);
 
   if (loading) {
     return (
@@ -445,6 +504,12 @@ const AdminDashboard = () => {
           <p className="text-sm text-slate-500 mt-1">
             Monitor e-waste recovery performance, environmental impact, and
             platform activity in real-time
+          </p>
+
+          <p className="text-xs text-blue-600 font-medium mt-2">
+            {adminBarangay
+              ? `Scoped to Barangay ${adminBarangay} — showing your barangay's data only.`
+              : "City-wide view (no barangay assigned to this admin account)."}
           </p>
         </div>
 
@@ -561,13 +626,13 @@ const AdminDashboard = () => {
                 {React.cloneElement(item.icon, { size: 20 })}
               </div>
 
-              <p className="text-[10px] uppercase tracking-widest opacity-80">
+              <p className="text-xs uppercase tracking-widest opacity-80">
                 {item.label}
               </p>
 
               <h3 className="text-3xl font-bold mt-2">{item.val}</h3>
 
-              <p className="text-[11px] opacity-80 mt-3 italic">{item.sub}</p>
+              <p className="text-xs opacity-80 mt-3 italic">{item.sub}</p>
             </div>
           ))}
         </div>
@@ -677,7 +742,7 @@ const AdminDashboard = () => {
                       {item.name}
                     </h4>
 
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-xs text-slate-400">
                       {item.percentage}% recovered
                     </p>
                   </div>

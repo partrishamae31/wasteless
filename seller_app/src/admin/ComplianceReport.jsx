@@ -169,7 +169,7 @@ const ComplianceReport = () => {
                       {report.title}
                     </h4>
 
-                    <span className="text-[10px] font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
                       {report.status}
                     </span>
                   </div>

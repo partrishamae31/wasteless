@@ -5,6 +5,8 @@ import {
   Lock,
   Eye,
   EyeOff,
+  MailCheck,
+  MailWarning,
 } from "lucide-react";
 
 const AdminLogin = ({
@@ -19,8 +21,41 @@ const AdminLogin = ({
 
   const [loading, setLoading] = useState(false);
 
+  // EMAIL CONFIRMATION: Supabase blocks password login until the user opens
+  // the "Confirm your email" link. We surface that case clearly here.
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
+  const [resendState, setResendState] = useState("idle"); // idle | sending | sent
+  const [loginError, setLoginError] = useState("");
+
+  const handleResend = async () => {
+    if (!email || resendState !== "idle") return;
+
+    try {
+      setResendState("sending");
+
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email,
+      });
+
+      if (resendError) {
+        setLoginError(resendError.message);
+        setResendState("idle");
+        return;
+      }
+
+      setResendState("sent");
+    } catch (err) {
+      console.error(err);
+      setResendState("idle");
+    }
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
+
+    setEmailNotConfirmed(false);
+    setLoginError("");
 
     try {
       setLoading(true);
@@ -33,7 +68,20 @@ const AdminLogin = ({
         });
 
       if (error) {
-        alert(error.message);
+        const message = (error.message || "").toLowerCase();
+
+        // Supabase rejects password login until the email is confirmed.
+        if (
+          message.includes("email not confirmed") ||
+          message.includes("not confirmed") ||
+          message.includes("confirm")
+        ) {
+          setEmailNotConfirmed(true);
+          setResendState("idle");
+          return;
+        }
+
+        setLoginError(error.message);
         return;
       }
 
@@ -95,6 +143,47 @@ const AdminLogin = ({
         <h1 className="text-center text-[40px] font-bold text-[#114d27] mb-12">
           Admin Login
         </h1>
+
+        {/* EMAIL NOT CONFIRMED NOTICE */}
+        {emailNotConfirmed && (
+          <div className="-mt-4 mb-8 rounded-2xl border border-amber-300 bg-amber-50 p-5">
+            <div className="flex items-start gap-3">
+              <MailWarning size={22} className="text-amber-500 shrink-0 mt-0.5" />
+
+              <div>
+                <p className="font-semibold text-amber-800">
+                  Confirm your email first
+                </p>
+
+                <p className="text-sm text-amber-700 mt-1 leading-relaxed">
+                  Supabase sent a confirmation link to <strong>{email}</strong>.
+                  Open it, then sign in here. Didn't get it?
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resendState !== "idle"}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-100 hover:bg-amber-200 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-amber-800 transition"
+                >
+                  <MailCheck size={14} />
+                  {resendState === "sending"
+                    ? "Resending..."
+                    : resendState === "sent"
+                      ? "Confirmation email sent ✓"
+                      : "Resend confirmation email"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* GENERAL LOGIN ERROR */}
+        {loginError && !emailNotConfirmed && (
+          <div className="-mt-4 mb-8 rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+            <p className="text-sm font-semibold text-red-600">{loginError}</p>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleLogin} className="space-y-8">

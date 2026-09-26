@@ -17,6 +17,8 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { scopeQuery } from "./barangayScope";
+
 const EMPTY_FORM = {
   name: "",
   barangay: "",
@@ -78,7 +80,7 @@ const BARANGAYS = [
   "Wawang Pulo",
 ];
 
-const DropOffPoints = () => {
+const DropOffPoints = ({ adminBarangay }) => {
   const [points, setPoints] = useState([]);
   const [hotspots, setHotspots] = useState([]);
 
@@ -105,11 +107,16 @@ const DropOffPoints = () => {
       setLoading(true);
       setError("");
 
-      const { data, error: fetchError } = await supabase
+      let query = supabase
         .from("drop_off_points")
         .select("*")
         .order("barangay", { ascending: true })
         .order("name", { ascending: true });
+
+      // BARANGAY COORDINATOR SCOPE: only this barangay's drop-off points.
+      query = scopeQuery(query, adminBarangay);
+
+      const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
 
@@ -128,7 +135,8 @@ const DropOffPoints = () => {
 
   useEffect(() => {
     fetchPoints();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminBarangay]);
 
   // ---------------------------------------------------------
   // SEARCH
@@ -261,7 +269,7 @@ const DropOffPoints = () => {
       return "Drop-off point name is required.";
     }
 
-    if (!form.barangay.trim()) {
+    if (!form.barangay.trim() && !adminBarangay) {
       return "Barangay is required.";
     }
 
@@ -320,7 +328,8 @@ const DropOffPoints = () => {
 
       const payload = {
         name: form.name.trim(),
-        barangay: form.barangay.trim(),
+        // Coordinators can only save points inside their own barangay.
+        barangay: (adminBarangay || form.barangay).trim(),
         city: form.city.trim() || "Valenzuela City",
         address: form.address.trim(),
         contact: form.contact.trim() || null,
@@ -867,20 +876,29 @@ const DropOffPoints = () => {
                         Barangay *
                       </label>
 
-                      <select
-                        name="barangay"
-                        value={form.barangay}
-                        onChange={handleChange}
-                        className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#2D7A7F]/20 focus:border-[#2D7A7F]"
-                      >
-                        <option value="">Select barangay</option>
+                      {adminBarangay ? (
+                        <input
+                          type="text"
+                          readOnly
+                          value={adminBarangay}
+                          className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-600 focus:outline-none cursor-not-allowed"
+                        />
+                      ) : (
+                        <select
+                          name="barangay"
+                          value={form.barangay}
+                          onChange={handleChange}
+                          className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#2D7A7F]/20 focus:border-[#2D7A7F]"
+                        >
+                          <option value="">Select barangay</option>
 
-                        {BARANGAYS.map((barangay) => (
-                          <option key={barangay} value={barangay}>
-                            {barangay}
-                          </option>
-                        ))}
-                      </select>
+                          {BARANGAYS.map((barangay) => (
+                            <option key={barangay} value={barangay}>
+                              {barangay}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
 
                     {/* CITY */}

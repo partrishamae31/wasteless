@@ -16,8 +16,9 @@ import {
 
 import VerifyCredentialsModal from "./src/components/modals/VerifyCredentialsModal";
 import UserDetailsModal from "./src/components/modals/UserDetailsModal";
+import { scopeQuery } from "./barangayScope";
 
-const UserManagement = () => {
+const UserManagement = ({ adminBarangay }) => {
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,10 +36,15 @@ const UserManagement = () => {
   const fetchUsers = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
+    // BARANGAY COORDINATOR SCOPE: only users registered in this admin's barangay.
+    let query = supabase
       .from("profiles")
       .select("*")
       .order("created_at", { ascending: false });
+
+    query = scopeQuery(query, adminBarangay);
+
+    const { data, error } = await query;
 
     if (error) {
       console.error(error.message);
@@ -52,7 +58,7 @@ const UserManagement = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [adminBarangay]);
 
   useEffect(() => {
     let result = [...users];
@@ -239,6 +245,12 @@ const UserManagement = () => {
         <h1 className="text-[28px] font-semibold text-slate-800">
           User Management
         </h1>
+
+        <p className="text-sm text-slate-500 mt-1">
+          {adminBarangay
+            ? `Showing users registered in Barangay ${adminBarangay} only.`
+            : "Showing users from all barangays (no barangay assigned to this admin)."}
+        </p>
       </div>
 
       {/* PENDING REQUESTS */}
@@ -281,11 +293,11 @@ const UserManagement = () => {
 
                     <p className="text-xs text-slate-500">{user.email}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <p className="text-[11px] font-medium text-slate-400">
+                      <p className="text-xs font-medium text-slate-400">
                         {getRoleLabel(user.role)}
                       </p>
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getVerificationBadge(user).className}`}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${getVerificationBadge(user).className}`}
                       >
                         {getVerificationBadge(user).icon}
                         {getVerificationBadge(user).label}
@@ -437,7 +449,7 @@ const UserManagement = () => {
         <div className="mt-2 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wider text-slate-400">
+              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wider text-slate-400">
                 <th className="px-2 py-4 font-semibold">User</th>
                 <th className="px-2 py-4 font-semibold">Role</th>
                 <th className="px-2 py-4 font-semibold">Date Joined</th>

@@ -124,12 +124,12 @@ const DeviceCard = ({ device }) => {
               {device.name}
             </h3>
 
-            <span className="text-[10px] px-2 py-1 rounded-full bg-violet-100 text-violet-600 font-medium">
+            <span className="text-xs px-2 py-1 rounded-full bg-violet-100 text-violet-600 font-medium">
               {device.tag}
             </span>
           </div>
 
-          <p className="text-[11px] text-[#9CA3AF] mt-1">
+          <p className="text-xs text-[#9CA3AF] mt-1">
             Hardware Database
           </p>
         </div>
@@ -142,12 +142,12 @@ const DeviceCard = ({ device }) => {
       {/* PRICE */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <p className="text-[11px] text-[#9CA3AF]">Price</p>
+          <p className="text-xs text-[#9CA3AF]">Price</p>
           <p className="font-bold text-[#22C55E] text-lg">{device.price}</p>
         </div>
 
         <div className="text-right">
-          <p className="text-[11px] text-[#9CA3AF]">Market Value</p>
+          <p className="text-xs text-[#9CA3AF]">Market Value</p>
           <p className="font-semibold text-[#F97316]">{device.market}</p>
         </div>
       </div>
@@ -228,7 +228,7 @@ const DeviceDatabase = () => {
                     <Icon size={20} />
                   </div>
 
-                  <span className="text-[11px] text-emerald-500 font-semibold">
+                  <span className="text-xs text-emerald-500 font-semibold">
                     +12%
                   </span>
                 </div>

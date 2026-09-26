@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { scopeQuery } from "./barangayScope";
 
 import {
   AlertTriangle,
@@ -15,7 +16,7 @@ import {
   Database,
 } from "lucide-react";
 
-const TransactionReview = () => {
+const TransactionReview = ({ adminBarangay }) => {
   const [transactions, setTransactions] = useState([]);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
 
@@ -60,7 +61,7 @@ const TransactionReview = () => {
        * will NOT appear in Transaction Review.
        */
 
-      const { data: transactionData, error } = await supabase
+      let transactionQuery = supabase
         .from("transactions")
         .select(
           `
@@ -99,6 +100,12 @@ const TransactionReview = () => {
         )
         .not("flag_reason", "is", null)
         .order("created_at", { ascending: false });
+
+      // BARANGAY COORDINATOR SCOPE: only flagged transactions in this
+      // admin's barangay.
+      transactionQuery = scopeQuery(transactionQuery, adminBarangay);
+
+      const { data: transactionData, error } = await transactionQuery;
 
       if (error) throw error;
 
@@ -177,7 +184,8 @@ const TransactionReview = () => {
 
   useEffect(() => {
     loadTransactions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminBarangay]);
 
   // ============================================
   // STATUS COUNTS
@@ -732,7 +740,7 @@ const TransactionReview = () => {
 
                             <div className="mt-3 flex items-center gap-2">
                               <span
-                                className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                                className={`rounded-full px-2 py-1 text-xs font-semibold uppercase ${
                                   status === "pending"
                                     ? "bg-orange-100 text-orange-600"
                                     : status === "under_review"
@@ -743,7 +751,7 @@ const TransactionReview = () => {
                                 {getStatusLabel(status)}
                               </span>
 
-                              <span className="text-[10px] text-slate-400">
+                              <span className="text-xs text-slate-400">
                                 {formatDate(item.created_at)}
                               </span>
                             </div>
@@ -802,7 +810,7 @@ const TransactionReview = () => {
                     </p>
                   </div>
 
-                  <span className="rounded-full bg-white/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide">
+                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
                     {getStatusLabel(getReviewStatus(selectedTransaction))}
                   </span>
                 </div>
@@ -835,7 +843,7 @@ const TransactionReview = () => {
                   <div className="rounded-xl bg-slate-50 p-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-[10px] uppercase text-slate-400">
+                        <p className="text-xs uppercase text-slate-400">
                           Device
                         </p>
 
@@ -846,7 +854,7 @@ const TransactionReview = () => {
                       </div>
 
                       <div>
-                        <p className="text-[10px] uppercase text-slate-400">
+                        <p className="text-xs uppercase text-slate-400">
                           Category
                         </p>
 
@@ -856,7 +864,7 @@ const TransactionReview = () => {
                       </div>
 
                       <div>
-                        <p className="text-[10px] uppercase text-slate-400">
+                        <p className="text-xs uppercase text-slate-400">
                           Amount
                         </p>
 
@@ -869,7 +877,7 @@ const TransactionReview = () => {
                       </div>
 
                       <div>
-                        <p className="text-[10px] uppercase text-slate-400">
+                        <p className="text-xs uppercase text-slate-400">
                           Transaction Status
                         </p>
 
@@ -895,18 +903,18 @@ const TransactionReview = () => {
                       const done = Boolean(timestamp) && (index < 2 || selectedTransaction.status === "completed");
                       return (
                         <div key={label} className="flex items-start gap-3">
-                          <div className={`mt-0.5 h-6 w-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold ${done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400"}`}>
+                          <div className={`mt-0.5 h-6 w-6 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400"}`}>
                             {done ? "✓" : index + 1}
                           </div>
                           <div>
                             <p className={`text-xs font-semibold ${done ? "text-slate-700" : "text-slate-400"}`}>{label}</p>
-                            <p className="text-[10px] text-slate-400">{timestamp ? formatDateTime(timestamp) : "Not recorded yet"}</p>
+                            <p className="text-xs text-slate-400">{timestamp ? formatDateTime(timestamp) : "Not recorded yet"}</p>
                           </div>
                         </div>
                       );
                     })}
                     {selectedTransaction.status === "cancelled" && (
-                      <div className="rounded-lg bg-red-50 p-3 text-[10px] text-red-700">
+                      <div className="rounded-lg bg-red-50 p-3 text-xs text-red-700">
                         Cancelled: {selectedTransaction.cancel_reason || "No cancellation reason provided."}
                       </div>
                     )}

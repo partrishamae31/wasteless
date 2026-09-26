@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
+import {
+  fetchAdminProfile,
+  getAdminBarangay,
+  scopeQuery,
+} from "./barangayScope";
+import AdminProfileModal from "./AdminProfileModal";
 
 import AdminDashboard from "./AdminDashboard";
 import UserManagement from "./UserManagement";
@@ -30,22 +36,40 @@ import {
   Shield,
 } from "lucide-react";
 
-const AdminPanel = ({ onLogout }) => {
+const AdminPanel = ({ session, onLogout }) => {
   const [activeTab, setActiveTab] = useState("analytics");
 
   // NEW STATE
   const [pendingVerificationCount, setPendingVerificationCount] = useState(0);
 
-  // FETCH PENDING USERS
-  useEffect(() => {
-    fetchPendingCount();
-  }, []);
+  // BARANGAY COORDINATOR PROFILE
+  const [adminProfile, setAdminProfile] = useState(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
+  // The barangay this admin coordinates. All admin tabs are scoped to it.
+  const adminBarangay = getAdminBarangay(adminProfile);
+
+  // LOAD ADMIN PROFILE
+  const loadAdminProfile = async () => {
+    const profile = await fetchAdminProfile(session);
+
+    setAdminProfile(profile);
+  };
+
+  useEffect(() => {
+    loadAdminProfile();
+  }, [session?.user?.id]);
+
+  // FETCH PENDING USERS (scoped to the admin's barangay)
   const fetchPendingCount = async () => {
-    const { count, error } = await supabase
+    let query = supabase
       .from("profiles")
       .select("*", { count: "exact", head: true })
       .eq("is_verified", false);
+
+    query = scopeQuery(query, adminBarangay);
+
+    const { count, error } = await query;
 
     if (error) {
       console.error("Error fetching pending count:", error.message);
@@ -53,6 +77,10 @@ const AdminPanel = ({ onLogout }) => {
       setPendingVerificationCount(count || 0);
     }
   };
+
+  useEffect(() => {
+    fetchPendingCount();
+  }, [adminBarangay]);
 
   const menuItems = [
     {
@@ -136,7 +164,7 @@ const AdminPanel = ({ onLogout }) => {
               Wasteless
             </span>
 
-            <span className="text-[10px] text-slate-500 uppercase tracking-tighter">
+            <span className="text-xs text-slate-500 uppercase tracking-tighter">
               Admin Panel
             </span>
           </div>
@@ -169,7 +197,7 @@ const AdminPanel = ({ onLogout }) => {
 
               {/* UPDATED BADGE */}
               {item.badge > 0 ? (
-                <span className="bg-orange-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                <span className="bg-orange-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
                   {item.badge}
                 </span>
               ) : (
@@ -206,46 +234,85 @@ const AdminPanel = ({ onLogout }) => {
             {activeTab === "admin-accounts" && <ChevronRight size={14} />}
           </button>
 
-          {/* ADMIN PROFILE CARD */}
-          <div className="bg-slate-800/40 rounded-2xl p-4 flex items-center gap-3 border border-slate-700/30">
-            <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white">
-              AU
+          {/* ADMIN PROFILE CARD (clickable -> profile info) */}
+          <button
+            type="button"
+            onClick={() => setIsProfileOpen(true)}
+            className="bg-slate-800/40 rounded-2xl p-4 flex items-center gap-3 border border-slate-700/30 hover:bg-slate-800 hover:border-teal-500/40 transition-all group text-left w-full"
+            title="View my admin profile"
+          >
+            <div className="w-10 h-10 rounded-full bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-xs font-bold text-teal-300 shrink-0">
+              {(adminProfile?.full_name || "Admin User")
+                .split(" ")
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => part[0].toUpperCase())
+                .join("") || "AU"}
             </div>
 
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold text-white truncate">
-                Admin User
+                {adminProfile?.full_name || "Admin User"}
               </p>
 
-              <p className="text-[10px] text-slate-500 truncate">
-                administrator
+              <p className="text-xs text-slate-500 truncate">
+                {adminBarangay
+                  ? `Brgy. ${adminBarangay} Coordinator`
+                  : "administrator"}
               </p>
             </div>
 
-            <button
-              onClick={onLogout}
-              className="text-slate-500 hover:text-red-400 transition-colors"
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onLogout();
+              }}
+              className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer"
+              title="Log out"
             >
               <LogOut size={16} />
-            </button>
-          </div>
+            </span>
+          </button>
         </div>
       </aside>
 
       <main className="flex-1 overflow-y-auto bg-[#F8FAFC]">
-        {activeTab === "analytics" && <AdminDashboard />}
-        {activeTab === "hotspots" && <EWasteHotspots />}
-        {activeTab === "donation" && <DonationManagement />}
-        {activeTab === "donated" && <DonatedDatabase />}
-        {activeTab === "dropoff" && <DropOffPoints />}
-        {activeTab === "user-management" && <UserManagement />}
-        {activeTab === "admin-accounts" && <AdminAccounts />}
-        {activeTab === "transaction" && <TransactionReview />}
+        {activeTab === "analytics" && (
+          <AdminDashboard adminBarangay={adminBarangay} />
+        )}
+        {activeTab === "hotspots" && <EWasteHotspots adminBarangay={adminBarangay} />}
+        {activeTab === "donation" && (
+          <DonationManagement adminBarangay={adminBarangay} />
+        )}
+        {activeTab === "donated" && (
+          <DonatedDatabase adminBarangay={adminBarangay} />
+        )}
+        {activeTab === "dropoff" && <DropOffPoints adminBarangay={adminBarangay} />}
+        {activeTab === "user-management" && (
+          <UserManagement adminBarangay={adminBarangay} />
+        )}
+        {activeTab === "admin-accounts" && (
+          <AdminAccounts adminBarangay={adminBarangay} />
+        )}
+        {activeTab === "transaction" && (
+          <TransactionReview adminBarangay={adminBarangay} />
+        )}
         {/* {activeTab === "database" && <DeviceDatabase />} */}
-        {activeTab === "valuation" && <ValuationModel />}
-        {activeTab === "trust" && <TrustTierManagement />}
+        {activeTab === "valuation" && (
+          <ValuationModel adminBarangay={adminBarangay} />
+        )}
+        {activeTab === "trust" && (
+          <TrustTierManagement adminBarangay={adminBarangay} />
+        )}
         {/* {activeTab === "compliance" && <ComplianceReport />} */}
       </main>
+
+      {/* ADMIN PROFILE INFO MODAL */}
+      <AdminProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        adminProfile={adminProfile}
+      />
     </div>
   );
 };

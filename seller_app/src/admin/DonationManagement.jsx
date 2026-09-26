@@ -16,6 +16,8 @@ import {
   Power,
 } from "lucide-react";
 
+import { scopeQuery } from "./barangayScope";
+
 const DEFAULT_CONFIG = {
   firstReminder: 7,
   secondReminder: 3,
@@ -29,7 +31,7 @@ const EMPTY_DROP_OFF_FORM = {
   operating_hours: "",
 };
 
-const DonationManagement = () => {
+const DonationManagement = ({ adminBarangay }) => {
   const [activeTab, setActiveTab] = useState("configuration");
   const [address, setAddress] = useState("");
 
@@ -83,7 +85,7 @@ const DonationManagement = () => {
    */
   const fetchDonations = async () => {
     try {
-      const { data, error } = await supabase
+      let donationQuery = supabase
         .from("listings")
         .select(`
           id,
@@ -114,6 +116,12 @@ const DonationManagement = () => {
         .in("status", ["donated", "drop_off_assigned", "processed"])
         .order("created_at", { ascending: false });
 
+      // BARANGAY COORDINATOR SCOPE: donations are matched to the admin's
+      // barangay through their selected drop-off point location.
+      donationQuery = scopeQuery(donationQuery, adminBarangay);
+
+      const { data, error } = await donationQuery;
+
       if (error) throw error;
 
       setDonations(data || []);
@@ -134,7 +142,7 @@ const DonationManagement = () => {
    */
   const fetchDropOffPoints = async () => {
     try {
-      const { data, error } = await supabase
+      let pointQuery = supabase
         .from("drop_off_points")
         .select(`
   id,
@@ -149,6 +157,11 @@ const DonationManagement = () => {
         .eq("is_active", true)
         .order("city", { ascending: true })
         .order("barangay", { ascending: true });
+
+      // BARANGAY COORDINATOR SCOPE
+      pointQuery = scopeQuery(pointQuery, adminBarangay);
+
+      const { data, error } = await pointQuery;
 
       if (error) throw error;
 
@@ -172,9 +185,9 @@ const DonationManagement = () => {
     };
 
     loadData();
-    // Initial load only.
+    // Initial load only; refetches happen through the Refresh button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [adminBarangay]);
 
   /*
    * ---------------------------------------------------------
@@ -259,7 +272,8 @@ const DonationManagement = () => {
 
     const partner = pointForm.partner.trim();
     const address = pointForm.address.trim();
-    const barangay = pointForm.barangay.trim();
+    // Barangay coordinators can only create points inside their own barangay.
+    const barangay = (adminBarangay || pointForm.barangay).trim();
     const city = pointForm.city.trim();
     const operatingHours = pointForm.operating_hours.trim();
 
@@ -675,7 +689,7 @@ const DonationManagement = () => {
                   className="h-11 w-full rounded-xl border border-slate-200 px-4 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                 />
 
-                <p className="mt-2 text-[11px] text-slate-400">
+                <p className="mt-2 text-xs text-slate-400">
                   Sellers will receive a donation reminder after this many days
                   without bids.
                 </p>
@@ -700,7 +714,7 @@ const DonationManagement = () => {
                 />
 
 
-                <p className="mt-2 text-[11px] text-slate-400">
+                <p className="mt-2 text-xs text-slate-400">
                   If the seller dismisses the first reminder, another reminder
                   will be scheduled after this many days.
                 </p>
@@ -724,7 +738,7 @@ const DonationManagement = () => {
                   className="h-11 w-full rounded-xl border border-slate-200 px-4 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                 />
 
-                <p className="mt-2 text-[11px] text-slate-400">
+                <p className="mt-2 text-xs text-slate-400">
                   Total days before strongly suggesting donation as the best
                   option.
                 </p>
@@ -837,20 +851,35 @@ const DonationManagement = () => {
                   <label className="mb-2 block text-sm font-medium text-slate-600">
                     Barangay *
                   </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={100}
-                    placeholder="e.g. Karuhatan"
-                    value={pointForm.barangay}
-                    onChange={(event) =>
-                      setPointForm((previous) => ({
-                        ...previous,
-                        barangay: event.target.value,
-                      }))
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                  />
+                  {adminBarangay ? (
+                    <>
+                      <input
+                        type="text"
+                        readOnly
+                        value={pointForm.barangay || adminBarangay}
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-4 text-sm font-semibold text-slate-600 outline-none cursor-not-allowed"
+                      />
+
+                      <p className="mt-2 text-xs text-slate-400">
+                        Locked to your assigned barangay ({adminBarangay}).
+                      </p>
+                    </>
+                  ) : (
+                    <input
+                      type="text"
+                      required
+                      maxLength={100}
+                      placeholder="e.g. Karuhatan"
+                      value={pointForm.barangay}
+                      onChange={(event) =>
+                        setPointForm((previous) => ({
+                          ...previous,
+                          barangay: event.target.value,
+                        }))
+                      }
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    />
+                  )}
                 </div>
 
                 <div>
@@ -991,7 +1020,7 @@ const DonationManagement = () => {
                             <h4 className="font-semibold text-slate-700">
                               {point.partner || "Drop-off Center"}
                             </h4>
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-600">
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
                               Active
                             </span>
                           </div>

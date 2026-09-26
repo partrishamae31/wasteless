@@ -275,7 +275,7 @@ const DonatedDatabase = () => {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wider text-slate-400">
+              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wider text-slate-400">
                 <th className="px-3 py-4 font-semibold">
                   Item ID
                 </th>

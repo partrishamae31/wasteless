@@ -12,7 +12,9 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
-const EWasteHotspots = () => {
+import { scopeQuery } from "./barangayScope";
+
+const EWasteHotspots = ({ adminBarangay }) => {
   const [hotspots, setHotspots] = useState([]);
   const [dropOffPoints, setDropOffPoints] = useState([]);
   const stats = [
@@ -58,7 +60,7 @@ const EWasteHotspots = () => {
 
   useEffect(() => {
     const loadHotspots = async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("transactions")
         .select(
           `
@@ -70,6 +72,11 @@ const EWasteHotspots = () => {
       `,
         )
         .eq("status", "completed");
+
+      // BARANGAY COORDINATOR SCOPE: only this barangay's transactions.
+      query = scopeQuery(query, adminBarangay);
+
+      const { data, error } = await query;
 
       if (error) {
         console.error("Error loading hotspots:", error);
@@ -122,7 +129,7 @@ const EWasteHotspots = () => {
     };
 
     loadHotspots();
-  }, []);
+  }, [adminBarangay]);
 
   return (
     <div className="min-h-screen bg-[#F5F7FB] p-6">
@@ -156,7 +163,7 @@ const EWasteHotspots = () => {
                   </div>
 
                   <div className="text-right">
-                    <p className="text-[11px] font-medium text-emerald-500 mb-3">
+                    <p className="text-xs font-medium text-emerald-500 mb-3">
                       {item.growth}
                     </p>
 
@@ -183,7 +190,9 @@ const EWasteHotspots = () => {
           </div>
 
           <p className="text-sm text-slate-400 mb-6">
-            Visualize e-waste generation intensity across barangays
+            {adminBarangay
+              ? `E-waste generation intensity for Barangay ${adminBarangay} (coordinator scope)`
+              : "Visualize e-waste generation intensity across barangays"}
           </p>
 
           {/* SUMMARY BOXES */}

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { scopeQuery } from "./barangayScope";
 import {
   Activity,
   Edit3,
@@ -39,7 +40,7 @@ const StatCard = ({ item }) => {
           <Icon size={18} />
         </div>
 
-        <span className="text-[11px] font-semibold text-emerald-500">
+        <span className="text-xs font-semibold text-emerald-500">
           +12%
         </span>
       </div>
@@ -63,7 +64,7 @@ const TierCard = ({ tier, onEdit }) => (
     <div className="p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className={`px-3 py-1 rounded-full text-[11px] font-semibold ${tier.color}`}>
+          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${tier.color}`}>
             {tier.name}
           </span>
           <p className="text-[12px] text-[#9CA3AF]">
@@ -77,19 +78,19 @@ const TierCard = ({ tier, onEdit }) => (
       </div>
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="rounded-lg bg-[#F8FAFC] border border-[#ECEEF3] p-3">
-          <p className="text-[11px] text-[#9CA3AF]">Minimum transactions</p>
+          <p className="text-xs text-[#9CA3AF]">Minimum transactions</p>
           <p className="mt-1 text-sm font-semibold text-[#111827]">{tier.min_transactions}</p>
         </div>
         <div className="rounded-lg bg-[#F8FAFC] border border-[#ECEEF3] p-3">
-          <p className="text-[11px] text-[#9CA3AF]">Minimum rating</p>
+          <p className="text-xs text-[#9CA3AF]">Minimum rating</p>
           <p className="mt-1 text-sm font-semibold text-[#111827]">{Number(tier.min_rating).toFixed(2)}</p>
         </div>
       </div>
       <div className="mt-5">
-        <p className="text-[11px] text-[#9CA3AF] mb-3">Current Privileges</p>
+        <p className="text-xs text-[#9CA3AF] mb-3">Current Privileges</p>
         <div className="flex flex-wrap gap-2">
           {tier.privileges.map((item, index) => (
-            <span key={`${item}-${index}`} className="px-3 py-1 rounded-md bg-[#F8FAFC] border border-[#ECEEF3] text-[11px] text-[#6B7280]">
+            <span key={`${item}-${index}`} className="px-3 py-1 rounded-md bg-[#F8FAFC] border border-[#ECEEF3] text-xs text-[#6B7280]">
               {item}
             </span>
           ))}
@@ -99,7 +100,7 @@ const TierCard = ({ tier, onEdit }) => (
   </div>
 );
 
-const TrustTierManagement = () => {
+const TrustTierManagement = ({ adminBarangay }) => {
   const [tiers, setTiers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -136,13 +137,37 @@ const TrustTierManagement = () => {
       }));
       setTiers(normalized);
 
+      // BARANGAY COORDINATOR SCOPE:
+      // Listings/reviews have no barangay, so member IDs are resolved first
+      // and used to scope listings, transactions and reviews.
+      let barangayUserIds = null;
+
+      if (adminBarangay) {
+        const { data: barangayUsers } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("barangay", adminBarangay);
+
+        barangayUserIds = (barangayUsers || []).map((u) => u.id);
+      }
+
+      const EMPTY_ID = ["00000000-0000-0000-0000-000000000000"];
+
+      const idsOrEmpty = (ids) => (ids.length ? ids : EMPTY_ID);
+
       const [profiles, listings, shops, transactions, reviews, repairReviews] = await Promise.all([
-        supabase.from("profiles").select("id", { count: "exact", head: true }),
-        supabase.from("listings").select("id", { count: "exact", head: true }).in("status", ["active", "available", "pending", "meetup_scheduled", "Meetup Scheduled"]),
-        supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "repair_shop").or("is_verified.eq.true,verification_status.eq.verified"),
-        supabase.from("transactions").select("seller_id,harvester_id,status").eq("status", "completed"),
-        supabase.from("reviews").select("seller_id,overall_rating"),
-        supabase.from("repair_reviews").select("repair_shop_id,overall_rating"),
+        scopeQuery(supabase.from("profiles").select("id", { count: "exact", head: true }), adminBarangay),
+        barangayUserIds === null
+          ? supabase.from("listings").select("id", { count: "exact", head: true }).in("status", ["active", "available", "pending", "meetup_scheduled", "Meetup Scheduled"])
+          : supabase.from("listings").select("id", { count: "exact", head: true }).in("status", ["active", "available", "pending", "meetup_scheduled", "Meetup Scheduled"]).in("seller_id", idsOrEmpty(barangayUserIds)),
+        scopeQuery(supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "repair_shop").or("is_verified.eq.true,verification_status.eq.verified"), adminBarangay),
+        scopeQuery(supabase.from("transactions").select("seller_id,harvester_id,status").eq("status", "completed"), adminBarangay),
+        barangayUserIds === null
+          ? supabase.from("reviews").select("seller_id,overall_rating")
+          : supabase.from("reviews").select("seller_id,overall_rating").in("seller_id", idsOrEmpty(barangayUserIds)),
+        barangayUserIds === null
+          ? supabase.from("repair_reviews").select("repair_shop_id,overall_rating")
+          : supabase.from("repair_reviews").select("repair_shop_id,overall_rating").in("repair_shop_id", idsOrEmpty(barangayUserIds)),
       ]);
 
       const firstError = [profiles, listings, shops, transactions, reviews, repairReviews].find(r => r.error);
@@ -191,7 +216,7 @@ const TrustTierManagement = () => {
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [adminBarangay]);
 
   const openEdit = tier => {
     setError("");
@@ -343,9 +368,9 @@ const TrustTierManagement = () => {
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {TIER_ORDER.map(name => (
                   <div key={name} className="rounded-lg bg-white border border-[#ECEEF3] p-3">
-                    <p className="text-[10px] font-semibold text-[#9CA3AF]">{name}</p>
+                    <p className="text-xs font-semibold text-[#9CA3AF]">{name}</p>
                     <p className="mt-1 text-xl font-bold text-[#111827]">{userTierCounts[name] || 0}</p>
-                    <p className="text-[10px] text-[#9CA3AF]">qualifying users</p>
+                    <p className="text-xs text-[#9CA3AF]">qualifying users</p>
                   </div>
                 ))}
               </div>
