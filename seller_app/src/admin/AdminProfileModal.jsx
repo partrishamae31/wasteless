@@ -126,17 +126,7 @@ const AdminProfileModal = ({ isOpen, onClose, adminProfile }) => {
                 valueColor={profile.barangay ? "text-blue-700 font-bold" : "text-orange-500 font-bold"}
               />
 
-              <DetailItem
-                label="Department"
-                value={profile.department || "—"}
-                icon={<Building2 size={14} />}
-              />
-
-              <DetailItem
-                label="Employee ID"
-                value={profile.employee_id || "—"}
-                icon={<BadgeCheck size={14} />}
-              />
+              
 
               <DetailItem
                 label="Date Registered"

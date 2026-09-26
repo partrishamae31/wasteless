@@ -1,12 +1,5 @@
-import { supabase } from "./supabaseClient";
 
-/**
- * Barangay-coordinator scoping helpers.
- *
- * Every admin is assigned ONE barangay (profiles.barangay, role = "admin").
- * These helpers resolve the logged-in admin's barangay and expose small
- * helpers so every admin tab only loads data for that barangay.
- */
+import { supabase } from "./supabaseClient";
 
 export const VALENZUELA_BARANGAYS = [
   "Arkong Bato",
@@ -43,10 +36,6 @@ export const VALENZUELA_BARANGAYS = [
   "Wawang Pulo",
 ];
 
-/**
- * Fetch the logged-in admin's full profile row from `profiles`.
- * Returns the profile object or null when unavailable.
- */
 export async function fetchAdminProfile(session) {
   const userId = session?.user?.id;
 
@@ -66,10 +55,6 @@ export async function fetchAdminProfile(session) {
   return data || null;
 }
 
-/**
- * Resolve the barangay an admin is assigned to.
- * Falls back to null when unknown — callers treat null as "no scoping data".
- */
 export function getAdminBarangay(adminProfile) {
   const barangay = adminProfile?.barangay;
 
@@ -78,61 +63,79 @@ export function getAdminBarangay(adminProfile) {
     : null;
 }
 
-/**
- * Normalize a barangay string for comparison (case/space insensitive).
- */
 export function normalizeBarangay(value) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+  return typeof value === "string"
+    ? value.trim().toLowerCase()
+    : "";
 }
 
-/**
- * Client-side filter: keep only records whose barangay matches the admin's.
- * Records with no barangay are dropped when scoping is active.
- */
-export function filterByBarangay(records, barangay, field = "barangay") {
-  if (!barangay) return records;
+export function filterByBarangay(
+  records,
+  barangay,
+  field = "barangay"
+) {
+  if (!barangay) return records || [];
 
   return (records || []).filter(
-    (record) => normalizeBarangay(record?.[field]) === normalizeBarangay(barangay),
+    (record) =>
+      normalizeBarangay(record?.[field]) ===
+      normalizeBarangay(barangay)
   );
 }
 
-/**
- * Apply a Supabase `.eq(field, barangay)` filter to a query builder.
- * Returns the builder untouched when no barangay is known.
- */
 export function scopeQuery(query, barangay, field = "barangay") {
-  return barangay ? query.eq(field, barangay) : query;
+  return barangay ? query.eq(field, barangay.trim()) : query;
 }
 
 /**
- * Barangay scoping for TRANSACTIONS queries.
+ * Scope transactions to the admin's barangay.
  *
- * A transaction belongs to the admin's barangay when EITHER:
- *   - its own `barangay` column matches (repair-service rows store the
- *     actual barangay), OR
- *   - its selected drop-off point is located in the barangay. Historically
- *     meetup scheduling stored the point's DISPLAY NAME (e.g. "sm
- *     valenzuela city") in the barangay column, so the canonical match
- *     must go through drop_off_points or those rows vanish for every
- *     coordinator.
+ * Includes:
+ * 1. Transactions whose barangay column matches.
+ * 2. Transactions whose drop_off_point_id belongs to a
+ *    drop-off point in the admin's barangay.
  *
- * Values are double-quoted so names with spaces/dots ("Gen. T. de Leon")
- * survive PostgREST's or() logic-expression parsing.
+ * IMPORTANT: This function is asynchronous.
+ * Use: query = await scopeTransactionsQuery(query, barangay);
  */
-export function scopeTransactionsQuery(query, barangay) {
-  if (!barangay) return query;
+export async function scopeTransactionsQuery(query, barangay) {
+  if (!barangay || !barangay.trim()) {
+    return query;
+  }
 
-  const quoted = `"${barangay.replace(/"/g, "\\\"")}"`;
+  const normalizedBarangay = barangay.trim();
+
+  const { data: points, error } = await supabase
+    .from("drop_off_points")
+    .select("id")
+    .ilike("barangay", normalizedBarangay);
+
+  if (error) {
+    console.error(
+      "Failed to load barangay drop-off points:",
+      error.message
+    );
+
+    // Fail closed rather than showing city-wide transactions.
+    return query.eq("barangay", normalizedBarangay);
+  }
+
+  const pointIds = (points || []).map((point) => point.id);
+
+  if (pointIds.length === 0) {
+    return query.eq("barangay", normalizedBarangay);
+  }
+
+  const ids = pointIds.join(",");
 
   return query.or(
-    `barangay.eq.${quoted},drop_off_points.barangay.eq.${quoted}`,
+    `barangay.eq."${normalizedBarangay}",drop_off_point_id.in.(${ids})`
   );
 }
 
-/**
- * True when two barangay strings refer to the same barangay.
- */
 export function isSameBarangay(a, b) {
-  return normalizeBarangay(a) === normalizeBarangay(b) && normalizeBarangay(a) !== "";
+  return (
+    normalizeBarangay(a) === normalizeBarangay(b) &&
+    normalizeBarangay(a) !== ""
+  );
 }

@@ -12,7 +12,6 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
-import { scopeTransactionsQuery } from "./barangayScope";
 
 const EWasteHotspots = ({ adminBarangay }) => {
   const [hotspots, setHotspots] = useState([]);
@@ -71,11 +70,9 @@ const EWasteHotspots = ({ adminBarangay }) => {
         drop_off_point_id
       `,
         )
-        .eq("status", "completed");
+        .in("status", ["completed", "complete"]);
 
-      // BARANGAY COORDINATOR SCOPE: only this barangay's transactions
-      // (matched via the barangay column OR the drop-off point's barangay).
-      query = scopeTransactionsQuery(query, adminBarangay);
+      // Hotspot map is citywide: do not apply the logged-in admin's barangay scope.
 
       const { data, error } = await query;
 
@@ -86,7 +83,7 @@ const EWasteHotspots = ({ adminBarangay }) => {
 
       const grouped = {};
 
-      data.forEach((transaction) => {
+      (data ?? []).forEach((transaction) => {
         if (!transaction.barangay) return;
 
         if (!grouped[transaction.barangay]) {
@@ -130,7 +127,7 @@ const EWasteHotspots = ({ adminBarangay }) => {
     };
 
     loadHotspots();
-  }, [adminBarangay]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#F5F7FB] p-6">
@@ -191,9 +188,7 @@ const EWasteHotspots = ({ adminBarangay }) => {
           </div>
 
           <p className="text-sm text-slate-400 mb-6">
-            {adminBarangay
-              ? `E-waste generation intensity for Barangay ${adminBarangay} (coordinator scope)`
-              : "Visualize e-waste generation intensity across barangays"}
+            "Visualize completed e-waste recovery activity across all barangays"
           </p>
 
           {/* SUMMARY BOXES */}

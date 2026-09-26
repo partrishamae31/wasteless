@@ -25,6 +25,7 @@ const TransactionReview = ({ adminBarangay }) => {
 
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   // ============================================
   // LOAD CURRENT ADMIN
@@ -51,6 +52,7 @@ const TransactionReview = ({ adminBarangay }) => {
   const loadTransactions = async () => {
     try {
       setLoading(true);
+      setLoadError("");
 
       /*
        * We only load transactions that have a flag.
@@ -178,6 +180,7 @@ const TransactionReview = ({ adminBarangay }) => {
       }
     } catch (error) {
       console.error("Error loading transaction reviews:", error);
+      setLoadError(error?.message || "Unable to load flagged transactions.");
     } finally {
       setLoading(false);
     }
@@ -552,15 +555,32 @@ const TransactionReview = ({ adminBarangay }) => {
   return (
     <div className="min-h-screen bg-[#f6f8fb] p-6 lg:p-8">
       {/* HEADER */}
-      <div className="mb-6">
-        <h1 className="text-[28px] font-semibold text-slate-800">
-          Transaction Review
-        </h1>
-
-        <p className="mt-1 text-sm text-slate-400">
-          Review flagged transactions and resolve transaction issues.
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[28px] font-semibold text-slate-800">Transaction Review</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Review flagged transactions, document the review, and resolve or escalate reported issues.
+          </p>
+          {adminBarangay && (
+            <p className="mt-2 text-xs font-medium text-slate-500">Barangay scope: {adminBarangay}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={loadTransactions}
+          disabled={loading || assigning}
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
       </div>
+
+      {loadError && (
+        <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <span>Could not load transaction reviews: {loadError}</span>
+          <button type="button" onClick={loadTransactions} className="font-semibold underline" disabled={loading}>Try again</button>
+        </div>
+      )}
 
       {/* TOP STATS */}
 
@@ -683,11 +703,13 @@ const TransactionReview = ({ adminBarangay }) => {
                 />
 
                 <p className="text-sm font-semibold text-slate-600">
-                  No flagged transactions
+                  {searchTerm.trim() ? "No matching transactions" : "No flagged transactions"}
                 </p>
 
                 <p className="mt-1 text-xs text-slate-400">
-                  There are no transactions in this category.
+                  {searchTerm.trim()
+                    ? "Try a different search term or choose another status tab."
+                    : "Flagged transactions will appear here when a flag reason is recorded."}
                 </p>
               </div>
             ) : (
@@ -715,6 +737,8 @@ const TransactionReview = ({ adminBarangay }) => {
                                 ? "bg-orange-100 text-orange-500"
                                 : status === "under_review"
                                   ? "bg-blue-100 text-blue-500"
+                                  : status === "escalated"
+                                  ? "bg-orange-100 text-orange-500"
                                   : "bg-emerald-100 text-emerald-500"
                             }`}
                           >
@@ -746,6 +770,8 @@ const TransactionReview = ({ adminBarangay }) => {
                                     ? "bg-orange-100 text-orange-600"
                                     : status === "under_review"
                                       ? "bg-blue-100 text-blue-600"
+                                      : status === "escalated"
+                                      ? "bg-orange-100 text-orange-600"
                                       : "bg-emerald-100 text-emerald-600"
                                 }`}
                               >
@@ -793,7 +819,9 @@ const TransactionReview = ({ adminBarangay }) => {
                     ? "bg-gradient-to-r from-emerald-500 to-green-600"
                     : getReviewStatus(selectedTransaction) === "under_review"
                       ? "bg-gradient-to-r from-blue-500 to-blue-600"
-                      : "bg-gradient-to-r from-orange-500 to-red-500"
+                      : getReviewStatus(selectedTransaction) === "escalated"
+                        ? "bg-gradient-to-r from-orange-500 to-amber-600"
+                        : "bg-gradient-to-r from-orange-500 to-red-500"
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -1050,9 +1078,20 @@ const TransactionReview = ({ adminBarangay }) => {
                 )}
 
                 {getReviewStatus(selectedTransaction) === "escalated" && (
-                  <div className="flex items-center justify-center gap-2 rounded-xl bg-orange-50 py-3 text-sm font-semibold text-orange-600">
-                    <AlertTriangle size={16} />
-                    Transaction Escalated for Further Review
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-center gap-2 rounded-xl bg-orange-50 py-3 text-sm font-semibold text-orange-600">
+                      <AlertTriangle size={16} />
+                      Transaction Escalated for Further Review
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResolve}
+                      disabled={assigning}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <CheckCircle2 size={16} />
+                      {assigning ? "Resolving..." : "Mark Escalated Review as Resolved"}
+                    </button>
                   </div>
                 )}
 

@@ -55,14 +55,13 @@ const AdminLogin = ({
   };
 
   // SHARED POST-LOGIN CHECKS (used by password login and OTP verification)
+
   const completeLogin = async (user) => {
-    // FETCH PROFILE
-    const { data: profile, error: profileError } =
-      await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
 
     if (profileError || !profile) {
       alert("Profile not found.");
@@ -70,14 +69,12 @@ const AdminLogin = ({
       return;
     }
 
-    // CHECK IF ADMIN
     if (profile.role !== "admin") {
       alert("Access denied. Not an admin account.");
       await supabase.auth.signOut();
       return;
     }
 
-    // CHECK APPROVAL
     if (!profile.is_verified) {
       alert(
         "Your admin account is still pending approval by WMO."
@@ -87,11 +84,11 @@ const AdminLogin = ({
       return;
     }
 
-    // SAVE ADMIN SESSION
+    // Store the authenticated admin's identity.
     localStorage.setItem("adminAuthenticated", "true");
 
-    // SUCCESS
-    onLoginSuccess();
+    // Pass the profile so the parent can resolve the correct barangay.
+    onLoginSuccess(profile);
   };
 
   const handleLogin = async (e) => {
