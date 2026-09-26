@@ -21,8 +21,10 @@ const AdminLogin = ({
 
   const [loading, setLoading] = useState(false);
 
-  // EMAIL CONFIRMATION: Supabase blocks password login until the user opens
-  // the "Confirm your email" link. We surface that case clearly here.
+  // EMAIL CONFIRMATION: Supabase blocks password login until the admin's
+  // email is confirmed. Verification with the emailed 6-digit code normally
+  // happens in the admin panel right after account creation; this page only
+  // explains the situation and offers a resend.
   const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
   const [resendState, setResendState] = useState("idle"); // idle | sending | sent
   const [loginError, setLoginError] = useState("");
@@ -32,6 +34,7 @@ const AdminLogin = ({
 
     try {
       setResendState("sending");
+      setLoginError("");
 
       const { error: resendError } = await supabase.auth.resend({
         type: "signup",
@@ -49,6 +52,46 @@ const AdminLogin = ({
       console.error(err);
       setResendState("idle");
     }
+  };
+
+  // SHARED POST-LOGIN CHECKS (used by password login and OTP verification)
+  const completeLogin = async (user) => {
+    // FETCH PROFILE
+    const { data: profile, error: profileError } =
+      await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+    if (profileError || !profile) {
+      alert("Profile not found.");
+      await supabase.auth.signOut();
+      return;
+    }
+
+    // CHECK IF ADMIN
+    if (profile.role !== "admin") {
+      alert("Access denied. Not an admin account.");
+      await supabase.auth.signOut();
+      return;
+    }
+
+    // CHECK APPROVAL
+    if (!profile.is_verified) {
+      alert(
+        "Your admin account is still pending approval by WMO."
+      );
+
+      await supabase.auth.signOut();
+      return;
+    }
+
+    // SAVE ADMIN SESSION
+    localStorage.setItem("adminAuthenticated", "true");
+
+    // SUCCESS
+    onLoginSuccess();
   };
 
   const handleLogin = async (e) => {
@@ -87,42 +130,7 @@ const AdminLogin = ({
 
       const user = data.user;
 
-      // FETCH PROFILE
-      const { data: profile, error: profileError } =
-        await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-
-      if (profileError || !profile) {
-        alert("Profile not found.");
-        await supabase.auth.signOut();
-        return;
-      }
-
-      // CHECK IF ADMIN
-      if (profile.role !== "admin") {
-        alert("Access denied. Not an admin account.");
-        await supabase.auth.signOut();
-        return;
-      }
-
-      // CHECK APPROVAL
-      if (!profile.is_verified) {
-        alert(
-          "Your admin account is still pending approval by WMO."
-        );
-
-        await supabase.auth.signOut();
-        return;
-      }
-
-      // SAVE ADMIN SESSION
-      localStorage.setItem("adminAuthenticated", "true");
-
-      // SUCCESS
-      onLoginSuccess();
+      await completeLogin(user);
 
     } catch (err) {
       console.error(err);
@@ -150,23 +158,27 @@ const AdminLogin = ({
             <div className="flex items-start gap-3">
               <MailWarning size={22} className="text-amber-500 shrink-0 mt-0.5" />
 
-              <div>
+              <div className="flex-1">
                 <p className="font-semibold text-amber-800">
-                  Confirm your email first
+                  Email not confirmed yet
                 </p>
 
                 <p className="text-sm text-amber-700 mt-1 leading-relaxed">
-                  Supabase sent a confirmation link to <strong>{email}</strong>.
-                  Open it, then sign in here. Didn't get it?
+                  A <strong>6-digit confirmation code</strong> was emailed to{" "}
+                  <strong>{email}</strong>. Open the email and click{" "}
+                  <strong>Confirm your mail</strong>, or ask the administrator
+                  who created your account to verify the code in the admin
+                  panel. Didn't get the email?
                 </p>
 
+                {/* RESEND */}
                 <button
                   type="button"
                   onClick={handleResend}
                   disabled={resendState !== "idle"}
-                  className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-100 hover:bg-amber-200 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-amber-800 transition"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 disabled:opacity-60 px-3 py-1.5 text-xs font-semibold text-amber-800 transition"
                 >
-                  <MailCheck size={14} />
+                  <MailCheck size={13} />
                   {resendState === "sending"
                     ? "Resending..."
                     : resendState === "sent"

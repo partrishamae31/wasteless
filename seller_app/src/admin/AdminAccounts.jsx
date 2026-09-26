@@ -20,6 +20,8 @@ import {
   Building2,
   BadgeCheck,
   Info,
+  KeyRound,
+  ShieldCheck,
 } from "lucide-react";
 
 import { VALENZUELA_BARANGAYS } from "./barangayScope";
@@ -43,10 +45,24 @@ const AdminAccounts = ({ adminBarangay }) => {
   const [createdNeedsConfirmation, setCreatedNeedsConfirmation] = useState(false);
   const [resendState, setResendState] = useState("idle"); // idle | sending | sent
 
+  // OTP VERIFICATION happens right here in the admin panel, immediately
+  // after the account is created, so the new admin's email is confirmed
+  // without them ever seeing "Email not confirmed" at login.
+  const [otpStep, setOtpStep] = useState(false); // show the OTP screen
+  const [otp, setOtp] = useState("");
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpError, setOtpError] = useState("");
+  const [emailConfirmed, setEmailConfirmed] = useState(false);
+
+  
+
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
     contact_number: "",
+    
+    // Defaults to the creating admin's barangay, but any barangay can be
+    // selected so coordinators can onboard admins for other areas too.
     barangay: adminBarangay || "",
     password: "",
     confirmPassword: "",
@@ -64,6 +80,7 @@ const AdminAccounts = ({ adminBarangay }) => {
       full_name: "",
       email: "",
       contact_number: "",
+   
       barangay: adminBarangay || "",
       password: "",
       confirmPassword: "",
@@ -81,6 +98,7 @@ const AdminAccounts = ({ adminBarangay }) => {
         !formData.full_name ||
         !formData.email ||
         !formData.contact_number ||
+
         !formData.barangay ||
         !formData.password ||
         !formData.confirmPassword
@@ -189,19 +207,24 @@ const AdminAccounts = ({ adminBarangay }) => {
       });
 
       setCreatedNeedsConfirmation(needsConfirmation);
+      setEmailConfirmed(!needsConfirmation);
       setResendState("idle");
-
-      setSuccess(true);
-      setToast(
-        needsConfirmation
-          ? "Administrator created. A confirmation email was sent to their inbox."
-          : "Administrator account created and activated successfully.",
-      );
-      setTimeout(() => setToast(""), 5000);
+      setOtp("");
+      setOtpError("");
 
       setShowForm(false);
 
       resetForm();
+
+      if (needsConfirmation) {
+        // Ask the creator for the emailed 6-digit code right away.
+        setOtpStep(true);
+      } else {
+        setOtpStep(false);
+        setSuccess(true);
+        setToast("Administrator account created and activated successfully.");
+        setTimeout(() => setToast(""), 5000);
+      }
     } catch (err) {
       console.error(err);
       alert("Something went wrong.");
@@ -234,6 +257,64 @@ const AdminAccounts = ({ adminBarangay }) => {
     }
   };
 
+  // VERIFY THE 6-DIGIT CODE EMAILED TO THE NEW ADMIN
+  const handleVerifyOtp = async () => {
+    if (!createdInfo?.email || otp.trim().length < 6 || otpVerifying) return;
+
+    try {
+      setOtpVerifying(true);
+      setOtpError("");
+
+      // verifyOTP signs in as the NEW user, so save the creating admin's
+      // session first and restore it afterwards.
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: createdInfo.email,
+        token: otp.trim(),
+        type: "signup",
+      });
+
+      if (error) {
+        setOtpError(error.message);
+        return;
+      }
+
+      // RESTORE CURRENT ADMIN SESSION
+      if (currentSession) {
+        await supabase.auth.setSession({
+          access_token: currentSession.access_token,
+          refresh_token: currentSession.refresh_token,
+        });
+      }
+
+      if (!data?.user) {
+        setOtpError("Could not verify the code. Please try again.");
+        return;
+      }
+
+      setEmailConfirmed(true);
+      setOtpStep(false);
+      setSuccess(true);
+      setToast("Email confirmed. The new admin can now log in.");
+      setTimeout(() => setToast(""), 5000);
+    } catch (err) {
+      console.error(err);
+      setOtpError("Something went wrong while verifying the code.");
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
+  const handleSkipOtp = () => {
+    // Leave the account pending confirmation; it can be completed later
+    // from the success screen.
+    setOtpStep(false);
+    setSuccess(true);
+  };
+
   const stats = [
     {
       label: "Total Users",
@@ -252,6 +333,98 @@ const AdminAccounts = ({ adminBarangay }) => {
       value: "456",
     },
   ];
+
+  // =========================
+  // OTP VERIFICATION SCREEN
+  // =========================
+  if (otpStep) {
+    return (
+      <div className="p-8 flex justify-center items-center min-h-screen bg-[#F8FAFC]">
+        <div className="bg-white rounded-[32px] shadow-xl p-10 max-w-2xl w-full border border-slate-200">
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center">
+              <KeyRound className="text-amber-600" size={36} />
+            </div>
+          </div>
+
+          <h1 className="text-3xl font-bold text-center text-slate-900 mb-3">
+            Enter Confirmation Code
+          </h1>
+
+          <p className="text-center text-slate-500 mb-8">
+            A <strong>6-digit code</strong> was emailed to{" "}
+            <strong className="break-all">{createdInfo?.email}</strong>. Enter
+            it below to finish activating this admin account.
+          </p>
+
+          {/* OTP INPUT + VERIFY BUTTON */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <div className="relative flex-1">
+              <KeyRound
+                size={18}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="000000"
+                value={otp}
+                onChange={(e) =>
+                  setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                className="w-full h-16 rounded-2xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-[24px] font-bold tracking-[0.45em] text-slate-800 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleVerifyOtp}
+              disabled={otp.trim().length < 6 || otpVerifying}
+              className="h-16 px-8 rounded-2xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold shadow-lg shadow-purple-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all inline-flex items-center gap-2 justify-center"
+            >
+              <ShieldCheck size={18} />
+              {otpVerifying ? "Verifying..." : "Verify Code"}
+            </button>
+          </div>
+
+          {/* OTP ERROR */}
+          {otpError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-sm font-semibold text-red-600">{otpError}</p>
+            </div>
+          )}
+
+          {/* RESEND + SKIP */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-2">
+            <button
+              type="button"
+              onClick={handleResendConfirmation}
+              disabled={resendState !== "idle"}
+              className="inline-flex items-center gap-2 rounded-xl bg-amber-50 hover:bg-amber-100 disabled:opacity-60 border border-amber-200 px-4 py-2.5 text-xs font-semibold text-amber-700 transition"
+            >
+              <Mail size={14} />
+              {resendState === "sending"
+                ? "Resending..."
+                : resendState === "sent"
+                  ? "New code sent ✓"
+                  : "Resend code"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSkipOtp}
+              className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Verify later — the new admin can confirm from the login page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // =========================
   // SUCCESS SCREEN
@@ -312,39 +485,41 @@ const AdminAccounts = ({ adminBarangay }) => {
             <p className="font-semibold mb-2">Account Activated</p>
 
             <p className="text-sm">
-              {createdNeedsConfirmation
-                ? "The account was created, but the new admin must first confirm their email before logging in."
-                : "The administrator can now log in using the registered email and password."}
+              {emailConfirmed
+                ? "Email confirmed — the administrator can now log in using their email and password."
+                : createdNeedsConfirmation
+                  ? "The account was created, but its email is NOT yet confirmed. The new admin must verify the 6-digit code from their email before logging in."
+                  : "The administrator can now log in using the registered email and password."}
             </p>
           </div>
 
-          {createdNeedsConfirmation && (
+          {createdNeedsConfirmation && !emailConfirmed && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-700 mb-6">
               <div className="flex items-start gap-4">
                 <MailWarning size={22} className="text-amber-500 shrink-0 mt-0.5" />
 
                 <div className="flex-1">
-                  <p className="font-semibold mb-1">Email Confirmation Required</p>
+                  <p className="font-semibold mb-1">Email Confirmation Pending</p>
 
                   <p className="text-sm leading-relaxed">
-                    A <strong>Confirm your email</strong> link was sent to{" "}
-                    <strong>{createdInfo?.email}</strong>. The new admin can log
-                    in with their email and password only after opening that
-                    link.
+                    The <strong>6-digit confirmation code</strong> was emailed to{" "}
+                    <strong>{createdInfo?.email}</strong>. You can reopen this
+                    flow later, or the new admin can enter the code on the
+                    Admin Login page.
                   </p>
 
                   <button
                     type="button"
-                    onClick={handleResendConfirmation}
-                    disabled={resendState !== "idle"}
-                    className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-100 hover:bg-amber-200 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-amber-800 transition"
+                    onClick={() => {
+                      setSuccess(false);
+                      setOtpStep(true);
+                      setResendState("idle");
+                      setOtpError("");
+                    }}
+                    className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-100 hover:bg-amber-200 px-4 py-2 text-xs font-semibold text-amber-800 transition"
                   >
-                    <Mail size={14} />
-                    {resendState === "sending"
-                      ? "Resending..."
-                      : resendState === "sent"
-                        ? "Confirmation email sent again ✓"
-                        : "Resend confirmation email"}
+                    <KeyRound size={14} />
+                    Enter code now
                   </button>
                 </div>
               </div>
