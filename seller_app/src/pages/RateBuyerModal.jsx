@@ -122,7 +122,7 @@ const RateBuyerModal = ({ isOpen, onClose, buyerName, onConfirm }) => {
                 className="w-full h-32 pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-slate-600 placeholder:text-slate-300 resize-none transition-all"
               />
             </div>
-            <p className="text-[10px] text-slate-400 italic">Your feedback helps build trust in the community</p>
+            <p className="text-xs text-slate-400 italic">Your feedback helps build trust in the community</p>
           </div>
 
           {/* --- VALIDATION WARNING --- */}
