@@ -1,509 +1,217 @@
-// AdminSignup.jsx
-
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
-import {
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  Lock,
-  Eye,
-  EyeOff,
-  FileText,
-  AlertCircle,
-  ShieldAlert,
+import { 
+  Shield, Mail, Lock, User, Building2, 
+  ChevronRight, ChevronLeft, Fingerprint, 
+  BadgeCheck, MapPin 
 } from "lucide-react";
 
-import { VALENZUELA_BARANGAYS } from "./barangayScope";
-
-const AdminSignup = ({ onLoginClick }) => {
+const AdminSignup = ({ onBackToLogin }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
   const [formData, setFormData] = useState({
-    fullName: "",
     email: "",
-    contact: "",
-    barangay: "",
     password: "",
-    confirmPassword: "",
-    ewasteId: null,
-    registrationId: "",
+    fullName: "",
+    employeeId: "",
+    role: "env_officer", // Default role
+    barangay: "Karuhatan",
   });
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleContinue = (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
-
-    if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match");
-      return;
-    }
-
-    setStep(2);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
+    setLoading(true);
     try {
-      setLoading(true);
-
-      // =========================
-      // 1. CREATE AUTH ACCOUNT
-      // =========================
+      // 1. Create Auth User
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
       });
 
-      if (authError) {
-        alert(authError.message);
-        return;
-      }
+      if (authError) throw authError;
 
-      const user = authData.user;
+      // 2. Create Profile with the correct Enum role
+      const { error: profileError } = await supabase.from("profiles").insert([
+        {
+          id: authData.user.id,
+          full_name: formData.fullName,
+          role: formData.role,
+          employee_id: formData.employeeId,
+          barangay: formData.barangay,
+          verification_status: "pending",
+        },
+      ]);
 
-      if (!user) {
-        alert("Failed to create account");
-        return;
-      }
-
-      // =========================
-      // 2. UPLOAD E-WASTE ID
-      // =========================
-      let uploadedFilePath = null;
-
-      if (formData.ewasteId) {
-        const fileExt = formData.ewasteId.name.split(".").pop();
-
-        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("admin-ids")
-          .upload(fileName, formData.ewasteId);
-
-        if (uploadError) {
-          alert(uploadError.message);
-          return;
-        }
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("admin-ids").getPublicUrl(fileName);
-
-        uploadedFilePath = publicUrl;
-      }
-
-      // =========================
-      // 3. INSERT PROFILE
-      // =========================
-      const registrationId = `ADM-${Math.floor(
-        10000000 + Math.random() * 90000000,
-      )}`;
-
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: user.id,
-        full_name: formData.fullName,
-        email: formData.email,
-        contact_number: formData.contact,
-        barangay: formData.barangay,
-
-        role: "admin",
-
-        is_verified: false,
-        verification_status: "pending",
-        status: "pending",
-
-        employee_id: registrationId,
-
-        tech_cert_url: uploadedFilePath,
-      });
-
-      if (profileError) {
-        alert(profileError.message);
-        return;
-      }
-
-      // SAVE REGISTRATION ID
-      setFormData((prev) => ({
-        ...prev,
-        registrationId,
-      }));
-
-      // SUCCESS SCREEN
-      setStep(3);
+      if (profileError) throw profileError;
+      alert("Registration successful! Wait for system approval.");
+      onBackToLogin();
     } catch (err) {
-      console.error(err);
-      alert("Something went wrong");
+      alert(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#07142d] px-4 relative overflow-hidden">
-      {/* Background Glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(20,70,180,0.35),_transparent_55%)]" />
+    <div className="min-h-screen bg-[#056B4F] flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute w-[500px] h-[500px] bg-green-400/10 blur-3xl rounded-full right-[-100px] bottom-[-100px]" />
+      
+      <div className="w-full max-w-[500px] relative z-10">
+        <div className="bg-[#F8F8F8] rounded-3xl overflow-hidden shadow-2xl border border-white/20">
+          
+          {/* STEP INDICATOR */}
+          <div className="flex">
+            <div className={`h-1.5 flex-1 ${step >= 1 ? "bg-[#07A63D]" : "bg-slate-200"}`} />
+            <div className={`h-1.5 flex-1 ${step >= 2 ? "bg-[#07A63D]" : "bg-slate-200"}`} />
+          </div>
 
-      {/* Card */}
-      <div className="relative z-10 w-full max-w-2xl bg-[#f7f7f7] rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.45)] px-10 py-10">
-        {/* TITLE */}
-        {step !== 3 && (
-          <h1 className="text-center text-[38px] font-bold text-[#114d27] mb-10">
-            Create Admin Account
-          </h1>
-        )}
-
-        {/* ================= STEP 1 ================= */}
-        {step === 1 && (
-          <form onSubmit={handleContinue} className="space-y-5">
-            {/* Full Name */}
-            <div>
-              <label className="block text-[15px] font-semibold text-[#3f4b5f] mb-2">
-                Full Name
-              </label>
-
-              <div className="relative">
-                <User
-                  size={20}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  type="text"
-                  name="fullName"
-                  placeholder="Juan Dela Cruz"
-                  value={formData.fullName}
-                  onChange={handleChange}
-                  required
-                  className="w-full h-[58px] rounded-2xl border border-gray-300 bg-white pl-12 pr-4 text-[15px] outline-none focus:border-[#2f8f46] focus:ring-2 focus:ring-[#2f8f46]/20"
-                />
+          <div className="px-10 py-12">
+            <div className="flex justify-center mb-6">
+              <div className="w-16 h-16 rounded-2xl bg-[#07A63D] flex items-center justify-center shadow-lg shadow-green-900/40">
+                <Shield className="text-white" size={32} />
               </div>
             </div>
 
-            {/* Email */}
-            <div>
-              <label className="block text-[15px] font-semibold text-[#3f4b5f] mb-2">
-                Official Email Address
-              </label>
+            <h1 className="text-3xl font-bold text-slate-800 text-center tracking-tight">Official Registration</h1>
+            <p className="text-center text-slate-500 text-sm mt-2 mb-8">Access the LGU Valenzuela Compliance Portal</p>
 
-              <div className="relative">
-                <Mail
-                  size={20}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+            <form onSubmit={handleSignup} className="space-y-5">
+              {step === 1 ? (
+                <>
+                  {/* ROLE SELECTION */}
+                  <div className="grid grid-cols-2 gap-3 mb-6">
+                    {['env_officer', 'admin'].map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setFormData({...formData, role: r})}
+                        className={`p-4 rounded-2xl border-2 transition-all text-center ${
+                          formData.role === r 
+                          ? "border-[#07A63D] bg-green-50 shadow-inner" 
+                          : "border-slate-100 bg-white hover:border-slate-200"
+                        }`}
+                      >
+                        <p className={`text-xs font-black uppercase tracking-widest ${formData.role === r ? "text-[#07A63D]" : "text-slate-400"}`}>
+                          {r.replace('_', ' ')}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
 
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="admin@valenzuela.gov.ph"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                  className="w-full h-[58px] rounded-2xl border border-gray-300 bg-white pl-12 pr-4 text-[15px] outline-none focus:border-[#2f8f46] focus:ring-2 focus:ring-[#2f8f46]/20"
-                />
-              </div>
-            </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                      <div className="relative mt-1">
+                        <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="text" 
+                          required
+                          className="w-full h-12 pl-11 pr-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500/20"
+                          placeholder="e.g. Juan Dela Cruz"
+                          onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                        />
+                      </div>
+                    </div>
 
-            {/* Contact */}
-            <div>
-              <label className="block text-[15px] font-semibold text-[#3f4b5f] mb-2">
-                Contact Number
-              </label>
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Employee ID / Badge No.</label>
+                      <div className="relative mt-1">
+                        <BadgeCheck size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="text" 
+                          required
+                          className="w-full h-12 pl-11 pr-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500/20"
+                          placeholder="e.g. VAL-2026-7721"
+                          onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-              <div className="relative">
-                <Phone
-                  size={20}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+                  <button 
+                    type="button"
+                    onClick={() => setStep(2)}
+                    className="w-full h-12 bg-slate-800 text-white rounded-xl font-bold text-sm mt-4 flex items-center justify-center gap-2"
+                  >
+                    Next Step <ChevronRight size={18} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Official Email</label>
+                      <div className="relative mt-1">
+                        <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="email" 
+                          required
+                          className="w-full h-12 pl-11 pr-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500/20"
+                          placeholder="officer@valenzuela.gov.ph"
+                          onChange={(e) => setFormData({...formData, email: e.target.value})}
+                        />
+                      </div>
+                    </div>
 
-                <input
-                  type="text"
-                  name="contact"
-                  placeholder="+63 917 123 4567"
-                  value={formData.contact}
-                  onChange={handleChange}
-                  required
-                  className="w-full h-[58px] rounded-2xl border border-gray-300 bg-white pl-12 pr-4 text-[15px] outline-none focus:border-[#2f8f46] focus:ring-2 focus:ring-[#2f8f46]/20"
-                />
-              </div>
-            </div>
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Secure Password</label>
+                      <div className="relative mt-1">
+                        <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="password" 
+                          required
+                          className="w-full h-12 pl-11 pr-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500/20"
+                          placeholder="••••••••"
+                          onChange={(e) => setFormData({...formData, password: e.target.value})}
+                        />
+                      </div>
+                    </div>
 
-            {/* Barangay */}
-            <div>
-              <label className="block text-[15px] font-semibold text-[#3f4b5f] mb-2">
-                Barangay Assignment
-              </label>
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Assigned Barangay</label>
+                      <div className="relative mt-1">
+                        <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <select 
+                          className="w-full h-12 pl-11 pr-4 bg-white border border-slate-200 rounded-xl outline-none appearance-none"
+                          onChange={(e) => setFormData({...formData, barangay: e.target.value})}
+                        >
+                          <option value="Karuhatan">Karuhatan</option>
+                          <option value="Maysan">Maysan</option>
+                          <option value="Marulas">Marulas</option>
+                          <option value="Ugong">Ugong</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
-              <div className="relative">
-                <MapPin
-                  size={20}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+                  <div className="flex gap-3 mt-6">
+                    <button 
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="flex-1 h-12 border-2 border-slate-200 text-slate-500 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+                    >
+                      <ChevronLeft size={18} /> Back
+                    </button>
+                    <button 
+                      type="submit"
+                      disabled={loading}
+                      className="flex- h-12 bg-[#07A63D] text-white rounded-xl font-bold text-sm shadow-lg shadow-green-900/20"
+                    >
+                      {loading ? "Registering..." : "Complete Registration"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </form>
 
-                {/* Canonical list keeps barangay scoping reliable — a free-text
-                    typo would silently break coordinator data isolation. */}
-                <select
-                  name="barangay"
-                  value={formData.barangay}
-                  onChange={handleChange}
-                  required
-                  className="w-full h-[58px] rounded-2xl border border-gray-300 bg-white pl-12 pr-10 text-[15px] outline-none focus:border-[#2f8f46] focus:ring-2 focus:ring-[#2f8f46]/20 appearance-none"
-                >
-                  <option value="">Select barangay</option>
-
-                  {VALENZUELA_BARANGAYS.map((barangay) => (
-                    <option key={barangay} value={barangay}>
-                      {barangay}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-[15px] font-semibold text-[#3f4b5f] mb-2">
-                Password
-              </label>
-
-              <div className="relative">
-                <Lock
-                  size={20}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  placeholder="Enter secure password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                  className="w-full h-[58px] rounded-2xl border border-gray-300 bg-white pl-12 pr-12 text-[15px] outline-none focus:border-[#2f8f46] focus:ring-2 focus:ring-[#2f8f46]/20"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Confirm Password */}
-            <div>
-              <label className="block text-[15px] font-semibold text-[#3f4b5f] mb-2">
-                Confirm Password
-              </label>
-
-              <div className="relative">
-                <Lock
-                  size={20}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  name="confirmPassword"
-                  placeholder="Re-enter password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                  className="w-full h-[58px] rounded-2xl border border-gray-300 bg-white pl-12 pr-12 text-[15px] outline-none focus:border-[#2f8f46] focus:ring-2 focus:ring-[#2f8f46]/20"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff size={20} />
-                  ) : (
-                    <Eye size={20} />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Continue */}
-            <button
-              type="submit"
-              className="w-full h-[60px] mt-8 rounded-2xl bg-gradient-to-r from-[#2387b7] to-[#5da11e] text-white text-[18px] font-semibold shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all"
+            <button 
+              onClick={onBackToLogin}
+              className="w-full text-center text-xs text-slate-400 font-bold uppercase tracking-widest mt-8 hover:text-green-600 transition-colors"
             >
-              Continue
-            </button>
-          </form>
-        )}
-
-        {/* ================= STEP 2 ================= */}
-        {step === 2 && (
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div>
-              <label className="block text-[15px] font-semibold text-[#3f4b5f] mb-3">
-                E-Waste ID
-              </label>
-
-              <label
-                htmlFor="ewaste-id"
-                className="w-full h-[150px] border border-dashed border-gray-300 rounded-2xl bg-white flex flex-col items-center justify-center cursor-pointer hover:border-[#2f8f46] transition-all"
-              >
-                <FileText size={38} className="text-gray-400 mb-3" />
-
-                <p className="text-[17px] font-medium text-[#3f4b5f]">
-                  Click to upload ID
-                </p>
-
-                <p className="text-[13px] text-gray-400 mt-1">
-                  PNG, JPG, or PDF (Max 5MB)
-                </p>
-
-                <input
-                  id="ewaste-id"
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.pdf"
-                  className="hidden"
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      ewasteId: e.target.files[0],
-                    })
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="flex-1 h-[58px] rounded-2xl border border-gray-300 bg-white text-[#3f4b5f] text-[17px] font-semibold hover:bg-gray-50 transition-all"
-              >
-                Back
-              </button>
-
-              <button
-                type="submit"
-                className="flex-1 h-[58px] rounded-2xl bg-gradient-to-r from-[#2387b7] to-[#5da11e] text-white text-[17px] font-semibold shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all"
-              >
-                Submit
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* ================= STEP 3 ================= */}
-        {step === 3 && (
-          <div className="flex flex-col items-center">
-            <div className="w-[90px] h-[90px] rounded-full bg-[#f6edb5] flex items-center justify-center mb-8">
-              <AlertCircle size={42} className="text-[#c88700]" />
-            </div>
-
-            <h2 className="text-[38px] font-semibold text-[#1d2433] text-center leading-tight">
-              Registration Pending WMO Approval
-            </h2>
-
-            <p className="text-center text-[#6b7280] text-[18px] leading-relaxed mt-5 max-w-[700px]">
-              Your administrator registration has been submitted successfully
-              and is now awaiting approval.
-            </p>
-
-            <div className="w-full mt-10 border border-[#ff8a8a] bg-[#fff5f5] rounded-2xl p-6">
-              <div className="flex gap-4">
-                <ShieldAlert
-                  size={24}
-                  className="text-[#ef4444] shrink-0 mt-1"
-                />
-
-                <div>
-                  <h3 className="text-[18px] font-semibold text-[#d93c3c]">
-                    Account Not Yet Active
-                  </h3>
-
-                  <p className="text-[17px] text-[#d93c3c] leading-relaxed mt-2">
-                    You will not be able to log in until your account has been
-                    reviewed and approved by the Waste Management Officer (WMO).
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="w-full mt-8 bg-[#f8f8f8] rounded-2xl p-7">
-              <h3 className="text-[22px] font-semibold text-[#1d2433] mb-5">
-                What happens next?
-              </h3>
-
-              <div className="space-y-4 text-[17px] text-[#6b7280]">
-                <div className="flex gap-3">
-                  <span className="text-[#9333ea] font-bold">1.</span>
-                  <p>WMO reviews your credentials and documents</p>
-                </div>
-
-                <div className="flex gap-3">
-                  <span className="text-[#9333ea] font-bold">2.</span>
-                  <p>Department head authorization is verified</p>
-                </div>
-
-                <div className="flex gap-3">
-                  <span className="text-[#9333ea] font-bold">3.</span>
-                  <p>You&apos;ll receive an email notification once approved</p>
-                </div>
-
-                <div className="flex gap-3">
-                  <span className="text-[#9333ea] font-bold">4.</span>
-                  <p>After approval, you can log in using your credentials</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="w-full mt-8 border border-gray-300 rounded-2xl bg-white py-6 px-4 text-center">
-              <p className="text-[20px] font-semibold text-[#1d2433]">
-                Registration ID:{" "}
-                <span className="font-medium text-[#6b7280]">
-                  {formData.registrationId}
-                </span>
-              </p>
-
-              <p className="text-[14px] text-[#6b7280] mt-2">
-                Please save this ID for your reference when contacting support.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={onLoginClick}
-              className="w-full h-[62px] mt-8 rounded-2xl bg-gradient-to-r from-[#2387b7] to-[#5da11e] text-white text-[18px] font-semibold shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all"
-            >
-              Go to Login
+              Already have access? Sign In
             </button>
           </div>
-        )}
-
-        {/* Bottom Text */}
-        {step !== 3 && (
-          <div className="text-center mt-8 text-[15px] text-gray-600">
-            Already have an account?{" "}
-            <button
-              onClick={onLoginClick}
-              className="font-semibold text-[#114d27] hover:underline"
-            >
-              Login
-            </button>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -106,6 +106,31 @@ export function scopeQuery(query, barangay, field = "barangay") {
 }
 
 /**
+ * Barangay scoping for TRANSACTIONS queries.
+ *
+ * A transaction belongs to the admin's barangay when EITHER:
+ *   - its own `barangay` column matches (repair-service rows store the
+ *     actual barangay), OR
+ *   - its selected drop-off point is located in the barangay. Historically
+ *     meetup scheduling stored the point's DISPLAY NAME (e.g. "sm
+ *     valenzuela city") in the barangay column, so the canonical match
+ *     must go through drop_off_points or those rows vanish for every
+ *     coordinator.
+ *
+ * Values are double-quoted so names with spaces/dots ("Gen. T. de Leon")
+ * survive PostgREST's or() logic-expression parsing.
+ */
+export function scopeTransactionsQuery(query, barangay) {
+  if (!barangay) return query;
+
+  const quoted = `"${barangay.replace(/"/g, "\\\"")}"`;
+
+  return query.or(
+    `barangay.eq.${quoted},drop_off_points.barangay.eq.${quoted}`,
+  );
+}
+
+/**
  * True when two barangay strings refer to the same barangay.
  */
 export function isSameBarangay(a, b) {

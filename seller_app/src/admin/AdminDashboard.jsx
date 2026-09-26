@@ -32,7 +32,10 @@ import {
   Building2,
 } from "lucide-react";
 
-import { scopeQuery } from "./barangayScope";
+import {
+  scopeQuery,
+  scopeTransactionsQuery,
+} from "./barangayScope";
 
 const AdminDashboard = ({ adminBarangay }) => {
   const [stats, setStats] = useState({
@@ -100,8 +103,9 @@ const AdminDashboard = ({ adminBarangay }) => {
         )
       `);
 
-      // BARANGAY COORDINATOR SCOPE
-      query = scopeQuery(query, adminBarangay);
+      // BARANGAY COORDINATOR SCOPE (matches the barangay column OR the
+      // drop-off point's barangay)
+      query = scopeTransactionsQuery(query, adminBarangay);
 
       const { data, error } = await query;
 
@@ -199,7 +203,7 @@ const AdminDashboard = ({ adminBarangay }) => {
 
         let txQuery = supabase.from("transactions").select("*");
 
-        txQuery = scopeQuery(txQuery, adminBarangay);
+        txQuery = scopeTransactionsQuery(txQuery, adminBarangay);
 
         const { data, error } = await txQuery;
 
@@ -237,10 +241,16 @@ const AdminDashboard = ({ adminBarangay }) => {
         // LOAD LOCATIONS (Completed Transactions Only, scoped)
         let locationQuery = supabase
           .from("transactions")
-          .select("barangay")
+          .select(
+            `barangay,
+            drop_off_points:drop_off_point_id (
+              barangay
+            )
+          `,
+          )
           .eq("status", "completed");
 
-        locationQuery = scopeQuery(locationQuery, adminBarangay);
+        locationQuery = scopeTransactionsQuery(locationQuery, adminBarangay);
 
         const { data: locationData, error: locationError } = await locationQuery;
 
@@ -249,7 +259,10 @@ const AdminDashboard = ({ adminBarangay }) => {
         const uniqueLocations = [
           ...new Set(
             (locationData || [])
-              .map((item) => item.barangay?.trim())
+              .flatMap((item) => [
+                item.barangay?.trim(),
+                item.drop_off_points?.barangay?.trim(),
+              ])
               .filter(
                 (barangay) =>
                   barangay !== null &&
@@ -266,7 +279,7 @@ const AdminDashboard = ({ adminBarangay }) => {
           .from("transactions")
           .select("created_at");
 
-        chartQuery = scopeQuery(chartQuery, adminBarangay);
+        chartQuery = scopeTransactionsQuery(chartQuery, adminBarangay);
 
         const { data: transactionItems } = await chartQuery;
 
@@ -317,7 +330,7 @@ const AdminDashboard = ({ adminBarangay }) => {
           )
           .eq("status", "completed");
 
-        recoveryQuery = scopeQuery(recoveryQuery, adminBarangay);
+        recoveryQuery = scopeTransactionsQuery(recoveryQuery, adminBarangay);
 
         // DATE FILTER
         if (selectedDate === "7days") {

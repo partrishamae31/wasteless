@@ -12,7 +12,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
-import { scopeQuery } from "./barangayScope";
+import { scopeTransactionsQuery } from "./barangayScope";
 
 const EWasteHotspots = ({ adminBarangay }) => {
   const [hotspots, setHotspots] = useState([]);
@@ -73,8 +73,9 @@ const EWasteHotspots = ({ adminBarangay }) => {
         )
         .eq("status", "completed");
 
-      // BARANGAY COORDINATOR SCOPE: only this barangay's transactions.
-      query = scopeQuery(query, adminBarangay);
+      // BARANGAY COORDINATOR SCOPE: only this barangay's transactions
+      // (matched via the barangay column OR the drop-off point's barangay).
+      query = scopeTransactionsQuery(query, adminBarangay);
 
       const { data, error } = await query;
 

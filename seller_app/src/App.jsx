@@ -16,21 +16,16 @@ import AdminLogin from "./pages/AdminLogin";
 import AdminSignup from "./admin/AdminSignup";
 import ResetPassword from "./pages/ResetPassword";
 
+// Guards against out-of-order auth events (e.g. a transient session from
+// admin account creation racing the restored one): only the newest
+// loadUser call may update state.
+let loadUserRunId = 0;
+
 function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(() => {
-  const progress = readSignupProgress();
-  const savedStep = Number(progress?.step);
-
-  // Restore unfinished registration after refreshing.
-  if (savedStep >= 1 && savedStep <= 4) {
-    return "signup";
-  }
-
-  return "login";
-});
+  const [currentPage, setCurrentPage] = useState("login");
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -53,6 +48,7 @@ function App() {
 
   // 🔥 SINGLE SOURCE OF TRUTH
   const loadUser = async (session) => {
+    const runId = ++loadUserRunId;
     setLoading(true);
     setIsChecked(false);
 
@@ -69,6 +65,11 @@ function App() {
       .select("role, status")
       .eq("id", session.user.id)
       .maybeSingle();
+
+    // A newer auth event superseded this call (for example the transient
+    // session created while saving an admin account racing the restored
+    // session). Skip so the wrong user's role can never render.
+    if (runId !== loadUserRunId) return;
 
     if (error) {
   console.error("Could not load profile:", error);
@@ -112,6 +113,8 @@ if (!data || !data.role) {
         localStorage.removeItem("wasteless_login_role");
 
         await supabase.auth.signOut();
+
+        if (runId !== loadUserRunId) return;
 
         setSession(null);
         setRole(null);

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { scopeQuery } from "./barangayScope";
+import { scopeTransactionsQuery } from "./barangayScope";
 
 import {
   AlertTriangle,
@@ -102,8 +102,9 @@ const TransactionReview = ({ adminBarangay }) => {
         .order("created_at", { ascending: false });
 
       // BARANGAY COORDINATOR SCOPE: only flagged transactions in this
-      // admin's barangay.
-      transactionQuery = scopeQuery(transactionQuery, adminBarangay);
+      // admin's barangay (matched via the barangay column OR the drop-off
+      // point's barangay).
+      transactionQuery = scopeTransactionsQuery(transactionQuery, adminBarangay);
 
       const { data: transactionData, error } = await transactionQuery;
 

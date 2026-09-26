@@ -1207,6 +1207,15 @@ const SellerMessages = ({ userId, onTabChange }) => {
       // UPDATE TRANSACTION
       // --------------------------------------------------------
 
+      // Resolve the selected drop-off point so the transaction records the
+      // point's canonical BARANGAY, not its display name. Admin dashboards
+      // scope transactions with .eq("barangay", adminBarangay), so storing
+      // the point name here would hide the transaction from every
+      // barangay coordinator.
+      const selectedPoint = dropOffPoints.find(
+        (point) => point.id === meetupData.drop_off_point_id
+      );
+
       const {
         error: scheduleError,
       } = await supabase
@@ -1216,6 +1225,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
             meetupData.drop_off_point_id,
 
           barangay:
+            selectedPoint?.barangay ||
             meetupData.location,
 
           meetup_date:

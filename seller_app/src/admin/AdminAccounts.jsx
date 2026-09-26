@@ -54,13 +54,21 @@ const AdminAccounts = ({ adminBarangay }) => {
   const [otpError, setOtpError] = useState("");
   const [emailConfirmed, setEmailConfirmed] = useState(false);
 
-  
+  const departments = [
+    "City Environment and Natural Resources Office (CENRO)",
+    "General Services Office (GSO)",
+    "Information and Communications Technology Office (ICTO)",
+    "City Planning and Development Office (CPDO)",
+    "Public Order and Safety Office (POSO)",
+    "City Health Office (CHO)",
+  ];
 
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
     contact_number: "",
-    
+    department: "",
+    employee_id: "",
     // Defaults to the creating admin's barangay, but any barangay can be
     // selected so coordinators can onboard admins for other areas too.
     barangay: adminBarangay || "",
@@ -80,7 +88,8 @@ const AdminAccounts = ({ adminBarangay }) => {
       full_name: "",
       email: "",
       contact_number: "",
-   
+      department: "",
+      employee_id: "",
       barangay: adminBarangay || "",
       password: "",
       confirmPassword: "",
@@ -98,7 +107,8 @@ const AdminAccounts = ({ adminBarangay }) => {
         !formData.full_name ||
         !formData.email ||
         !formData.contact_number ||
-
+        !formData.department ||
+        !formData.employee_id ||
         !formData.barangay ||
         !formData.password ||
         !formData.confirmPassword
@@ -165,6 +175,11 @@ const AdminAccounts = ({ adminBarangay }) => {
           access_token: currentSession.access_token,
           refresh_token: currentSession.refresh_token,
         });
+      } else if (authData.session) {
+        // No creator session to protect and "Confirm email" is OFF, so
+        // signUp returned a session for the NEW admin. Drop it instead of
+        // silently logging this tab in as the new admin.
+        await supabase.auth.signOut();
       }
 
       // =========================
@@ -177,6 +192,9 @@ const AdminAccounts = ({ adminBarangay }) => {
           email: formData.email,
           contact_number: formData.contact_number,
           barangay: formData.barangay,
+
+          department: formData.department,
+          employee_id: formData.employee_id,
 
           role: "admin",
 
@@ -271,7 +289,7 @@ const AdminAccounts = ({ adminBarangay }) => {
         data: { session: currentSession },
       } = await supabase.auth.getSession();
 
-      const { data, error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOTP({
         email: createdInfo.email,
         token: otp.trim(),
         type: "signup",
@@ -288,6 +306,11 @@ const AdminAccounts = ({ adminBarangay }) => {
           access_token: currentSession.access_token,
           refresh_token: currentSession.refresh_token,
         });
+      } else if (data?.session) {
+        // No creator session to protect, so verifyOTP's session for the
+        // NEW admin must not take over — drop it. The email is already
+        // confirmed at this point.
+        await supabase.auth.signOut();
       }
 
       if (!data?.user) {
@@ -629,7 +652,25 @@ const AdminAccounts = ({ adminBarangay }) => {
               placeholder="+63 917 123 4567"
             />
 
-            
+            <SelectField
+              icon={<Building2 size={18} />}
+              label="Department"
+              name="department"
+              value={formData.department}
+              onChange={handleChange}
+              placeholder="Select Department"
+              options={departments}
+            />
+
+            {/* ROW 3: EMPLOYEE ID | BARANGAY */}
+            <InputField
+              icon={<BadgeCheck size={18} />}
+              label="Employee ID"
+              name="employee_id"
+              value={formData.employee_id}
+              onChange={handleChange}
+              placeholder="EMP-2026-12345"
+            />
 
             {/* Barangay assignment: defaults to the creating admin's barangay,
                 but any of the 32 barangays can be selected. */}

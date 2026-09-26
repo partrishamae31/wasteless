@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { scopeQuery } from "./barangayScope";
+import { scopeQuery, scopeTransactionsQuery } from "./barangayScope";
 import {
   Activity,
   Edit3,
@@ -161,7 +161,7 @@ const TrustTierManagement = ({ adminBarangay }) => {
           ? supabase.from("listings").select("id", { count: "exact", head: true }).in("status", ["active", "available", "pending", "meetup_scheduled", "Meetup Scheduled"])
           : supabase.from("listings").select("id", { count: "exact", head: true }).in("status", ["active", "available", "pending", "meetup_scheduled", "Meetup Scheduled"]).in("seller_id", idsOrEmpty(barangayUserIds)),
         scopeQuery(supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "repair_shop").or("is_verified.eq.true,verification_status.eq.verified"), adminBarangay),
-        scopeQuery(supabase.from("transactions").select("seller_id,harvester_id,status").eq("status", "completed"), adminBarangay),
+        scopeTransactionsQuery(supabase.from("transactions").select("seller_id,harvester_id,status").eq("status", "completed"), adminBarangay),
         barangayUserIds === null
           ? supabase.from("reviews").select("seller_id,overall_rating")
           : supabase.from("reviews").select("seller_id,overall_rating").in("seller_id", idsOrEmpty(barangayUserIds)),
