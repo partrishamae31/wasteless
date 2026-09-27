@@ -2354,6 +2354,29 @@ const SellerDashboard = ({ session }) => {
       {/* Header Area */}
       <div className="relative z-10 p-6">
         <div className="flex justify-end items-center gap-4 mb-8 relative z-40">
+          
+
+          {/* Message Icon */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Open messages"
+              onClick={() => {
+                setShowMessages(true);
+                setShowNotifications(false);
+                setShowProfileMenu(false);
+              }}
+              className="relative flex items-center justify-center text-slate-400 hover:text-[#3285a1] transition-colors"
+            >
+              <MessageSquare size={24} />
+              {messageUserCount > 0 && (
+                <span className="absolute -top-1 -right-2 bg-red-500 text-white text-xs rounded-full min-w-4 h-4 px-1 flex items-center justify-center border-2 border-white">
+                  {messageUserCount > 99 ? "99+" : messageUserCount}
+                </span>
+              )}
+            </button>
+          </div>
+
           {/* Notification Bell with Toggle */}
           <div className="relative">
             <Bell
@@ -2451,27 +2474,6 @@ const SellerDashboard = ({ session }) => {
                 </button>
               </div>
             )}
-          </div>
-
-          {/* Message Icon */}
-          <div className="relative">
-            <button
-              type="button"
-              aria-label="Open messages"
-              onClick={() => {
-                setShowMessages(true);
-                setShowNotifications(false);
-                setShowProfileMenu(false);
-              }}
-              className="relative flex items-center justify-center text-slate-400 hover:text-[#3285a1] transition-colors"
-            >
-              <MessageSquare size={24} />
-              {messageUserCount > 0 && (
-                <span className="absolute -top-1 -right-2 bg-red-500 text-white text-xs rounded-full min-w-4 h-4 px-1 flex items-center justify-center border-2 border-white">
-                  {messageUserCount > 99 ? "99+" : messageUserCount}
-                </span>
-              )}
-            </button>
           </div>
 
           {/* Profile Trigger */}
