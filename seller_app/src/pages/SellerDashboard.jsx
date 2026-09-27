@@ -2886,14 +2886,12 @@ const SellerDashboard = ({ session }) => {
                                 </h3>
 
                                 <span className="bg-emerald-100 text-emerald-600 text-xs px-2 py-0.5 rounded-full font-bold uppercase">
-                                  {item.status}
+                                  {item.condition}
                                 </span>
 
                               </div>
 
-                              <p className="text-xs text-slate-400 font-medium">
-                                {item.device_id || "A2111"} • {item.condition}
-                              </p>
+                              
 
                               <p className="text-xs text-slate-500 mt-2">
                                 {item.description ||

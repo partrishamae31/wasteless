@@ -127,7 +127,6 @@ const AdminPanel = ({ session, onLogout }) => {
       id: "transaction",
       label: "Transaction Review",
       icon: <FileSearch size={18} />,
-      badge: 2,
     },
     // {
     //   id: "database",
@@ -159,7 +158,7 @@ const AdminPanel = ({ session, onLogout }) => {
           <img
             src={wastelessLogo}
             alt="Wasteless logo"
-            className="w-10 h-10 object-contain rounded-lg bg-white p-1"
+            className="w-10 h-10 object-contain rounded-lg p-1"
           />
 
           <div>
