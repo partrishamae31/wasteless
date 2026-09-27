@@ -19,6 +19,7 @@ import ValuationModel from "./ValuationModel";
 import TrustTierManagement from "./TrustTierManagement";
 import ComplianceReport from "./ComplianceReport";
 import AdminAccounts from "./AdminAccounts";
+import wastelessLogo from "./src/wasteless-logo.png";
 
 import {
   LayoutDashboard,
@@ -155,9 +156,11 @@ const AdminPanel = ({ session, onLogout }) => {
       {/* SIDEBAR */}
       <aside className="w-64 bg-[#1E293B] text-slate-400 flex flex-col shadow-xl">
         <div className="p-6 flex items-center gap-3 border-b border-slate-800/50">
-          <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center">
-            {/* <ShieldCheck size={20} className="text-white" /> */}
-          </div>
+          <img
+            src={wastelessLogo}
+            alt="Wasteless logo"
+            className="w-10 h-10 object-contain rounded-lg bg-white p-1"
+          />
 
           <div>
             <span className="font-bold text-white text-lg block leading-none">

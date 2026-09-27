@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
 import { 
-  Shield, Mail, Lock, User, Building2, 
+  Mail, Lock, User, Building2, 
   ChevronRight, ChevronLeft, Fingerprint, 
   BadgeCheck, MapPin 
 } from "lucide-react";
+
+import wastelessLogo from "../pages/assets/wasteless-logo.png";
 
 const AdminSignup = ({ onBackToLogin }) => {
   const [step, setStep] = useState(1);
@@ -22,29 +24,58 @@ const AdminSignup = ({ onBackToLogin }) => {
     e.preventDefault();
     setLoading(true);
     try {
-      // 1. Create Auth User
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-      });
+      // SAVE CURRENT SESSION: signUp() auto-logs-in the newly created
+      // account when "Confirm email" is disabled in Supabase Auth. The
+      // visitor's previous session is restored below (or the new one is
+      // signed out) so nobody is EVER silently logged in as the fresh
+      // admin/officer after registering.
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
 
-      if (authError) throw authError;
+      let newSession = null;
 
-      // 2. Create Profile with the correct Enum role
-      const { error: profileError } = await supabase.from("profiles").insert([
-        {
-          id: authData.user.id,
-          full_name: formData.fullName,
-          role: formData.role,
-          employee_id: formData.employeeId,
-          barangay: formData.barangay,
-          verification_status: "pending",
-        },
-      ]);
+      try {
+        // 1. Create Auth User
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+        });
 
-      if (profileError) throw profileError;
-      alert("Registration successful! Wait for system approval.");
-      onBackToLogin();
+        newSession = authData?.session || null;
+
+        if (authError) throw authError;
+
+        // 2. Create Profile with the correct Enum role
+        const { error: profileError } = await supabase.from("profiles").insert([
+          {
+            id: authData.user.id,
+            full_name: formData.fullName,
+            role: formData.role,
+            employee_id: formData.employeeId,
+            barangay: formData.barangay,
+            verification_status: "pending",
+          },
+        ]);
+
+        if (profileError) throw profileError;
+        alert("Registration successful! Wait for system approval.");
+        onBackToLogin();
+      } finally {
+        // NEVER AUTO-LOGIN THE NEW ACCOUNT: runs on every path so the
+        // transient session (returned only when "Confirm email" is OFF)
+        // can never outlive this handler.
+        if (newSession) {
+          if (currentSession) {
+            await supabase.auth.setSession({
+              access_token: currentSession.access_token,
+              refresh_token: currentSession.refresh_token,
+            });
+          } else {
+            await supabase.auth.signOut();
+          }
+        }
+      }
     } catch (err) {
       alert(err.message);
     } finally {
@@ -67,9 +98,11 @@ const AdminSignup = ({ onBackToLogin }) => {
 
           <div className="px-10 py-12">
             <div className="flex justify-center mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-[#07A63D] flex items-center justify-center shadow-lg shadow-green-900/40">
-                <Shield className="text-white" size={32} />
-              </div>
+              <img
+                src={wastelessLogo}
+                alt="Wasteless logo"
+                className="w-16 h-16 object-contain rounded-2xl bg-white p-1 shadow-lg shadow-green-900/40"
+              />
             </div>
 
             <h1 className="text-3xl font-bold text-slate-800 text-center tracking-tight">Official Registration</h1>

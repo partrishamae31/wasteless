@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
+import wastelessLogo from "./assets/wasteless-logo.png";
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -121,6 +122,11 @@ const ResetPassword = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-white px-6 font-sans">
       <div className="w-full max-w-[420px]">
+        <img
+          src={wastelessLogo}
+          alt="Wasteless logo"
+          className="mb-4 h-20 w-20 object-contain"
+        />
 
         <h1 className="mb-2 text-2xl font-bold text-[#182033]">
           Create a New Password

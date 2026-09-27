@@ -8,6 +8,7 @@ import CreateWMOAccount from "./CreateWMOAccount";
 import BarangayMonitor from "./BarangayMonitor";
 import EnvironmentalImpact from "./EnvironmentalImpact";
 import AdminManagement from "./AdminManagement";
+import wastelessLogo from "../pages/assets/wasteless-logo.png";
 
 import {
   LayoutDashboard,
@@ -271,9 +272,11 @@ const EnvOfficerPanel = ({ onLogout, user }) => {
         ==================================================== */}
         <div className="px-5 py-5 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#1E90B6] flex items-center justify-center shadow-lg shadow-cyan-900/30">
-              <Leaf size={18} className="text-white" />
-            </div>
+            <img
+              src={wastelessLogo}
+              alt="Wasteless logo"
+              className="w-10 h-10 object-contain rounded-xl bg-white p-1 shadow-lg shadow-cyan-900/30"
+            />
 
             <div>
               <h1 className="text-sm font-semibold leading-none">

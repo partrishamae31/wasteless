@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import wastelessLogo from "./assets/wasteless-logo.png";
 
 const EnvOfficerLogin = ({
   onBackToUserLogin,
@@ -89,6 +90,15 @@ const EnvOfficerLogin = ({
 
       {/* Login Card */}
       <div className="relative z-10 w-full max-w-2xl bg-[#f7f7f7] rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.45)] px-10 py-12">
+        {/* Brand Logo */}
+        <div className="flex justify-center mb-6">
+          <img
+            src={wastelessLogo}
+            alt="Wasteless logo"
+            className="h-20 w-20 object-contain"
+          />
+        </div>
+
         {/* Title */}
         <h1 className="text-center text-[40px] font-bold text-[#114d27] mb-12">
           Waste Management Officer Login

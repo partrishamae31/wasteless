@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
 import { 
-  Shield, Mail, Lock, User, Building2, 
+  Mail, Lock, User, Building2, 
   ChevronRight, ChevronLeft, Fingerprint, 
   BadgeCheck, MapPin 
 } from "lucide-react";
+import wastelessLogo from "./assets/wasteless-logo.png";
 
 const AdminSignup = ({ onBackToLogin }) => {
   const [step, setStep] = useState(1);
@@ -67,9 +68,11 @@ const AdminSignup = ({ onBackToLogin }) => {
 
           <div className="px-10 py-12">
             <div className="flex justify-center mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-[#07A63D] flex items-center justify-center shadow-lg shadow-green-900/40">
-                <Shield className="text-white" size={32} />
-              </div>
+              <img
+                src={wastelessLogo}
+                alt="Wasteless logo"
+                className="w-16 h-16 object-contain rounded-2xl bg-white p-1 shadow-lg shadow-green-900/40"
+              />
             </div>
 
             <h1 className="text-3xl font-bold text-slate-800 text-center tracking-tight">Official Registration</h1>
