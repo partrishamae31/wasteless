@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import {
   Search,
   Send,
@@ -758,34 +759,13 @@ const RepairShopMessages = ({ userId, onClose }) => {
     }
 
     const messageContent = newMessage.trim();
-    const normalizedMessage = messageContent.toLowerCase();
 
-    // Keep the same restricted-content rules used by the Seller/Harvester side.
-    const restrictedWords = [
-      "viber",
-      "whatsapp",
-      "telegram",
-      "messenger",
-      "facebook",
-      "instagram",
-      "gmail",
-      "email",
-      "e-mail",
-      "phone",
-      "mobile number",
-      "contact number",
-      "personal number",
-      "personal contact",
-    ];
+    // TC_MSG_03: block transmission of restricted content and show
+    // a content-violation warning instead of sending the message.
+    const contentViolation = containsRestrictedContent(messageContent);
 
-    if (
-      restrictedWords.some((word) =>
-        normalizedMessage.includes(word)
-      )
-    ) {
-      setError(
-        "Message blocked: Sharing personal contact information is not allowed."
-      );
+    if (contentViolation.blocked) {
+      setError(contentViolation.message);
       return;
     }
 

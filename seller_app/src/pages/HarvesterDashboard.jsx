@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
+import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import HarvesterAlerts from "./HarvesterAlerts";
 import UrbanMineMap from "./UrbanMineMap";
 import InventoryView from "./InventoryView";
@@ -1114,6 +1115,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       return;
     }
 
+    // TC_MSG_03: block bids whose optional message contains restricted
+    // content instead of transmitting it with the bid.
+    const bidMessageViolation = containsRestrictedContent(message);
+    if (bidMessageViolation.blocked) {
+      alert(bidMessageViolation.message);
+      return;
+    }
+
     try {
       // 1. Fetch current status & listing info in one go to save a database call
       const { data: currentListing, error: statusError } = await supabase
@@ -1214,6 +1223,13 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
   const handleSendMessageOnly = async (listingId, message) => {
     if (!message.trim()) return;
+
+    // TC_MSG_03: block restricted content before transmitting.
+    const messageViolation = containsRestrictedContent(message);
+    if (messageViolation.blocked) {
+      alert(messageViolation.message);
+      return;
+    }
 
     try {
       // Fetch seller_id
@@ -2910,6 +2926,7 @@ const MessagesView = ({
   const [appointments, setAppointments] = useState([]);
   const [messageText, setMessageText] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [sendMessageError, setSendMessageError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [updatingAppointmentId, setUpdatingAppointmentId] = useState(null);
@@ -3462,6 +3479,16 @@ const MessagesView = ({
 
     if (!userId || !selectedChat || !content) return;
 
+    // TC_MSG_03: block restricted content and surface the violation
+    // warning instead of transmitting the message.
+    const contentViolation = containsRestrictedContent(content);
+    if (contentViolation.blocked) {
+      setSendMessageError(contentViolation.message);
+      return;
+    }
+
+    setSendMessageError("");
+
     try {
       const { data, error } = await supabase
         .from("messages")
@@ -3752,23 +3779,34 @@ const MessagesView = ({
                   )}
                 </div>
 
-                <div className="p-6 bg-white border-t border-slate-50 flex gap-4">
-                  <input
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") sendMessage();
-                    }}
-                    placeholder="Type a message..."
-                    className="flex-1 bg-slate-50 rounded-2xl py-4 px-6 text-xs outline-none"
-                  />
+                <div className="p-6 bg-white border-t border-slate-50">
+                  {sendMessageError && (
+                    <div className="mb-2 flex items-center gap-2 text-red-500 text-xs font-bold">
+                      <Shield size={14} />
+                      {sendMessageError}
+                    </div>
+                  )}
+                  <div className="flex gap-4">
+                    <input
+                      value={messageText}
+                      onChange={(e) => {
+                        setMessageText(e.target.value);
+                        if (sendMessageError) setSendMessageError("");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") sendMessage();
+                      }}
+                      placeholder="Type a message..."
+                      className="flex-1 bg-slate-50 rounded-2xl py-4 px-6 text-xs outline-none"
+                    />
 
-                  <button
-                    onClick={sendMessage}
-                    className="bg-[#769c2d] text-white p-4 rounded-2xl"
-                  >
-                    <Send size={18} />
-                  </button>
+                    <button
+                      onClick={sendMessage}
+                      className="bg-[#769c2d] text-white p-4 rounded-2xl"
+                    >
+                      <Send size={18} />
+                    </button>
+                  </div>
                 </div>
               </>
             ) : (

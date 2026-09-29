@@ -837,6 +837,57 @@ const SellerDashboard = ({ session }) => {
   const [profileSaving, setProfileSaving] = useState(false);
   const [editProfile, setEditProfile] = useState({ full_name: "", contact_number: "", barangay: "" });
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+
+  const handleChangePassword = async (event) => {
+    event.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+    if (!passwordForm.current || !passwordForm.next || !passwordForm.confirm) {
+      setPasswordError("Please complete all password fields.");
+      return;
+    }
+    if (passwordForm.next.length < 6) {
+      setPasswordError("Your new password must contain at least 6 characters.");
+      return;
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      setPasswordError("The new passwords do not match.");
+      return;
+    }
+    if (passwordForm.current === passwordForm.next) {
+      setPasswordError("Your new password must be different from your current password.");
+      return;
+    }
+    const email = session?.user?.email;
+    if (!email) {
+      setPasswordError("Unable to identify your account. Please sign in again.");
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email,
+        password: passwordForm.current,
+      });
+      if (verifyError) {
+        setPasswordError("Your current password is incorrect.");
+        return;
+      }
+      const { error: updateError } = await supabase.auth.updateUser({ password: passwordForm.next });
+      if (updateError) throw updateError;
+      setPasswordForm({ current: "", next: "", confirm: "" });
+      setPasswordSuccess("Your password has been changed successfully.");
+    } catch (error) {
+      console.error("Change password error:", error);
+      setPasswordError(error.message || "Unable to change your password. Please try again.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
   const [showAchievements, setShowAchievements] = useState(false);
   const [showAchievementsModal, setShowAchievementsModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -3972,6 +4023,18 @@ const SellerDashboard = ({ session }) => {
                     <Edit3 size={14} /> Edit Profile
                   </button>
                 </div>
+                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <h3 className="mb-1 text-sm font-bold text-slate-800">Change Password</h3>
+                  <p className="mb-4 text-xs text-slate-500">Verify your current password before choosing a new one.</p>
+                  {passwordError && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{passwordError}</p>}
+                  {passwordSuccess && <p role="status" className="mb-3 rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-700">{passwordSuccess}</p>}
+                  <form onSubmit={handleChangePassword} className="space-y-3">
+                    <input type="password" autoComplete="current-password" aria-label="Current password" placeholder="Current password" value={passwordForm.current} onChange={(e) => { setPasswordForm(p => ({ ...p, current: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
+                    <input type="password" autoComplete="new-password" aria-label="New password" placeholder="New password (at least 6 characters)" minLength={6} value={passwordForm.next} onChange={(e) => { setPasswordForm(p => ({ ...p, next: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
+                    <input type="password" autoComplete="new-password" aria-label="Confirm new password" placeholder="Confirm new password" minLength={6} value={passwordForm.confirm} onChange={(e) => { setPasswordForm(p => ({ ...p, confirm: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
+                    <button type="submit" disabled={passwordSaving} className="w-full rounded-xl bg-[#2d7a7f] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#246367] disabled:cursor-not-allowed disabled:opacity-50">{passwordSaving ? "Updating Password..." : "Update Password"}</button>
+                  </form>
+                </section>
                 {/* Stats Grid */}
                 <div className="grid grid-cols-4 gap-3">
                   {[

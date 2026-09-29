@@ -1492,11 +1492,6 @@ const SellerRepairShopsTab = ({
       </div>
     );
   };
-
-  /* =========================================================
-     RETURN
-     ========================================================= */
-
   return (
     <div className="animate-in fade-in duration-500 space-y-3">
       {/* HEADER */}

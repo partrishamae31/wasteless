@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import {
   Search,
   Send,
@@ -961,35 +962,12 @@ const SellerMessages = ({ userId, onTabChange }) => {
       return;
     }
 
-    const restrictedWords = [
-      "viber",
-      "whatsapp",
-      "telegram",
-      "messenger",
-      "facebook",
-      "instagram",
-      "gmail",
-      "email",
-      "e-mail",
-      "phone",
-      "mobile number",
-      "contact number",
-      "personal number",
-      "personal contact",
-    ];
+    // TC_MSG_03: block transmission of restricted content and show
+    // a content-violation warning instead of sending the message.
+    const contentViolation = containsRestrictedContent(newMessage);
 
-    const normalizedMessage = newMessage
-      .trim()
-      .toLowerCase();
-
-    if (
-      restrictedWords.some((word) =>
-        normalizedMessage.includes(word)
-      )
-    ) {
-      setError(
-        "Message blocked: Sharing personal contact information is not allowed."
-      );
+    if (contentViolation.blocked) {
+      setError(contentViolation.message);
       return;
     }
 
