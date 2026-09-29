@@ -665,7 +665,7 @@ const SellerDonationTab = ({
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
       {/* Header */}
-      <div className="mt-16 rounded-[2rem] bg-gradient-to-r from-[#f97316] to-[#d97706] p-7 text-white shadow-lg">
+      <div className="mt-16 rounded-[2rem] bg-gradient-to-r from-[#2d86a3] to-[#14516d] p-7 text-white shadow-lg">
         <div className="flex items-center justify-between gap-6">
           <div>
             <div className="mb-2 flex items-center gap-2">

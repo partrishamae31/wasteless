@@ -2731,6 +2731,8 @@ const SellerDashboard = ({ session }) => {
           ))}
         </div>
 
+        
+
         {/* Tabs Navigation */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex mb-8">
           {[
@@ -2850,6 +2852,172 @@ const SellerDashboard = ({ session }) => {
                     </div>
                   )}
                 </section>
+                {/* LANDING PAGE — BIDS RECEIVED */}
+        <section className="mb-8 rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <Gavel size={19} className="text-[#3285a1]" />
+                <h2 className="text-base font-black text-slate-800">Bids Received</h2>
+                {(() => {
+                  const count = myListings.reduce(
+                    (total, listing) =>
+                      total +
+                      (listing.bids || []).filter(
+                        (bid) => bid.status !== "declined"
+                      ).length,
+                    0
+                  );
+                  return (
+                    <span className="rounded-full bg-[#3285a1]/10 px-2.5 py-1 text-xs font-black text-[#3285a1]">
+                      {count}
+                    </span>
+                  );
+                })()}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Review offers made on your listings without opening your profile.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab("listings")}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+            >
+              View My Listings
+            </button>
+          </div>
+
+          {(() => {
+            const receivedBids = myListings
+              .flatMap((listing) =>
+                (listing.bids || [])
+                  .filter((bid) => bid.status !== "declined")
+                  .map((bid) => ({ ...bid, listing }))
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.created_at || 0).getTime() -
+                  new Date(a.created_at || 0).getTime()
+              );
+
+            if (loading) {
+              return (
+                <p className="p-6 text-center text-sm text-slate-400">
+                  Loading received bids...
+                </p>
+              );
+            }
+
+            if (!receivedBids.length) {
+              return (
+                <div className="p-8 text-center">
+                  <Gavel size={28} className="mx-auto text-slate-300" />
+                  <p className="mt-3 text-sm font-bold text-slate-600">
+                    No bids received yet
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Offers on your active listings will appear here.
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                {receivedBids.map(({ listing, ...bid }) => {
+                  const bidderName = getBuyerDisplayName(bid.profiles);
+                  const initials =
+                    bidderName
+                      ?.split(/\s+/)
+                      .filter(Boolean)
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase() || "TH";
+
+                  return (
+                    <article
+                      key={bid.id}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3285a1] to-[#6da43a] text-xs font-black text-white">
+                            {initials}
+                          </div>
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedBidder({
+                                  ...(bid.profiles || {}),
+                                  id: bid.bidder_id,
+                                })
+                              }
+                              className="block max-w-full truncate text-left text-sm font-black text-slate-800 hover:text-[#3285a1]"
+                            >
+                              {bidderName}
+                            </button>
+                            <p className="truncate text-xs text-slate-500">
+                              {listing.device_model || "Your listing"}
+                            </p>
+                          </div>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black ${
+                            bid.status === "accepted"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {bid.status === "accepted" ? "Accepted" : "Pending"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                            Offer amount
+                          </p>
+                          <p className="mt-1 text-xl font-black text-[#3285a1]">
+                            ₱{Number(bid.amount || 0).toLocaleString()}
+                          </p>
+                        </div>
+                        <p className="text-right text-xs text-slate-400">
+                          Asking: ₱
+                          {Number(listing.asking_price || 0).toLocaleString()}
+                        </p>
+                      </div>
+
+                      {bid.status === "pending" && (
+                        <div className="mt-4 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAcceptBid(bid, listing)}
+                            className="flex-1 rounded-xl bg-[#3285a1] py-2.5 text-xs font-black text-white transition hover:bg-[#2a7089]"
+                          >
+                            <Check size={14} className="mr-1 inline" />
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeclineBid(bid, listing)}
+                            className="flex-1 rounded-xl border border-red-200 bg-white py-2.5 text-xs font-black text-red-600 transition hover:bg-red-50"
+                          >
+                            <X size={14} className="mr-1 inline" />
+                            Decline
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </section>
+
 
                 {/* Browse Banner */}
                 <div className="bg-white border border-slate-100 rounded-2xl p-5 mb-5 mt-7 shadow-sm">
@@ -3307,6 +3475,7 @@ const SellerDashboard = ({ session }) => {
 
               </div>
 
+              
             </div>
           )}
 
