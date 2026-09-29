@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import jsPDF from "jspdf";
 import {
   MessageSquare,
+  Flag,
   XCircle,
   Check,
   Calendar,
@@ -29,6 +30,12 @@ const TransactionsView = ({
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [reviewedTransactionIds, setReviewedTransactionIds] = useState([]);
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
+  const [cancellingTransactionId, setCancellingTransactionId] = useState(null);
+  const [cancelledTransactionIds, setCancelledTransactionIds] = useState([]);
+  const [reportedTransactionIds, setReportedTransactionIds] = useState([]);
+  const [reportingTransactionId, setReportingTransactionId] = useState(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
 
   useEffect(() => {
     const loadSubmittedReviews = async () => {
@@ -158,6 +165,415 @@ const TransactionsView = ({
   };
 
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+
+  const setSelectedTransactionSafe = (transactionId, patch) => {
+    if (selectedTransaction?.id !== transactionId) return;
+    onSelect?.({
+      ...selectedTransaction,
+      ...patch,
+    });
+  };
+
+  const getMeetupDeadline = (transaction) => {
+    if (!transaction?.meetup_date) return null;
+
+    const datePart = String(transaction.meetup_date).slice(0, 10);
+    const timePart = String(transaction.meetup_time || "23:59:59").slice(0, 8);
+    const deadline = new Date(`${datePart}T${timePart}`);
+
+    if (Number.isNaN(deadline.getTime())) return null;
+    return deadline;
+  };
+
+  const getAutoCompleteAt = (transaction) => {
+    const deadline = getMeetupDeadline(transaction);
+    if (!deadline) return null;
+    return new Date(deadline.getTime() + 7 * 24 * 60 * 60 * 1000);
+  };
+
+  const loadTransactionReports = async (transactionList) => {
+    const ids = (transactionList || []).map((tx) => tx.id).filter(Boolean);
+    if (!ids.length || !session?.user?.id) {
+      setReportedTransactionIds([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("transaction_reports")
+        .select("transaction_id")
+        .in("transaction_id", ids)
+        .eq("status", "open");
+
+      if (error) {
+        console.error("Error loading transaction reports:", error);
+        return;
+      }
+
+      setReportedTransactionIds(
+        [...new Set((data || []).map((row) => row.transaction_id).filter(Boolean))]
+      );
+    } catch (error) {
+      console.error("Unexpected transaction report lookup error:", error);
+    }
+  };
+
+  const autoCompleteExpiredMeetups = async (transactionList, openReportIds = reportedTransactionIds) => {
+    const now = new Date();
+    const candidates = (transactionList || []).filter((transaction) => {
+      if (isRepairTransaction(transaction)) return false;
+      if (String(transaction?.status || "").toLowerCase() !== "meetup_scheduled") return false;
+      if (openReportIds.includes(transaction.id)) return false;
+
+      const autoCompleteAt = getAutoCompleteAt(transaction);
+      return autoCompleteAt && now >= autoCompleteAt;
+    });
+
+    if (!candidates.length) return;
+
+    for (const transaction of candidates) {
+      try {
+        const { data, error } = await supabase
+          .from("transactions")
+          .update({
+            status: "completed",
+            updated_at: now.toISOString(),
+          })
+          .eq("id", transaction.id)
+          .eq("status", "meetup_scheduled")
+          .select("*")
+          .maybeSingle();
+
+        if (error) {
+          console.error("Automatic transaction completion failed:", error);
+          continue;
+        }
+
+        if (data) {
+          setSelectedTransactionSafe(transaction.id, data);
+        }
+      } catch (error) {
+        console.error("Automatic transaction completion error:", error);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!transactions?.length) return;
+
+    let cancelled = false;
+
+    const runAutoCompletion = async () => {
+      try {
+        const ids = transactions.map((tx) => tx.id).filter(Boolean);
+        let openReportIds = [];
+
+        if (ids.length) {
+          const { data: reports, error } = await supabase
+            .from("transaction_reports")
+            .select("transaction_id")
+            .in("transaction_id", ids)
+            .eq("status", "open");
+
+          if (error) {
+            console.error("Unable to verify transaction reports before auto-completion:", error);
+            return;
+          }
+
+          openReportIds = [
+            ...new Set((reports || []).map((row) => row.transaction_id).filter(Boolean)),
+          ];
+
+          if (!cancelled) setReportedTransactionIds(openReportIds);
+        }
+
+        if (!cancelled) {
+          await autoCompleteExpiredMeetups(transactions, openReportIds);
+        }
+      } catch (error) {
+        console.error("Automatic meetup completion check failed:", error);
+      }
+    };
+
+    runAutoCompletion();
+    const timer = window.setInterval(runAutoCompletion, 60 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [transactions]);
+
+  const handleReportTransaction = async (transaction) => {
+    const transactionId = transaction?.id;
+    const userId = session?.user?.id;
+
+    if (!transactionId || !userId) {
+      alert("Unable to report this transaction because the user session is unavailable.");
+      return;
+    }
+
+    if (isRepairTransaction(transaction)) {
+      alert("Repair transactions do not use the marketplace meetup report flow.");
+      return;
+    }
+
+    if (String(transaction.status || "").toLowerCase() !== "meetup_scheduled") {
+      alert("Only a scheduled meetup can be reported.");
+      return;
+    }
+
+    if (reportedTransactionIds.includes(transactionId)) {
+      alert("This transaction has already been reported. An administrator has been flagged.");
+      return;
+    }
+
+    const reason = String(reportReason || "").trim();
+    const details = String(reportDetails || "").trim();
+
+    if (!reason) {
+      alert("Please select a report reason.");
+      return;
+    }
+
+    if (reason === "Other" && !details) {
+      alert("Please describe the issue in the report details.");
+      return;
+    }
+
+    setReportingTransactionId(transactionId);
+
+    try {
+      const reportDescription =
+        `Transaction ${String(transactionId).replace(/-/g, "").slice(0, 8).toUpperCase()} reported: ${reason}${details ? ` — ${details}` : ""}`;
+
+      const { error: reportError } = await supabase
+        .from("transaction_reports")
+        .insert({
+          transaction_id: transactionId,
+          reporter_id: userId,
+          reason,
+          details: details || null,
+          status: "open",
+        });
+
+      if (reportError) throw reportError;
+
+      // Flag every administrator through the existing notification system.
+      const { data: admins, error: adminLookupError } = await supabase
+        .from("profiles")
+        .select("id, role")
+        .in("role", ["admin", "administrator"]);
+
+      if (adminLookupError) {
+        console.warn("Could not find administrator accounts:", adminLookupError);
+      } else if (admins?.length) {
+        const notificationRows = admins.map((admin) => ({
+          user_id: admin.id,
+          type: "transaction_report",
+          title: "Transaction Report Requires Review",
+          description: reportDescription,
+          content: reportDescription,
+          is_read: false,
+        }));
+
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert(notificationRows);
+
+        if (notificationError) {
+          console.warn("Could not flag administrators:", notificationError);
+        }
+      }
+
+      setReportedTransactionIds((prev) =>
+        prev.includes(transactionId) ? prev : [...prev, transactionId]
+      );
+      setReportReason("");
+      setReportDetails("");
+      alert("Transaction reported successfully. An administrator has been flagged and automatic completion is blocked while the report is open.");
+    } catch (error) {
+      console.error("TRANSACTION REPORT ERROR:", error);
+      alert(`Unable to report the transaction.\n\n${error?.message || "Unknown error"}`);
+    } finally {
+      setReportingTransactionId(null);
+    }
+  };
+
+  const handleCancelTransaction = async (transaction) => {
+    const transactionId = transaction?.id;
+    const userId = session?.user?.id;
+
+    if (!transactionId || !userId) {
+      alert("Unable to cancel this transaction because the user session is unavailable.");
+      return;
+    }
+
+    if (cancellingTransactionId === transactionId) return;
+
+    const currentStatus = String(transaction?.status || "").trim().toLowerCase();
+
+    if (currentStatus === "cancelled") {
+      alert("This transaction is already cancelled.");
+      return;
+    }
+
+    if (currentStatus === "completed") {
+      alert("A completed transaction cannot be cancelled.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Cancel this transaction? This action will mark the transaction as Cancelled."
+      )
+    ) {
+      return;
+    }
+
+    setCancellingTransactionId(transactionId);
+
+    try {
+      const cancelledAt = new Date().toISOString();
+
+      // Re-check ownership and status against the database before changing it.
+      const { data: currentTransaction, error: fetchError } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("id", transactionId)
+        .eq("harvester_id", userId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!currentTransaction) throw new Error("Transaction not found.");
+
+      const verifiedStatus = String(currentTransaction.status || "")
+        .trim()
+        .toLowerCase();
+
+      if (verifiedStatus === "cancelled") {
+        setCancelledTransactionIds((prev) =>
+          prev.includes(transactionId) ? prev : [...prev, transactionId]
+        );
+        setSelectedTransactionSafe(transactionId, {
+          status: "cancelled",
+          updated_at: currentTransaction.updated_at || cancelledAt,
+        });
+        return;
+      }
+
+      if (verifiedStatus === "completed") {
+        throw new Error("A completed transaction cannot be cancelled.");
+      }
+
+      const { data: updatedTransactions, error: updateError } = await supabase
+        .from("transactions")
+        .update({
+          status: "cancelled",
+          updated_at: cancelledAt,
+        })
+        .eq("id", transactionId)
+        .eq("harvester_id", userId)
+        .in("status", ["pending", "meetup_scheduled"])
+        .select("*");
+
+      if (updateError) throw updateError;
+
+      if (!updatedTransactions || updatedTransactions.length === 0) {
+        throw new Error(
+          "The transaction was not cancelled. It may have already been completed or cancelled."
+        );
+      }
+
+      const updatedTransaction = updatedTransactions[0];
+
+      // Keep a repair appointment synchronized with its transaction.
+      if (updatedTransaction.repair_appointment_id) {
+        const { error: appointmentError } = await supabase
+          .from("repair_appointments")
+          .update({
+            status: "cancelled",
+            updated_at: cancelledAt,
+          })
+          .eq("id", updatedTransaction.repair_appointment_id)
+          .eq("harvester_id", userId);
+
+        if (appointmentError) {
+          console.error(
+            "REPAIR APPOINTMENT CANCELLATION ERROR:",
+            appointmentError
+          );
+        }
+      }
+
+      // Reopen the linked marketplace listing when possible so cancellation
+      // does not leave the item permanently locked.
+      if (updatedTransaction.listing_id) {
+        const { error: listingError } = await supabase
+          .from("listings")
+          .update({
+            status: "active",
+            updated_at: cancelledAt,
+          })
+          .eq("id", updatedTransaction.listing_id);
+
+        if (listingError) {
+          console.error("LISTING REOPEN ERROR:", listingError);
+        }
+      }
+
+      // Notify the seller/customer. Notification failure does not undo
+      // the successful cancellation.
+      const otherPartyId =
+        updatedTransaction.seller_id &&
+        updatedTransaction.seller_id !== userId
+          ? updatedTransaction.seller_id
+          : null;
+
+      if (otherPartyId) {
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert({
+            user_id: otherPartyId,
+            type: "transaction_cancelled",
+            title: "Transaction Cancelled",
+            description: `Transaction ${String(transactionId)
+              .replace(/-/g, "")
+              .slice(0, 8)
+              .toUpperCase()} was cancelled.`,
+            is_read: false,
+          });
+
+        if (notificationError) {
+          console.error(
+            "TRANSACTION CANCELLATION NOTIFICATION ERROR:",
+            notificationError
+          );
+        }
+      }
+
+      // Immediately reflect the successful cancellation in this component.
+      setCancelledTransactionIds((prev) =>
+        prev.includes(transactionId) ? prev : [...prev, transactionId]
+      );
+
+      setSelectedTransactionSafe(transactionId, {
+        ...updatedTransaction,
+        status: "cancelled",
+      });
+
+      alert("Transaction cancelled successfully.");
+    } catch (error) {
+      console.error("CANCEL TRANSACTION ERROR:", error);
+      alert(
+        `Unable to cancel the transaction.\n\n${
+          error?.message || "Unknown error"
+        }`
+      );
+    } finally {
+      setCancellingTransactionId(null);
+    }
+  };
 
   const handleRatingSubmit = async (ratingData) => {
     if (!session?.user?.id) {
@@ -722,7 +1138,10 @@ const TransactionsView = ({
         </h2>
         {transactions.map((tx) => {
           const repair = isRepairTransaction(tx);
-          const statusConfig = getStatusConfig(tx.status);
+          const effectiveStatus = cancelledTransactionIds.includes(tx.id)
+            ? "cancelled"
+            : tx.status;
+          const statusConfig = getStatusConfig(effectiveStatus);
 
           const title = repair
             ? getRepairDevice(tx)
@@ -734,9 +1153,13 @@ const TransactionsView = ({
             <button
               key={tx.id}
               onClick={() => onSelect(tx)}
-              className={`w-full text-left p-6 rounded-[1.5rem] border-2 transition-all duration-300 ${selectedTransaction?.id === tx.id
-                ? "border-[#769c2d] bg-white shadow-xl scale-[1.02]"
-                : "border-transparent bg-white hover:border-slate-100 shadow-sm"
+              className={`w-full text-left p-6 rounded-[1.5rem] border-2 transition-all duration-300 ${effectiveStatus === "cancelled"
+                ? selectedTransaction?.id === tx.id
+                  ? "border-red-300 bg-red-50 shadow-xl scale-[1.02]"
+                  : "border-red-200 bg-red-50 hover:border-red-300 shadow-sm"
+                : selectedTransaction?.id === tx.id
+                  ? "border-[#769c2d] bg-white shadow-xl scale-[1.02]"
+                  : "border-transparent bg-white hover:border-slate-100 shadow-sm"
                 }`}
             >
               <div className="flex justify-between items-start mb-2 gap-3">
@@ -747,26 +1170,26 @@ const TransactionsView = ({
                 <span
                   className={`text-xs font-black px-2 py-1 rounded-lg uppercase whitespace-nowrap ${statusConfig.color}`}
                 >
-                  {repair ? "Repair" : statusConfig.label}
+                  {effectiveStatus === "cancelled" ? "Cancelled" : repair ? "Repair" : statusConfig.label}
                 </span>
               </div>
 
               {repair ? (
                 <>
-                  <p className="text-xs font-bold text-slate-500 mb-1">
-                    🔧 Repair Service
+                  <p className={`text-xs font-bold mb-1 ${effectiveStatus === "cancelled" ? "text-red-700" : "text-slate-500"}`}>
+                    {effectiveStatus === "cancelled" ? "✕ Repair Service Cancelled" : "🔧 Repair Service"}
                   </p>
 
-                  <p className="text-xs text-slate-400 mb-1">
-                    Customer: {personName}
+                  <p className={`text-xs mb-1 ${effectiveStatus === "cancelled" ? "text-red-600" : "text-slate-400"}`}>
+                     Customer: {personName}
                   </p>
 
-                  <p className="text-xs text-slate-400 line-clamp-2">
-                    Issue: {getRepairIssue(tx)}
+                  <p className={`text-xs line-clamp-2 ${effectiveStatus === "cancelled" ? "text-red-500" : "text-slate-400"}`}>
+                     Issue: {getRepairIssue(tx)}
                   </p>
 
-                  <p className="text-xs text-emerald-600 font-bold mt-2">
-                    No payment required
+                  <p className={`text-xs font-bold mt-2 ${effectiveStatus === "cancelled" ? "text-red-600" : "text-emerald-600"}`}>
+                     {effectiveStatus === "cancelled" ? "Repair transaction cancelled" : "No payment required"}
                   </p>
                 </>
               ) : (
@@ -792,9 +1215,17 @@ const TransactionsView = ({
 
       {/* Right Content: Details */}
       {selectedTransaction ? (
-        <div className="flex-1 bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden flex flex-col shadow-sm">
+        <div className={`flex-1 bg-white rounded-[2.5rem] overflow-hidden flex flex-col shadow-sm ${
+          String(selectedTransaction.status || "").trim().toLowerCase() === "cancelled"
+            ? "border-2 border-red-200"
+            : "border border-slate-100"
+        }`}>
           {/* Header Area */}
-          <div className="bg-[#1a4f63] p-8 text-white">
+          <div className={`p-8 text-white ${
+            String(selectedTransaction.status || "").trim().toLowerCase() === "cancelled"
+              ? "bg-red-600"
+              : "bg-[#1a4f63]"
+          }`}>
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-black">
@@ -826,14 +1257,18 @@ const TransactionsView = ({
                 <div className="absolute top-4 left-10 right-10 h-[2px] bg-slate-100" />
 
                 <div
-                  className="absolute top-4 left-10 h-[2px] bg-[#769c2d] transition-all duration-500"
+                  className={`absolute top-4 left-10 h-[2px] transition-all duration-500 ${
+                    selectedTransaction.status === "cancelled" ? "bg-red-500" : "bg-[#769c2d]"
+                  }`}
                   style={{
                     width:
                       selectedTransaction.status === "completed"
                         ? "100%"
                         : selectedTransaction.status === "meetup_scheduled"
                           ? "50%"
-                          : "25%",
+                          : selectedTransaction.status === "cancelled"
+                            ? "0%"
+                            : "25%",
                   }}
                 />
 
@@ -844,11 +1279,13 @@ const TransactionsView = ({
                     "Repair Completed",
                   ].map((step, i) => {
                     const isPast =
-                      selectedTransaction.status === "completed"
-                        ? true
-                        : selectedTransaction.status === "meetup_scheduled"
-                          ? i <= 1
-                          : i === 0;
+                      selectedTransaction.status === "cancelled"
+                        ? false
+                        : selectedTransaction.status === "completed"
+                          ? true
+                          : selectedTransaction.status === "meetup_scheduled"
+                            ? i <= 1
+                            : i === 0;
 
                     return (
                       <div
@@ -856,9 +1293,12 @@ const TransactionsView = ({
                         className="flex flex-col items-center gap-3"
                       >
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center border-2 bg-white ${isPast
-                            ? "border-[#769c2d] text-[#769c2d]"
-                            : "border-slate-200"
+                          className={`w-8 h-8 rounded-full flex items-center justify-center border-2 bg-white ${
+                            selectedTransaction.status === "cancelled"
+                              ? "border-red-400 text-red-500"
+                              : isPast
+                                ? "border-[#769c2d] text-[#769c2d]"
+                                : "border-slate-200"
                             }`}
                         >
                           {isPast ? (
@@ -1021,8 +1461,24 @@ const TransactionsView = ({
                     >
                       Confirm Handover Complete
                     </button>
-                    <button className="px-8 border border-slate-200 text-slate-400 py-4 rounded-2xl font-black text-xs uppercase">
-                      Cancel
+                    <button
+                      type="button"
+                      onClick={() => handleReportTransaction(selectedTransaction)}
+                      disabled={Boolean(reportingTransactionId) || reportedTransactionIds.includes(selectedTransaction.id)}
+                      className="px-8 border border-amber-200 text-amber-700 bg-amber-50 py-4 rounded-2xl font-black text-xs uppercase hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                    >
+                      <Flag size={15} />
+                      {reportedTransactionIds.includes(selectedTransaction.id) ? "Reported" : "Report No-Show"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCancelTransaction(selectedTransaction)}
+                      disabled={cancellingTransactionId === selectedTransaction.id}
+                      className="px-8 border border-red-200 text-red-500 py-4 rounded-2xl font-black text-xs uppercase hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                      {cancellingTransactionId === selectedTransaction.id
+                        ? "Cancelling..."
+                        : "Cancel Transaction"}
                     </button>
                   </div>
                 </div>
@@ -1075,6 +1531,71 @@ const TransactionsView = ({
                       Message the Seller
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleCancelTransaction(selectedTransaction)}
+                    disabled={cancellingTransactionId === selectedTransaction.id}
+                    className="w-full border border-red-200 text-red-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  >
+                    {cancellingTransactionId === selectedTransaction.id
+                      ? "Cancelling..."
+                      : "Cancel Transaction"}
+                  </button>
+                </div>
+              )}
+
+            {!isRepairTransaction(selectedTransaction) &&
+              selectedTransaction.status === "meetup_scheduled" && (
+                <div className="bg-amber-50 border border-amber-100 rounded-[2rem] p-6 space-y-4">
+                  <div className="flex items-center gap-2 text-amber-700 font-black text-xs uppercase">
+                    <Flag size={16} /> Report a Meetup No-Show
+                  </div>
+                  <p className="text-xs text-amber-800/80 font-medium leading-relaxed">
+                    If the seller or buyer does not show up for the scheduled meetup, report the transaction here. The transaction will remain open for administrator review instead of being automatically completed.
+                  </p>
+                  <select
+                    value={reportReason}
+                    onChange={(event) => setReportReason(event.target.value)}
+                    className="w-full p-3 bg-white border border-amber-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:border-amber-400"
+                    disabled={Boolean(reportingTransactionId) || reportedTransactionIds.includes(selectedTransaction.id)}
+                  >
+                    <option value="">Select a report reason...</option>
+                    <option value="Seller did not show up">Seller did not show up</option>
+                    <option value="Buyer did not show up">Buyer did not show up</option>
+                    <option value="Both parties did not show up">Both parties did not show up</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  {reportReason === "Other" && (
+                    <textarea
+                      value={reportDetails}
+                      onChange={(event) => setReportDetails(event.target.value)}
+                      placeholder="Describe what happened..."
+                      className="w-full min-h-[90px] p-3 bg-white border border-amber-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:border-amber-400"
+                      disabled={Boolean(reportingTransactionId) || reportedTransactionIds.includes(selectedTransaction.id)}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleReportTransaction(selectedTransaction)}
+                    disabled={Boolean(reportingTransactionId) || reportedTransactionIds.includes(selectedTransaction.id)}
+                    className="w-full bg-amber-500 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                  >
+                    <Flag size={15} />
+                    {reportingTransactionId === selectedTransaction.id
+                      ? "Submitting Report..."
+                      : reportedTransactionIds.includes(selectedTransaction.id)
+                        ? "Report Submitted — Admin Flagged"
+                        : "Report Transaction"}
+                  </button>
+                  {(() => {
+                    const autoCompleteAt = getAutoCompleteAt(selectedTransaction);
+                    return autoCompleteAt ? (
+                      <p className="text-[11px] text-amber-700 font-semibold">
+                        If no report is submitted, this transaction will automatically be marked Completed 1 week after the meetup deadline ({autoCompleteAt.toLocaleString()}).
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
               )}
 
@@ -1092,7 +1613,50 @@ const TransactionsView = ({
                 </div>
               )}
 
-            {isRepairTransaction(selectedTransaction) && (
+            {isRepairTransaction(selectedTransaction) &&
+              String(selectedTransaction.status || "").trim().toLowerCase() === "cancelled" && (
+                <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-8 space-y-5">
+                  <div className="flex items-center gap-3 text-red-700 font-black text-xs uppercase">
+                    <XCircle size={20} />
+                    Repair Transaction Cancelled
+                  </div>
+                  <div className="bg-white rounded-2xl p-5 border border-red-200">
+                    <p className="text-sm font-black text-red-700">
+                      This repair transaction has been cancelled.
+                    </p>
+                    <p className="text-xs font-semibold text-red-600 mt-2 leading-relaxed">
+                      The repair appointment is closed and no further transaction action is available.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <p className="text-xs font-black text-red-400 uppercase">Device</p>
+                      <p className="text-sm font-bold text-slate-700 mt-1">
+                        {getRepairDevice(selectedTransaction)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-red-400 uppercase">Customer</p>
+                      <p className="text-sm font-bold text-slate-700 mt-1">
+                        {getTransactionPersonName(selectedTransaction)}
+                      </p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-xs font-black text-red-400 uppercase">Reported Issue</p>
+                      <p className="text-sm font-bold text-slate-700 mt-1">
+                        {getRepairIssue(selectedTransaction)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-red-100 rounded-2xl p-4 border border-red-200">
+                    <p className="text-xs font-black text-red-700 uppercase">Status</p>
+                    <p className="text-sm font-black text-red-700 mt-1 uppercase">Cancelled</p>
+                  </div>
+                </div>
+              )}
+
+            {isRepairTransaction(selectedTransaction) &&
+              String(selectedTransaction.status || "").trim().toLowerCase() !== "cancelled" && (
               <div className="bg-emerald-50 border border-emerald-100 rounded-[2rem] p-8 space-y-6">
                 <div className="flex items-center gap-3 text-emerald-700 font-black text-xs uppercase">
                   <CheckCircle size={18} />

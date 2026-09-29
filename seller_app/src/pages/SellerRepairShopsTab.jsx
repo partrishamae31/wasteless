@@ -1717,10 +1717,10 @@ const SellerRepairShopsTab = ({
         <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
           <Building2 className="mx-auto mb-3 text-slate-200" size={34} />
           <h4 className="text-sm font-black text-slate-700">
-            No repair shops found
+            User Profile not found
           </h4>
           <p className="mt-1 text-xs text-slate-400">
-            Try changing your search, barangay, or verification filter.
+            Please check the username and try again.
           </p>
           <button
             type="button"

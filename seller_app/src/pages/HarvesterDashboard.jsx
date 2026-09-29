@@ -54,6 +54,18 @@ const HAZARDOUS_DIAGNOSIS_KEYWORDS = [
   "Water Damage/ Liquid Exposure",
 ];
 
+// Keep listing conditions consistent even if older rows use legacy values/casing.
+const normalizeListingCondition = (value) => {
+  const condition = String(value || "").trim().toLowerCase();
+
+  if (condition === "working") return "Working";
+  if (["not working", "not_working", "not-working", "defective"].includes(condition)) {
+    return "Not Working";
+  }
+
+  return "";
+};
+
 const isHazardousListing = (listing) => {
   // WASTELESS now uses only the canonical condition values:
   // "Working" and "Not Working".
@@ -76,7 +88,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [conditionFilter, setConditionFilter] = useState("All Conditions");
   const [accountRole, setAccountRole] = useState("");
-  const isRepairShop = accountRole === "repair_shop";
+  const isRepairShop = String(accountRole || "").trim().toLowerCase() === "repair_shop";
   const [sortOption, setSortOption] = useState("Newest");
   const [selectedListing, setSelectedListing] = useState(null);
   const [contactSellerChat, setContactSellerChat] = useState(null);
@@ -138,6 +150,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   });
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  // TC_ALT_01: live component-alert toast shown when a new matching
+  // Not Working listing is delivered through the notifications table.
+  const [componentAlertToast, setComponentAlertToast] = useState(null);
 
   // Unread message badge for the top-right message icon
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
@@ -869,23 +885,48 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           filter: `user_id=eq.${session.user.id}`,
         },
         (payload) => {
+          const incomingNotification = payload.new;
+
           // Add only the REAL database notification. Guard against duplicate
           // realtime events so the same notification is not shown twice.
           setNotifications((prev) =>
-            prev.some((item) => item.id === payload.new.id)
+            prev.some((item) => item.id === incomingNotification.id)
               ? prev
-              : [payload.new, ...prev]
+              : [incomingNotification, ...prev]
           );
 
-          // Show browser alert if matching
-          if (payload.new.type === "alert_match") {
-            console.log("Match Found!", payload.new);
+          // TC_ALT_01: component-alert notifications must visibly notify the
+          // user immediately, not merely write to the console.
+          if (incomingNotification?.type === "alert_match") {
+            const message =
+              incomingNotification.description ||
+              incomingNotification.content ||
+              "A new Not Working listing matches your component alert.";
+
+            setComponentAlertToast({
+              id: incomingNotification.id,
+              title: incomingNotification.title || "Component Alert Match",
+              message,
+            });
+
+            // Keep the toast visible long enough to be noticed without
+            // blocking the application with a browser alert().
+            window.clearTimeout(
+              window.__wastelessComponentAlertToastTimer
+            );
+            window.__wastelessComponentAlertToastTimer = window.setTimeout(
+              () => setComponentAlertToast(null),
+              7000
+            );
           }
         },
       )
       .subscribe();
 
-    return () => supabase.removeChannel(notifChannel);
+    return () => {
+      supabase.removeChannel(notifChannel);
+      window.clearTimeout(window.__wastelessComponentAlertToastTimer);
+    };
   }, [session?.user?.id]);
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -916,23 +957,23 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "listings" },
         (payload) => {
-          console.log("Change received!", payload);
+          console.log("Listing realtime change received!", payload);
 
-          // Repair Shops can see active Working listings and
-          // active, non-hazardous Not Working listings.
-          const incomingCondition = String(
-            payload.new?.condition || "",
-          ).trim().toLowerCase();
-          // Repair Shops receive only Not Working listings.
-          // Regular Tech Harvesters receive only Working listings.
+          const incomingCondition = normalizeListingCondition(
+            payload.new?.condition
+          ).toLowerCase();
+
+          // Refresh only when the new listing belongs to this dashboard role.
+          // TC_ALT_01 notifications are NOT created here. They are created
+          // server-side by the listing alert trigger, which prevents missed
+          // notifications when the Alerts tab is not open.
           const canSeeIncomingListing = isRepairShop
             ? incomingCondition === "not working"
             : incomingCondition === "working";
 
           if (
             payload.new?.status === "active" &&
-            canSeeIncomingListing &&
-            !isHazardousListing(payload.new)
+            canSeeIncomingListing
           ) {
             // Re-fetch so seller profile data and bid information stay complete.
             fetchActiveListings();
@@ -1043,10 +1084,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   `
         )
         .eq("status", "active")
-        // Marketplace visibility is role-based:
-        // - Regular Tech Harvesters see Working listings.
-        // - Repair Shops see ONLY Not Working listings for parts/recovery.
-        .in("condition", isRepairShop ? ["Not Working"] : ["Working"])
+        // Do not filter condition here by exact capitalization.
+        // Normalize legacy/current condition values below instead.
         // Barangay is intentionally NOT used as a dashboard visibility filter.
         // All barangays are shown; barangay matching is only for notifications.
         .order("created_at", { ascending: false });
@@ -1059,14 +1098,19 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       // - Not Working + hazardous -> never shown in the marketplace.
       // The query already restricts Not Working items by account role; this
       // second check protects the UI if data changes while the dashboard is open.
-      const sellableListings = (data || []).filter((listing) => {
-        const condition = String(listing?.condition || "").trim().toLowerCase();
+      const sellableListings = (data || [])
+        .map((listing) => ({
+          ...listing,
+          // Store the canonical value in local state so every dashboard
+          // component renders the same condition.
+          condition: normalizeListingCondition(listing?.condition),
+        }))
+        .filter((listing) => {
+          const condition = String(listing.condition || "").trim().toLowerCase();
 
-        if (condition === "not working" && !isRepairShop) return false;
-        if (!["working", "not working"].includes(condition)) return false;
-
-        return !isHazardousListing(listing);
-      });
+          // Display both Working and Not Working active listings.
+          return ["working", "not working"].includes(condition);
+        });
 
       const formattedData = sellableListings.map((listing) => {
         const bids = Array.isArray(listing.bids) ? listing.bids : [];
@@ -1272,6 +1316,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     }
   };
+  // Keep the condition filter valid while allowing both listing conditions.
+  const effectiveConditionFilter =
+    conditionFilter === "Working" || conditionFilter === "Not Working" || conditionFilter === "All Conditions"
+      ? conditionFilter
+      : "All Conditions";
+
   const filteredListings = listings
     .filter((item) => {
       const search = searchTerm.toLowerCase().trim();
@@ -1286,16 +1336,16 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       );
     })
     .filter((item) => {
-      const condition = String(item.condition || "").trim().toLowerCase();
+      const condition = normalizeListingCondition(item?.condition).toLowerCase();
 
-      // Never allow a non-Repair-Shop account to surface Not Working items.
-      if (condition === "not working" && !isRepairShop) return false;
+      // Display both Working and Not Working listings.
+      if (!["working", "not working"].includes(condition)) return false;
 
-      if (conditionFilter === "All Conditions") {
+      if (effectiveConditionFilter === "All Conditions") {
         return true;
       }
 
-      return condition === conditionFilter.toLowerCase();
+      return condition === effectiveConditionFilter.toLowerCase();
     })
     .sort((a, b) => {
       if (sortOption === "Price Low") {
@@ -1315,6 +1365,49 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     });
   return (
     <div className="min-h-screen bg-[#f1f5f9] font-sans text-slate-900">
+      {/* =========================================================
+          TC_ALT_01 — COMPONENT ALERT LIVE TOAST
+          ========================================================= */}
+      {componentAlertToast && (
+        <div className="fixed top-5 right-5 z-[200] w-[min(420px,calc(100vw-2rem))]">
+          <div className="bg-white border border-amber-200 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-start gap-3 p-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <Bell size={18} />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-slate-800">
+                  {componentAlertToast.title}
+                </p>
+                <p className="text-xs text-slate-500 leading-relaxed mt-1">
+                  {componentAlertToast.message}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setComponentAlertToast(null);
+                    setShowNotifications(true);
+                  }}
+                  className="mt-3 text-xs font-black text-amber-600 hover:text-amber-700"
+                >
+                  View notification
+                </button>
+              </div>
+
+              <button
+                type="button"
+                aria-label="Dismiss component alert"
+                onClick={() => setComponentAlertToast(null)}
+                className="text-slate-300 hover:text-slate-500 transition-colors"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ===== TOP BANNER ===== */}
       <div
         className="relative overflow-hidden min-h-[380px] px-6 pt-6 pb-8 bg-cover bg-center"
@@ -1429,7 +1522,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                                 </p>
 
                                 <p className="text-xs text-slate-500 leading-tight mt-1">
-                                  {n.content}
+                                  {n.content ||
+                                    n.description ||
+                                    "New Wasteless notification."}
                                 </p>
 
                                 <p className="text-xs text-slate-300 font-bold mt-2 uppercase tracking-widest">
@@ -2469,70 +2564,76 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       <div className="bg-white  border border-slate-100 shadow-sm p-4 mb-8">
         {/* =========================================================
     SEARCH + FILTER
+    TC_MAP_01: Listing filter/search UI is shown ONLY on Browse Listings.
+    It is hidden on every other dashboard tab.
 ========================================================= */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-5">
-          <div className="flex flex-col md:flex-row gap-3">
-            {/* SEARCH */}
-            <div className="relative flex-1">
-              <Search
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                size={17}
-              />
+        {activeTab === "browse" && (
+          <>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-5">
+              <div className="flex flex-col md:flex-row gap-3">
+                {/* SEARCH */}
+                <div className="relative flex-1">
+                  <Search
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                    size={17}
+                  />
 
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by device name or model..."
-                className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20 focus:border-[#769c2d]"
-              />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by device name or model..."
+                    className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20 focus:border-[#769c2d]"
+                  />
 
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                {/* CONDITION */}
+                <select
+                  value={conditionFilter}
+                  onChange={(e) => setConditionFilter(e.target.value)}
+                  className="md:w-40 px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20"
                 >
-                  ×
-                </button>
-              )}
+                  <option>All Conditions</option>
+                  <option value="Working">Working</option>
+                  <option value="Not Working">Not Working</option>
+                </select>
+
+                {/* SORT */}
+                <select
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value)}
+                  className="md:w-36 px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20"
+                >
+                  <option value="Newest">Newest</option>
+                  <option value="Price Low">Price: Low</option>
+                  <option value="Price High">Price: High</option>
+                  <option value="Highest Bid">Highest Bid</option>
+                </select>
+              </div>
             </div>
 
-            {/* CONDITION */}
-            <select
-              value={conditionFilter}
-              onChange={(e) => setConditionFilter(e.target.value)}
-              className="md:w-40 px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20"
-            >
-              <option>All Conditions</option>
-              <option>Working</option>
-              {isRepairShop && <option>Not Working</option>}
-            </select>
+            {/* RESULT COUNT */}
+            <div className="flex justify-between items-center mb-4 px-1">
+              <p className="text-xs font-bold text-slate-400">
+                {filteredListings.length}{" "}
+                {filteredListings.length === 1 ? "listing" : "listings"} found
+              </p>
 
-            {/* SORT */}
-            <select
-              value={sortOption}
-              onChange={(e) => setSortOption(e.target.value)}
-              className="md:w-36 px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#769c2d]/20"
-            >
-              <option value="Newest">Newest</option>
-              <option value="Price Low">Price: Low</option>
-              <option value="Price High">Price: High</option>
-              <option value="Highest Bid">Highest Bid</option>
-            </select>
-          </div>
-        </div>
-
-        {/* RESULT COUNT */}
-        <div className="flex justify-between items-center mb-4 px-1">
-          <p className="text-xs font-bold text-slate-400">
-            {filteredListings.length}{" "}
-            {filteredListings.length === 1 ? "listing" : "listings"} found
-          </p>
-
-          <p className="text-xs font-bold text-slate-400">
-            Sorted by: <span className="text-slate-600">{sortOption}</span>
-          </p>
-        </div>
+              <p className="text-xs font-bold text-slate-400">
+                Sorted by: <span className="text-slate-600">{sortOption}</span>
+              </p>
+            </div>
+          </>
+        )}
 
         {/* <p className="text-xs font-bold text-slate-400 mb-6 flex justify-between">
           <span className=" rounded-full px-3 py-1 ">
@@ -4056,17 +4157,18 @@ const AchievementsModal = ({
 const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
   const [activeIndex, setActiveIndex] = React.useState(0);
 
+  // Always render the canonical condition value used by the dashboard.
+  const normalizedCondition =
+    normalizeListingCondition(item?.condition) || "Condition unavailable";
+
   const getConditionStyles = (condition) => {
-    switch (condition?.toLowerCase()) {
-      case "not working":
-        return "bg-blue-50 text-blue-600 border-blue-100";
-
-      case "working":
-        return "bg-emerald-50 text-emerald-600 border-emerald-100";
-
-      default:
-        return "bg-slate-50 text-slate-600 border-slate-100";
+    if (condition === "Not Working") {
+      return "bg-rose-50 text-rose-700 border-rose-200";
     }
+    if (condition === "Working") {
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    }
+    return "bg-slate-50 text-slate-600 border-slate-200";
   };
 
   const listingMedia = Array.isArray(item.images)
@@ -4185,15 +4287,17 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
         {/* CONDITION */}
         <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
           <span
-            className={`px-2.5 py-1 rounded-full border text-xs font-black uppercase ${getConditionStyles(
-              item.condition,
+            aria-label={`Item condition: ${normalizedCondition}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-extrabold shadow-sm ${getConditionStyles(
+              normalizedCondition,
             )}`}
           >
-            {item.condition || "Unknown"}
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-current" />
+            {normalizedCondition}
           </span>
 
           <span className="px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-sm text-slate-600 border border-white text-xs font-black uppercase shadow-sm">
-            {item.condition?.toLowerCase() === "working"
+            {normalizedCondition === "Working"
               ? "Buyer + Repair Shop"
               : "Repair Shop"}
           </span>

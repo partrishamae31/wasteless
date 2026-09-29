@@ -48,6 +48,71 @@ import {
   Gavel,
   Download,
 } from "lucide-react";
+// ============================================================
+// TC_HAZ_06 — Hazardous Waste Safe-Storage Expiry
+// ============================================================
+// These defaults mirror the TC_HAZ_06 policy configuration.
+// If your approved category durations are different, update both
+// this map and the matching Supabase safe_storage_rules rows.
+const SAFE_STORAGE_DAYS_BY_CATEGORY = {
+  Smartphone: 30,
+  Tablet: 30,
+  Laptop: 45,
+  Desktop: 60,
+  Monitor: 60,
+  Parts: 30,
+  Others: 30,
+};
+
+const isHazardousStorageCondition = (condition) => {
+  const normalized = String(condition || "").trim().toLowerCase();
+
+  return [
+    "not working",
+    "not_working",
+    "not-working",
+    "defective",
+    "for parts",
+    "for_parts",
+    "for-parts",
+  ].includes(normalized);
+};
+
+const getSafeStorageDays = (category) => {
+  const normalizedCategory = String(category || "").trim();
+  return (
+    SAFE_STORAGE_DAYS_BY_CATEGORY[normalizedCategory] ??
+    SAFE_STORAGE_DAYS_BY_CATEGORY.Others
+  );
+};
+
+const getSafeStorageExpiry = (listing) => {
+  if (
+    !listing?.created_at ||
+    !isHazardousStorageCondition(listing?.condition)
+  ) {
+    return null;
+  }
+
+  const createdAt = new Date(listing.created_at);
+  if (Number.isNaN(createdAt.getTime())) return null;
+
+  const maxDays = getSafeStorageDays(listing.category);
+  const expiry = new Date(
+    createdAt.getTime() + maxDays * 24 * 60 * 60 * 1000,
+  );
+
+  return {
+    expiry,
+    maxDays,
+    expired: Date.now() >= expiry.getTime(),
+  };
+};
+
+const isSafeStorageExpired = (listing) =>
+  String(listing?.status || "").trim().toLowerCase() === "active" &&
+  Boolean(getSafeStorageExpiry(listing)?.expired);
+
 const isRepairTransaction = (transaction) => Boolean(transaction?.repair_appointment_id);
 
 const getRepairField = (transaction, field, fallback = "") => {
@@ -911,8 +976,15 @@ const SellerDashboard = ({ session }) => {
   });
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [cancelDetails, setCancelDetails] = useState("");
+  const [cancellingTransactionId, setCancellingTransactionId] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [selectedReceiptTransaction, setSelectedReceiptTransaction] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportingTransactionId, setReportingTransactionId] = useState(null);
+  const [reportedTransactionIds, setReportedTransactionIds] = useState(new Set());
 
   // Trust Tier data is loaded from the same trust_tiers table used by Admin.
   const [trustTiers, setTrustTiers] = useState([]);
@@ -925,6 +997,7 @@ const SellerDashboard = ({ session }) => {
   });
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [listingToDonate, setListingToDonate] = useState(null);
+  const [forcedSafeStorageListing, setForcedSafeStorageListing] = useState(null);
   const [showRateModal, setShowRateModal] = useState(false);
   const [ratingRole, setRatingRole] = useState(null); // "buyer" or "seller"
   const [reviewedMarketplaceTransactions, setReviewedMarketplaceTransactions] = useState(new Set());
@@ -1231,6 +1304,17 @@ const SellerDashboard = ({ session }) => {
         selectedListing.status?.toLowerCase() !== "active"
       ) {
         alert("This listing is no longer active.");
+        return;
+      }
+
+      // TC_HAZ_06: hazardous listings cannot receive new bids after
+      // their maximum safe-storage period has expired.
+      if (isSafeStorageExpired(selectedListing)) {
+        alert(
+          "Bidding is disabled because this hazardous listing has exceeded its maximum safe-storage period. The Tech Owner / Dealer must choose Donate or Unlist.",
+        );
+        setSelectedListing(null);
+        setForcedSafeStorageListing(selectedListing);
         return;
       }
 
@@ -1551,49 +1635,262 @@ const SellerDashboard = ({ session }) => {
     }
   };
 
-  const handleCancelTransaction = async (txId) => {
+  const handleReportTransaction = async (txId) => {
+    if (reportingTransactionId) return;
+
+    const txToReport = transactions.find((t) => t.id === txId);
+    if (!txToReport) {
+      alert("Transaction not found. Please refresh and try again.");
+      return;
+    }
+
+    if (txToReport.repair_appointment_id) {
+      alert("This report is only available for marketplace meetups.");
+      return;
+    }
+
+    if (txToReport.status !== "meetup_scheduled") {
+      alert("You can report a transaction only while the meetup is scheduled.");
+      return;
+    }
+
+    if (txToReport.seller_id !== session.user.id) {
+      alert("Only the seller can submit this seller-side meetup report.");
+      return;
+    }
+
+    if (reportedTransactionIds.has(txId)) {
+      alert("You have already reported this transaction.");
+      return;
+    }
+
+    const reason = String(reportReason || "").trim();
+    const details = String(reportDetails || "").trim();
+
+    if (!reason) {
+      alert("Please select a report reason.");
+      return;
+    }
+
+    if (reason === "Other" && !details) {
+      alert("Please describe what happened.");
+      return;
+    }
+
+    setReportingTransactionId(txId);
+
     try {
-      const txToCancel = transactions.find((t) => t.id === txId);
+      const { data: existingReport, error: existingReportError } = await supabase
+        .from("transaction_reports")
+        .select("id, status")
+        .eq("transaction_id", txId)
+        .eq("reporter_id", session.user.id)
+        .eq("status", "open")
+        .maybeSingle();
 
-      if (!txToCancel) throw new Error("Transaction not found.");
-      if (txToCancel.seller_id !== session.user.id) {
-        alert("Only the seller can cancel this transaction.");
+      if (existingReportError) throw existingReportError;
+
+      if (existingReport) {
+        setReportedTransactionIds((prev) => new Set(prev).add(txId));
+        setShowReportModal(false);
+        alert("You already have an open report for this transaction.");
         return;
       }
-      if (txToCancel.status === "completed") {
-        alert("A completed transaction cannot be cancelled.");
-        return;
+
+      const finalReason = reason === "Other"
+        ? `Other: ${details}`
+        : reason;
+
+      const { data: report, error: reportError } = await supabase
+        .from("transaction_reports")
+        .insert([{
+          transaction_id: txId,
+          reporter_id: session.user.id,
+          reason: finalReason,
+          details: details || null,
+          status: "open",
+        }])
+        .select("id, transaction_id, reporter_id, reason, details, status, created_at")
+        .single();
+
+      if (reportError) throw reportError;
+
+      // Notify the other party that the transaction has been reported.
+      // The open transaction_reports row is what flags the transaction for Admin.
+      if (txToReport.harvester_id) {
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert([{
+            user_id: txToReport.harvester_id,
+            title: "Transaction Reported",
+            description: `The seller reported an issue with the meetup for ${txToReport.listing?.device_model || "this transaction"}.`,
+            type: "transaction_reported",
+            is_read: false,
+          }]);
+
+        if (notificationError) {
+          console.error("Report notification failed:", notificationError);
+        }
       }
 
-      const { error: txError } = await supabase
+      setReportedTransactionIds((prev) => new Set(prev).add(txId));
+      setTransactions((prev) =>
+        prev.map((tx) =>
+          tx.id === txId
+            ? { ...tx, has_open_report: true, transaction_report: report }
+            : tx
+        )
+      );
+      setShowReportModal(false);
+      setReportReason("");
+      setReportDetails("");
+      setSelectedTxId(txId);
+
+      alert("Transaction reported successfully. The transaction will remain open for Administrator review and will not be auto-completed while the report is open.");
+    } catch (error) {
+      console.error("Transaction report error:", error);
+      alert(`Failed to submit transaction report: ${error.message}`);
+    } finally {
+      setReportingTransactionId(null);
+    }
+  };
+
+  const handleCancelTransaction = async (txId) => {
+    if (cancellingTransactionId) return;
+
+    const txToCancel = transactions.find((t) => t.id === txId);
+    if (!txToCancel) {
+      alert("Transaction not found. Please refresh and try again.");
+      return;
+    }
+
+    if (txToCancel.seller_id !== session.user.id) {
+      alert("Only the seller/customer who started this transaction can cancel it.");
+      return;
+    }
+
+    if (["completed", "cancelled"].includes(String(txToCancel.status || "").toLowerCase())) {
+      alert("This transaction is already closed and cannot be cancelled.");
+      return;
+    }
+
+    const reason = String(cancelReason || "").trim();
+    if (!reason) {
+      alert("Please select a reason for cancellation.");
+      return;
+    }
+
+    const finalReason = reason === "Other"
+      ? `Other: ${String(cancelDetails || "").trim()}`.trim()
+      : reason;
+
+    if (reason === "Other" && !String(cancelDetails || "").trim()) {
+      alert("Please describe the cancellation reason.");
+      return;
+    }
+
+    setCancellingTransactionId(txId);
+
+    try {
+      // 1) Cancel the transaction with an ownership + status guard.
+      const { data: updatedTx, error: txError } = await supabase
         .from("transactions")
         .update({
           status: "cancelled",
-          cancel_reason: cancelReason,
+          cancel_reason: finalReason,
         })
         .eq("id", txId)
-        .eq("seller_id", session.user.id);
+        .eq("seller_id", session.user.id)
+        .not("status", "eq", "completed")
+        .select(`
+          *,
+          seller:seller_id (full_name, business_name, role),
+          harvester:harvester_id (full_name, business_name, role),
+          listing:listing_id (device_model, asking_price)
+        `)
+        .maybeSingle();
 
       if (txError) throw txError;
+      if (!updatedTx) {
+        throw new Error("The transaction could not be cancelled. It may already be completed, cancelled, or you may not have permission to change it.");
+      }
 
-      if (txToCancel?.listing_id) {
+      // 2) Marketplace: reopen the listing and release the accepted bid.
+      if (txToCancel.listing_id) {
         const { error: listingError } = await supabase
           .from("listings")
           .update({ status: "active" })
-          .eq("id", txToCancel.listing_id);
+          .eq("id", txToCancel.listing_id)
+          .eq("seller_id", session.user.id);
 
-        if (listingError) throw listingError;
+        if (listingError) {
+          console.error("Listing reactivation failed after cancellation:", listingError);
+        }
+
+        const { error: bidReleaseError } = await supabase
+          .from("bids")
+          .update({ status: "declined" })
+          .eq("listing_id", txToCancel.listing_id)
+          .eq("status", "accepted");
+
+        if (bidReleaseError) {
+          console.error("Accepted bid release failed after cancellation:", bidReleaseError);
+        }
       }
 
+      // 3) Repair: cancel the linked appointment as well.
+      if (txToCancel.repair_appointment_id) {
+        const { error: appointmentError } = await supabase
+          .from("repair_appointments")
+          .update({ status: "cancelled" })
+          .eq("id", txToCancel.repair_appointment_id)
+          .eq("harvester_id", session.user.id)
+          .not("status", "eq", "completed");
+
+        if (appointmentError) {
+          console.error("Repair appointment cancellation failed after transaction cancellation:", appointmentError);
+        }
+      }
+
+      // 4) Notify the other party. Notification failure must not undo a successful cancellation.
+      const otherUserId = txToCancel.seller_id === session.user.id
+        ? txToCancel.harvester_id
+        : txToCancel.seller_id;
+
+      if (otherUserId) {
+        const itemLabel = txToCancel.listing?.device_model ||
+          (txToCancel.repair_appointment_id ? "repair service" : "transaction");
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert([{
+            user_id: otherUserId,
+            title: "Transaction Cancelled",
+            description: `The ${itemLabel} transaction was cancelled. Reason: ${finalReason}`,
+            type: "transaction_cancelled",
+            is_read: false,
+          }]);
+
+        if (notificationError) {
+          console.error("Cancellation notification failed:", notificationError);
+        }
+      }
+
+      // 5) Update the UI with the server response immediately.
       setTransactions((prev) =>
-        prev.map((t) => (t.id === txId ? { ...t, status: "cancelled" } : t)),
+        prev.map((t) => (t.id === txId ? { ...t, ...updatedTx, status: "cancelled", cancel_reason: finalReason } : t)),
       );
 
       setShowCancelModal(false);
-      alert("Transaction cancelled successfully.");
+      setSelectedTxId(txId);
+      setCancelReason("");
+      setCancelDetails("");
+
+      alert("Transaction cancelled successfully. The transaction is now closed.");
     } catch (err) {
-      console.error("Error cancelling:", err.message);
-      alert("Failed to cancel: Check your database permissions.");
+      console.error("Error cancelling transaction:", err);
+      alert(`Failed to cancel transaction: ${err?.message || "Unknown database error."}`);
+    } finally {
+      setCancellingTransactionId(null);
     }
   };
 
@@ -1694,6 +1991,58 @@ const SellerDashboard = ({ session }) => {
     }
   }, [transactions, selectedTxId]);
 
+  // TC_HAZ_06: permanently close an expired hazardous listing without
+  // going through the normal bid/acceptance flow.
+  const handleForceUnlist = async (listing) => {
+    try {
+      if (!listing?.id) {
+        throw new Error("Listing information is missing.");
+      }
+
+      if (listing.seller_id !== session.user.id) {
+        throw new Error("Only the listing owner can unlist this item.");
+      }
+
+      if (!isSafeStorageExpired(listing)) {
+        setForcedSafeStorageListing(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("listings")
+        .update({ status: "inactive" })
+        .eq("id", listing.id)
+        .eq("seller_id", session.user.id)
+        .eq("status", "active")
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      setMyListings((prev) =>
+        prev.map((item) =>
+          item.id === listing.id
+            ? { ...item, ...data, status: "inactive" }
+            : item,
+        ),
+      );
+
+      setForcedSafeStorageListing(null);
+      alert("Listing unlisted successfully. Bidding is closed for this listing.");
+    } catch (error) {
+      console.error("TC_HAZ_06 unlist error:", error);
+      alert(`Unable to unlist the expired listing: ${error.message}`);
+    }
+  };
+
+  const handleForceDonate = (listing) => {
+    if (!listing?.id) return;
+
+    setForcedSafeStorageListing(null);
+    setListingToDonate(listing);
+    setIsDonationModalOpen(true);
+  };
+
   const handleAcceptBid = async (bid, listing) => {
     try {
       if (!bid?.id || !listing?.id) {
@@ -1703,6 +2052,14 @@ const SellerDashboard = ({ session }) => {
       // Accept/Decline is ONLY for the logged-in user's own listing.
       if (listing.seller_id !== session.user.id) {
         throw new Error("You can only accept bids on your own listings.");
+      }
+
+      // TC_HAZ_06: an expired hazardous listing cannot accept an existing bid.
+      if (isSafeStorageExpired(listing)) {
+        setForcedSafeStorageListing(listing);
+        throw new Error(
+          "This hazardous listing has exceeded its maximum safe-storage period. Choose Donate or Unlist before accepting a bid.",
+        );
       }
 
       const { error: bidError } = await supabase
@@ -2017,6 +2374,16 @@ const SellerDashboard = ({ session }) => {
 
     // Show the oldest eligible listing
     setDonationReminder(eligibleListings[0] || null);
+  }, [myListings]);
+
+  // TC_HAZ_06: any active hazardous listing past its category
+  // safe-storage limit must force the owner to choose Donate or Unlist.
+  useEffect(() => {
+    const expiredListing = (myListings || []).find((listing) =>
+      isSafeStorageExpired(listing),
+    );
+
+    setForcedSafeStorageListing(expiredListing || null);
   }, [myListings]);
 
   useEffect(() => {
@@ -2887,6 +3254,12 @@ const SellerDashboard = ({ session }) => {
                               <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${String(item.status).toLowerCase() === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
                                 {status}
                               </span>
+                              {isSafeStorageExpired(item) && (
+                                <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2.5 py-1 text-[10px] font-black uppercase">
+                                  <AlertCircle size={11} />
+                                  Safe Storage Expired
+                                </span>
+                              )}
                             </div>
                             <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
                               <span className="font-black text-[#3285a1]">₱{Number(item.asking_price || 0).toLocaleString()}</span>
@@ -3545,7 +3918,7 @@ const SellerDashboard = ({ session }) => {
               </div>
 
               {transactions.length === 0 ? (
-                <div className="bg-white rounded-xl border-2 mt-7border-dashed border-slate-100 p-12 text-center">
+                <div className="bg-white rounded-xl border-2 border-dashed border-slate-100 p-12 text-center">
                   <ArrowLeftRight size={30} className="mx-auto text-slate-300" />
                   <p className="text-sm mt-7 font-bold text-slate-500 mt-3">
                     No active transactions
@@ -3562,6 +3935,7 @@ const SellerDashboard = ({ session }) => {
                       const isSeller = tx.seller_id === session.user.id;
                       const isBuyer = tx.harvester_id === session.user.id;
                       const isCompleted = tx.status === "completed";
+                      const isCancelled = tx.status === "cancelled";
                       const isRepair = isRepairTransaction(tx);
 
                       const otherParty = isSeller ? tx.harvester : tx.seller;
@@ -3576,8 +3950,12 @@ const SellerDashboard = ({ session }) => {
                           onClick={() => setSelectedTxId(tx.id)}
                           className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${
                             selectedTxId === tx.id
-                              ? "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
-                              : "border-slate-100 bg-white hover:border-slate-200"
+                              ? isCancelled
+                                ? "border-red-500 bg-red-50 shadow-sm"
+                                : "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
+                              : isCancelled
+                                ? "border-red-200 bg-red-50/50 hover:border-red-300"
+                                : "border-slate-100 bg-white hover:border-slate-200"
                           }`}
                         >
                           <div className="flex justify-between items-start mb-1 gap-2">
@@ -3586,10 +3964,10 @@ const SellerDashboard = ({ session }) => {
                             </h4>
                             <span
                               className={`text-xs px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${
-                                isCompleted
-                                  ? "bg-green-50 text-green-600 border-green-200"
-                                  : tx.status === "cancelled"
-                                    ? "bg-red-50 text-red-600 border-red-200"
+                                isCancelled
+                                  ? "bg-red-100 text-red-700 border-red-300"
+                                  : isCompleted
+                                    ? "bg-green-50 text-green-600 border-green-200"
                                     : tx.status === "meetup_scheduled"
                                       ? "bg-blue-50 text-blue-600 border-blue-200"
                                       : "bg-amber-50 text-amber-600 border-amber-200"
@@ -3623,12 +4001,14 @@ const SellerDashboard = ({ session }) => {
                             </p> */}
                             <span
                               className={`text-xs font-black px-2 py-1 rounded-full ${
-                                isSeller
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-blue-50 text-blue-700"
+                                isCancelled
+                                  ? "bg-red-100 text-red-700 border border-red-200"
+                                  : isSeller
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-blue-50 text-blue-700"
                               }`}
                             >
-                              {isRepair ? "REPAIR" : isSeller ? "SELLING" : "BUYING"}
+                              {isCancelled ? "CANCELLED" : isRepair ? "REPAIR" : isSeller ? "SELLING" : "BUYING"}
                             </span>
                           </div>
                         </button>
@@ -3644,6 +4024,7 @@ const SellerDashboard = ({ session }) => {
                         const isSeller = tx.seller_id === session.user.id;
                         const isBuyer = tx.harvester_id === session.user.id;
                         const isCompleted = tx.status === "completed";
+                        const isCancelled = tx.status === "cancelled";
                         const isMeetupScheduled = tx.status === "meetup_scheduled";
                         const isRepair = isRepairTransaction(tx);
                         const repairDevice = getRepairDevice(tx);
@@ -3661,8 +4042,10 @@ const SellerDashboard = ({ session }) => {
                           "Unknown Buyer";
 
                         return (
-                          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-full">
-                            <div className="bg-[#2d7a7f] p-6 text-white flex justify-between items-start">
+                          <div className={`bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full ${
+                            isCancelled ? "border-2 border-red-200" : "border border-slate-100"
+                          }`}>
+                            <div className={`${isCancelled ? "bg-red-600" : "bg-[#2d7a7f]"} p-6 text-white flex justify-between items-start`}>
                               <div>
                                 <h2 className="text-xl font-bold">
                                   {isRepair ? repairDevice : tx.listing?.device_model || "Electronic Item"}
@@ -3672,28 +4055,46 @@ const SellerDashboard = ({ session }) => {
                                 </p>
                               </div>
                               <div className="flex flex-col items-end gap-2">
-                                <span className="bg-white/20 px-4 py-1 rounded-full text-xs font-medium backdrop-blur-sm">
-                                  {isRepair
-                                    ? isCompleted
-                                      ? "Repair Completed"
-                                      : isMeetupScheduled
-                                        ? "Repair Scheduled"
-                                        : "Repair Matched"
-                                    : isCompleted
-                                      ? "Completed"
-                                      : isMeetupScheduled
-                                        ? "Meetup Scheduled"
-                                        : "Matched"}
+                                <span className={`px-4 py-1 rounded-full text-xs font-medium backdrop-blur-sm ${
+                                  isCancelled
+                                    ? "bg-white/15 text-white border border-white/40"
+                                    : "bg-white/20 text-white"
+                                }`}>
+                                  {isCancelled
+                                    ? "Cancelled"
+                                    : isRepair
+                                      ? isCompleted
+                                        ? "Repair Completed"
+                                        : isMeetupScheduled
+                                          ? "Repair Scheduled"
+                                          : "Repair Matched"
+                                      : isCompleted
+                                        ? "Completed"
+                                        : isMeetupScheduled
+                                          ? "Meetup Scheduled"
+                                          : "Matched"}
                                 </span>
-                                <span className="bg-white/10 px-3 py-1 rounded-full text-xs font-black uppercase">
-                                  {isSeller ? "You are selling" : "You are buying"}
+                                <span className={`${isCancelled ? "bg-white/15 border border-white/30" : "bg-white/10"} px-3 py-1 rounded-full text-xs font-black uppercase`}>
+                                  {isCancelled ? "TRANSACTION CANCELLED" : isSeller ? "You are selling" : "You are buying"}
                                 </span>
                               </div>
                             </div>
 
                             {/* PROGRESS */}
-                            <div className="p-10 border-b border-slate-50">
-                              {isRepair ? (
+                            <div className={`p-10 border-b ${isCancelled ? "border-red-100 bg-red-50/30" : "border-slate-50"}`}>
+                              {isCancelled ? (
+                                <div className="relative max-w-lg mx-auto">
+                                  <div className="flex items-center justify-center gap-3 rounded-2xl border-2 border-red-200 bg-red-50 px-5 py-4">
+                                    <div className="w-10 h-10 rounded-full bg-red-100 border border-red-200 flex items-center justify-center shrink-0">
+                                      <XCircle size={22} className="text-red-600" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-black text-red-700 uppercase tracking-wide">Transaction Cancelled</p>
+                                      <p className="text-xs font-semibold text-red-600 mt-1">This transaction is no longer active.</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : isRepair ? (
                                 <div className="relative flex justify-between items-center max-w-lg mx-auto">
                                   <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2" />
                                   <div
@@ -3748,13 +4149,33 @@ const SellerDashboard = ({ session }) => {
                                 {!isRepair && (
                                   <div>
                                     <p className="text-xs text-slate-400 font-bold uppercase mb-1">Amount</p>
-                                    <p className="text-xl font-black text-[#2d7a7f]">₱{Number(tx.amount || 0).toLocaleString()}</p>
+                                    <p className={`text-xl font-black ${isCancelled ? "text-red-600" : "text-[#2d7a7f]"}`}>₱{Number(tx.amount || 0).toLocaleString()}</p>
                                   </div>
                                 )}
                               </div>
 
                               {/* REPAIR / MARKETPLACE DETAILS AND ACTIONS */}
-                              {isRepair ? (
+                              {isCancelled ? (
+                                <div className="space-y-4">
+                                  <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 flex items-start gap-4">
+                                    <div className="bg-red-100 p-2 rounded-full text-red-600 border border-red-200 shrink-0">
+                                      <XCircle size={22} />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-black text-red-700">Transaction Cancelled</p>
+                                      <p className="text-xs font-semibold text-red-600 mt-1">
+                                        This transaction is closed and no further action is available.
+                                      </p>
+                                      {tx.cancel_reason && (
+                                        <div className="mt-3 pt-3 border-t border-red-200">
+                                          <p className="text-[11px] font-black uppercase tracking-wider text-red-500">Cancellation Reason</p>
+                                          <p className="text-sm font-bold text-red-700 mt-1 break-words">{tx.cancel_reason}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : isRepair ? (
                                 <>
                                   {(isMeetupScheduled || isCompleted) && (
                                     <div className="bg-purple-50 border border-purple-100 rounded-2xl p-5 mb-6">
@@ -3863,13 +4284,54 @@ const SellerDashboard = ({ session }) => {
                                       )}
                                     </div>
                                   ) : isRepair ? (
-                                    <div className="space-y-3"><div className="bg-purple-50 border border-purple-100 rounded-xl p-4"><p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p><p className="text-xs text-purple-600 mt-1">The repair shop will mark the repair service as completed after the device has been repaired.</p></div></div>
+                                    <div className="space-y-3">
+                                      <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+                                        <p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p>
+                                        <p className="text-xs text-purple-600 mt-1">The repair shop will mark the repair service as completed after the device has been repaired.</p>
+                                      </div>
+                                      {isSeller && (
+                                        <button
+                                          onClick={() => { setSelectedTxId(tx.id); setCancelReason(""); setCancelDetails(""); setShowCancelModal(true); }}
+                                          disabled={Boolean(cancellingTransactionId)}
+                                          className="w-full bg-white text-amber-700 border border-amber-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors disabled:opacity-50"
+                                        >
+                                          <XCircle size={18}/> Cancel Transaction
+                                        </button>
+                                      )}
+                                    </div>
                                   ) : isBuyer && isMeetupScheduled ? (
                                     <div className="space-y-3"><div className="bg-amber-50 border border-amber-100 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Handover Pending</p><p className="text-xs text-amber-600 mt-1">After you receive the item at the scheduled meetup, confirm the handover below.</p></div><button onClick={() => handleCompleteTransaction(tx.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"><CheckCheck size={18}/> Confirm Handover Complete</button></div>
                                   ) : isSeller && !isMeetupScheduled ? (
-                                    <div className="space-y-3"><button onClick={() => {setShowMessages(true);setActiveTab("listings");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> Schedule Meetup via Messages</button><button onClick={() => setShowCancelModal(true)} className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"><XCircle size={18}/> Cancel Transaction</button></div>
+                                    <div className="space-y-3"><button onClick={() => {setShowMessages(true);setActiveTab("listings");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> Schedule Meetup via Messages</button><button onClick={() => {setSelectedTxId(tx.id); setCancelReason(""); setCancelDetails(""); setShowCancelModal(true);}} className="w-full bg-white text-amber-700 border border-amber-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors"><XCircle size={18}/> Cancel Transaction</button></div>
                                   ) : isSeller && isMeetupScheduled ? (
-                                    <div className="space-y-3"><div className="bg-blue-50 border border-blue-100 rounded-xl p-4"><p className="text-sm font-bold text-blue-800">Meetup Scheduled</p><p className="text-xs text-blue-600 mt-1">The buyer can confirm the handover after the scheduled meetup.</p></div></div>
+                                    <div className="space-y-3">
+                                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                                        <p className="text-sm font-bold text-blue-800">Meetup Scheduled</p>
+                                        <p className="text-xs text-blue-600 mt-1">The buyer can confirm the handover after the scheduled meetup.</p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedTxId(tx.id);
+                                          setReportReason("");
+                                          setReportDetails("");
+                                          setShowReportModal(true);
+                                        }}
+                                        disabled={Boolean(reportingTransactionId) || reportedTransactionIds.has(tx.id)}
+                                        className="w-full bg-red-50 text-red-600 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        <AlertCircle size={18}/>
+                                        {reportedTransactionIds.has(tx.id) ? "Transaction Reported" : "Report Meetup Issue"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setSelectedTxId(tx.id); setCancelReason(""); setCancelDetails(""); setShowCancelModal(true); }}
+                                        disabled={Boolean(cancellingTransactionId)}
+                                        className="w-full bg-white text-amber-700 border border-amber-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors disabled:opacity-50"
+                                      >
+                                        <XCircle size={18}/> Cancel Transaction
+                                      </button>
+                                    </div>
                                   ) : (
                                     <div className="bg-slate-50 border border-slate-100 rounded-xl p-4"><p className="text-sm font-bold text-slate-600">Waiting for seller to schedule the meetup.</p><p className="text-xs text-slate-400 mt-1">You will see the meetup details here once the seller schedules it.</p></div>
                                   )}
@@ -4544,6 +5006,23 @@ const SellerDashboard = ({ session }) => {
           />
         )}
 
+        <TransactionReportModal
+          isOpen={showReportModal}
+          onClose={() => {
+            if (reportingTransactionId) return;
+            setShowReportModal(false);
+            setReportReason("");
+            setReportDetails("");
+          }}
+          onConfirm={handleReportTransaction}
+          transaction={transactions.find((t) => t.id === selectedTxId)}
+          reportReason={reportReason}
+          setReportReason={setReportReason}
+          reportDetails={reportDetails}
+          setReportDetails={setReportDetails}
+          isSubmitting={Boolean(reportingTransactionId)}
+        />
+
         <CancelTransactionModal
           isOpen={showCancelModal}
           onClose={() => setShowCancelModal(false)}
@@ -4551,6 +5030,9 @@ const SellerDashboard = ({ session }) => {
           transaction={transactions.find((t) => t.id === selectedTxId)}
           cancelReason={cancelReason}
           setCancelReason={setCancelReason}
+          cancelDetails={cancelDetails}
+          setCancelDetails={setCancelDetails}
+          isSubmitting={Boolean(cancellingTransactionId)}
         />
 
         <CreateListingModal
@@ -4587,11 +5069,111 @@ const SellerDashboard = ({ session }) => {
             }
           }}
         />
+        {forcedSafeStorageListing && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+            <div className="w-full max-w-lg overflow-hidden rounded-[2rem] bg-white shadow-2xl border-2 border-red-200">
+              <div className="bg-red-600 p-6 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center">
+                    <AlertCircle size={24} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-100">
+                      TC_HAZ_06 · Hazardous Waste
+                    </p>
+                    <h2 className="text-2xl font-black mt-1">
+                      Safe-Storage Period Expired
+                    </h2>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                  <p className="text-sm font-black text-red-800">
+                    This listing can no longer remain available for bidding.
+                  </p>
+                  <p className="text-xs leading-relaxed text-red-700 mt-2">
+                    The maximum safe-storage duration for this hazardous
+                    listing has expired. You must choose Donate or Unlist
+                    before continuing.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Category
+                    </p>
+                    <p className="text-sm font-black text-slate-800 mt-1">
+                      {forcedSafeStorageListing.category || "Others"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Condition
+                    </p>
+                    <p className="text-sm font-black text-slate-800 mt-1">
+                      {forcedSafeStorageListing.condition || "Not Working"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-amber-700">
+                    Maximum Safe-Storage Duration
+                  </p>
+                  <p className="text-lg font-black text-amber-900 mt-1">
+                    {getSafeStorageExpiry(forcedSafeStorageListing)?.maxDays || 30} days
+                  </p>
+                  <p className="text-[11px] text-amber-700 mt-1">
+                    New bids and bid acceptance are blocked until you resolve
+                    this listing.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleForceDonate(forcedSafeStorageListing)}
+                    className="py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wide flex items-center justify-center gap-2 transition"
+                  >
+                    <Gift size={17} />
+                    Donate
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleForceUnlist(forcedSafeStorageListing)}
+                    className="py-3.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wide flex items-center justify-center gap-2 transition"
+                  >
+                    <XCircle size={17} />
+                    Unlist
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-center text-slate-400 font-bold">
+                  This prompt must be resolved before the expired hazardous
+                  listing can continue through the marketplace workflow.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <DonationModal
           isOpen={isDonationModalOpen}
           onClose={() => {
+            const closingListing = listingToDonate;
+
             setIsDonationModalOpen(false);
             setListingToDonate(null);
+
+            // TC_HAZ_06: the owner cannot bypass the forced
+            // Donate/Unlist decision by simply closing the modal.
+            if (closingListing && isSafeStorageExpired(closingListing)) {
+              setForcedSafeStorageListing(closingListing);
+            }
           }}
           onConfirm={handleConfirmDonation}
           listing={listingToDonate}
@@ -5232,6 +5814,126 @@ const SellerDashboard = ({ session }) => {
   );
 };
 
+const TransactionReportModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  transaction,
+  reportReason,
+  setReportReason,
+  reportDetails,
+  setReportDetails,
+  isSubmitting = false,
+}) => {
+  if (!isOpen || !transaction) return null;
+
+  const itemName = transaction.listing?.device_model || transaction.device_model || "Electronic Item";
+  const buyerName = transaction.harvester?.full_name || transaction.harvester?.business_name || "Buyer";
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+        <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-red-50 rounded-full text-red-600">
+              <AlertCircle size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Report Meetup Issue</h2>
+              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mt-1">Seller Report</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          <div className="bg-red-50 border border-red-100 p-4 rounded-2xl">
+            <p className="text-xs font-black text-red-800 uppercase tracking-widest">Report this transaction</p>
+            <p className="text-xs text-red-700 mt-2 leading-relaxed">
+              Use this when the buyer did not show up or there was another issue at the scheduled meetup.
+              The report will flag the transaction for Administrator review and prevent automatic completion while it remains open.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2">
+            <p className="text-xs text-slate-400 font-bold uppercase">Transaction</p>
+            <p className="text-sm font-black text-slate-700">{itemName}</p>
+            <p className="text-xs text-slate-500">Buyer: {buyerName}</p>
+            {transaction.meetup_date && (
+              <p className="text-xs text-slate-500">
+                Meetup: {new Date(`${transaction.meetup_date}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                {transaction.meetup_time ? ` at ${transaction.meetup_time}` : ""}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2 block">
+              Report Reason <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400 transition-all appearance-none cursor-pointer"
+              disabled={isSubmitting}
+            >
+              <option value="" disabled>Select a reason...</option>
+              <option value="Buyer did not show up">Buyer did not show up</option>
+              <option value="Buyer arrived but refused the handover">Buyer arrived but refused the handover</option>
+              <option value="Buyer was unresponsive at meetup time">Buyer was unresponsive at meetup time</option>
+              <option value="Safety concern">Safety concern</option>
+              <option value="Other">Other (please specify)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2 block">
+              Additional Details {reportReason === "Other" ? <span className="text-red-500">*</span> : "(Optional)"}
+            </label>
+            <textarea
+              value={reportDetails}
+              onChange={(e) => setReportDetails(e.target.value)}
+              rows={4}
+              maxLength={1000}
+              placeholder="Describe what happened at the meetup..."
+              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400 transition-all resize-none"
+              disabled={isSubmitting}
+            />
+            <p className="text-[11px] text-slate-400 text-right mt-1">{reportDetails.length}/1000</p>
+          </div>
+        </div>
+
+        <div className="p-6 bg-slate-50 flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="flex-1 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-all disabled:opacity-50"
+          >
+            Keep Transaction
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(transaction.id)}
+            disabled={isSubmitting || !transaction?.id}
+            className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <AlertCircle size={14} />
+            {isSubmitting ? "Reporting..." : "Submit Report"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const CancelTransactionModal = ({
   isOpen,
   onClose,
@@ -5240,6 +5942,9 @@ const CancelTransactionModal = ({
   // Add these to the destructuring:
   cancelReason,
   setCancelReason,
+  cancelDetails,
+  setCancelDetails,
+  isSubmitting = false,
 }) => {
   if (!isOpen) return null;
 
@@ -5315,7 +6020,8 @@ const CancelTransactionModal = ({
               <textarea
                 placeholder="Please describe your reason for cancelling..."
                 className="w-full mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400 transition-all min-h-[80px]"
-                onChange={(e) => setCancelReason(`Other: ${e.target.value}`)}
+                value={cancelDetails}
+                onChange={(e) => setCancelDetails(e.target.value)}
               />
             )}
           </div>
@@ -5359,16 +6065,25 @@ const CancelTransactionModal = ({
           <button
             type="button" // Explicitly set type to button
             onClick={() => {
-              console.log("Cancel button clicked"); // Debugging line
+              if (isSubmitting) return;
+              if (!transaction?.id) {
+                alert("No transaction is selected. Please close this window, select the transaction, and try again.");
+                return;
+              }
               if (!cancelReason) {
                 alert("Please select a reason for cancellation.");
                 return;
               }
+              if (cancelReason === "Other" && !String(cancelDetails || "").trim()) {
+                alert("Please describe the cancellation reason.");
+                return;
+              }
               onConfirm(transaction.id);
             }}
-            className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-700 active:scale-95 transition-all shadow-lg cursor-pointer relative z-[10000]"
+            disabled={isSubmitting || !transaction?.id}
+            className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-700 active:scale-95 transition-all shadow-lg cursor-pointer relative z-[10000] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <XCircle size={14} /> Cancel Transaction
+            <XCircle size={14} /> {isSubmitting ? "Cancelling..." : "Cancel Transaction"}
           </button>
         </div>
       </div>
