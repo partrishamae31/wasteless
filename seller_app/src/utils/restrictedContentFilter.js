@@ -51,10 +51,6 @@ const RESTRICTED_KEYWORDS = [
   "bastard",
   "dickhead",
   "son of a bitch",
-  "po is ta",
-  "ba is ding",
-  "pakshet",
-  "bwisit",
   "kingina",
   "pota",
   "pakyu",
@@ -77,9 +73,11 @@ const RESTRICTED_KEYWORDS = [
   "pwetan",
   "papapwet",
   "dildo",
-  "tewup"
+  "tewup",
   "horny",
-  "libog"
+  "libog",
+  "tamod",
+  "cum"
 ];
 
 // Leetspeak and visual variants are unified to letters so that

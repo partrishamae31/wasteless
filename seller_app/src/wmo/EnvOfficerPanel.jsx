@@ -275,7 +275,7 @@ const EnvOfficerPanel = ({ onLogout, user }) => {
             <img
               src={wastelessLogo}
               alt="Wasteless logo"
-              className="w-10 h-10 object-contain rounded-xl bg-white p-1 shadow-lg shadow-cyan-900/30"
+              className="w-10 h-10 object-contain rounded-xl p-1 shadow-lg shadow-cyan-900/30"
             />
 
             <div>
@@ -289,10 +289,6 @@ const EnvOfficerPanel = ({ onLogout, user }) => {
             </div>
           </div>
         </div>
-
-        {/* ====================================================
-            NAVIGATION
-        ==================================================== */}
         <div className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
           {menuItems.map((item) => {
             const active = activeTab === item.id;
