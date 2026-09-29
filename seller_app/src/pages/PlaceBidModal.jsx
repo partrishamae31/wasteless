@@ -183,7 +183,7 @@ const PlaceBidModal = ({
             <div className="flex-1 py-4 text-center text-lg font-medium text-[#5b9e29] border-b-4 border-[#5b9e29]">
               <div className="flex items-center justify-center gap-2">
                 <Link2 size={21} />
-                Make Offer
+                Place Bid
               </div>
             </div>
 
@@ -249,7 +249,7 @@ const PlaceBidModal = ({
             ================================================= */}
             <div>
               <h3 className="text-xl text-slate-700 mb-3">
-                Your Offer
+                Place bid
               </h3>
 
               <div className="relative">
@@ -384,7 +384,7 @@ const PlaceBidModal = ({
             }
             className="flex-1 py-4 bg-[#5b9e29] text-white rounded-2xl text-lg font-medium hover:bg-[#4e8924] disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {placingBid ? "Sending..." : "Send Offer"}
+            {placingBid ? "Sending..." : "Place Bid"}
           </button>
 
         </div>

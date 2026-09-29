@@ -156,6 +156,14 @@ if (!data || !data.role) {
       setCurrentPage("admin_login");
     } else if (path === "/wmo" || viewParam === "wmo") {
       setCurrentPage("env_login");
+    } else {
+      // If registration was interrupted, resume its page first. Email OTP
+      // verification can create a Supabase session; that session must not
+      // redirect an unfinished registration into a dashboard after refresh.
+      const savedSignup = readSignupProgress();
+      if (savedSignup?.step && savedSignup?.formData?.email) {
+        setCurrentPage("signup");
+      }
     }
 
     supabase.auth.getSession().then(({ data }) => {
@@ -268,6 +276,7 @@ if (window.location.pathname === "/reset-password") {
         </p>
         <button
           onClick={() => {
+            clearSignupProgress();
             setIsUnauthorized(false);
             setCurrentPage("signup");
           }}
@@ -320,7 +329,10 @@ if (currentPage === "signup") {
       <div className="App">
         {currentPage === "login" && (
           <Login
-            onSignUpClick={() => setCurrentPage("signup")}
+            onSignUpClick={() => {
+              clearSignupProgress();
+              setCurrentPage("signup");
+            }}
             onEnvClick={() => setCurrentPage("env_login")}
           />
         )}

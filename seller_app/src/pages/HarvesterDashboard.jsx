@@ -4577,7 +4577,7 @@ const PlaceBidModal = ({
               }`}
           >
             <Gavel size={21} />
-            Make Offer
+            Place Bid
           </button>
 
           <button
@@ -4652,7 +4652,7 @@ const PlaceBidModal = ({
               {/* YOUR OFFER */}
               <div>
                 <h3 className="text-xl sm:text-2xl text-slate-700 mb-3">
-                  Your Offer
+                  Enter Amount
                 </h3>
 
                 <div className="relative">
@@ -4833,7 +4833,7 @@ const PlaceBidModal = ({
             {submitting
               ? "Sending..."
               : activeTab === "bid"
-                ? "Send Offer"
+                ? "Place Bid"
                 : "Send Question"}
           </button>
 

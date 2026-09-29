@@ -2800,6 +2800,57 @@ const SellerDashboard = ({ session }) => {
   =========================================== */}
               <div className="col-span-2">
 
+                {/* LOGGED-IN USER'S LISTINGS — kept separate from other users' listings */}
+                <section className="mt-7 mb-7 bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-emerald-50 text-emerald-700 p-2 rounded-xl">
+                        <Package size={20} />
+                      </div>
+                      <div>
+                        <h2 className="font-bold text-lg text-slate-800">My Listings</h2>
+                        <p className="text-xs text-slate-500 mt-1">Listings created by your account, separate from other users' items.</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full">
+                      {myListings.length} {myListings.length === 1 ? "listing" : "listings"}
+                    </span>
+                  </div>
+
+                  {loading ? (
+                    <p className="text-sm text-slate-400 py-5 text-center">Loading your listings...</p>
+                  ) : myListings.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {myListings.map((item) => {
+                        const itemBids = (item.bids || []).filter((bid) => bid.status !== "declined");
+                        const status = String(item.status || "unknown").replace(/_/g, " ");
+                        return (
+                          <article key={item.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h3 className="font-bold text-slate-800 truncate">{item.device_model || "Electronic Device"}</h3>
+                                <p className="text-xs text-slate-500 mt-1">{item.category || "Electronics"} · {item.condition || "Condition not set"}</p>
+                              </div>
+                              <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${String(item.status).toLowerCase() === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                                {status}
+                              </span>
+                            </div>
+                            <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
+                              <span className="font-black text-[#3285a1]">₱{Number(item.asking_price || 0).toLocaleString()}</span>
+                              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><MessageSquare size={14} /> {itemBids.length} {itemBids.length === 1 ? "bid" : "bids"}</span>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 py-8 px-4 text-center">
+                      <p className="text-sm font-semibold text-slate-500">You haven't created any listings yet.</p>
+                      <p className="text-xs text-slate-400 mt-1">Use Create Listing to add your first item.</p>
+                    </div>
+                  )}
+                </section>
+
                 {/* Browse Banner */}
                 <div className="bg-white border border-slate-100 rounded-2xl p-5 mb-5 mt-7 shadow-sm">
                   <div className="flex items-start gap-3">
@@ -2975,8 +3026,8 @@ const SellerDashboard = ({ session }) => {
                               <Link2 size={15} />
 
                               {myBid
-                                ? "Offer Placed"
-                                : "Make Offer"}
+                                ? "Bid Placed"
+                                : "Place Bid"}
 
                             </button>
 
@@ -3673,10 +3724,16 @@ const SellerDashboard = ({ session }) => {
         )}
         {/* Profile Modal Overlay */}
         {showProfileModal && (
-          <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
-            <div className="min-h-screen w-full flex flex-col">
-              {/* Full-Screen Profile Header */}
-              <div className="bg-gradient-to-br from-[#448b78] to-[#6da43a] p-6 text-white relative">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-6"
+            onClick={() => setShowProfileModal(false)}
+          >
+            <div
+              className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-50 shadow-2xl animate-in fade-in zoom-in duration-200"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {/* Profile Modal Header */}
+              <div className="bg-gradient-to-br from-[#448b78] to-[#6da43a] p-6 sm:p-8 text-white relative rounded-t-3xl">
                 <button
                   onClick={() => setShowProfileModal(false)}
                   className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"

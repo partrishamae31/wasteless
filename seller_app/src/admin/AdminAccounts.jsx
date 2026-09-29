@@ -338,24 +338,7 @@ const AdminAccounts = ({ adminBarangay }) => {
     setSuccess(true);
   };
 
-  const stats = [
-    {
-      label: "Total Users",
-      value: "1,248",
-    },
-    {
-      label: "Active Listing",
-      value: "342",
-    },
-    {
-      label: "Verified Shops",
-      value: "87",
-    },
-    {
-      label: "Devices Cataloged",
-      value: "456",
-    },
-  ];
+  
 
   // =========================
   // OTP VERIFICATION SCREEN
@@ -565,24 +548,7 @@ const AdminAccounts = ({ adminBarangay }) => {
 
   return (
     <div className="p-6 md:p-8 bg-[#F8FAFC] min-h-screen">
-      {/* STATS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-        {stats.map((item, index) => (
-          <div
-            key={index}
-            className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm"
-          >
-            <h2 className="text-5xl font-black text-slate-900 text-center">
-              {item.value}
-            </h2>
-
-            <p className="text-center text-slate-500 text-sm mt-2">
-              {item.label}
-            </p>
-          </div>
-        ))}
-      </div>
-
+      
       {/* HEADER */}
       <div className="flex items-start justify-between mb-6">
         <div>

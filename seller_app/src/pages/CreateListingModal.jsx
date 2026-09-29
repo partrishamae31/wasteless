@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import SanitizationGuideModal from "./SanitizationGuideModal";
 import {
+  Check,
   Smartphone,
   Laptop,
   Tablet,
@@ -95,9 +96,9 @@ const DiagnosisSection = ({ title, count, items, selected, onToggle }) => {
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <p className="text-sm font-bold text-gray-700">
+        <p className="text-lg font-bold text-gray-800">
           {title}{" "}
-          <span className="text-gray-400 font-normal ml-1">
+          <span className="text-sm text-gray-400 font-normal ml-1">
             ({count} selected)
           </span>
         </p>
@@ -109,23 +110,21 @@ const DiagnosisSection = ({ title, count, items, selected, onToggle }) => {
             <button
               key={item}
               onClick={() => onToggle(item)}
-              className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${isSelected
-                ? "border-[#2d7a7f] bg-teal-50/30"
+              className={`flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left ${isSelected
+                ? "border-[#2d7a7f] bg-emerald-50/40"
                 : "border-gray-100 hover:border-gray-200"
                 }`}
             >
               <div
-                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected
+                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${isSelected
                   ? "bg-[#2d7a7f] border-[#2d7a7f]"
                   : "border-gray-200 bg-white"
                   }`}
               >
-                {isSelected && (
-                  <CheckCircle2 size={14} className="text-white" />
-                )}
+                {isSelected && <Check size={13} className="text-white" />}
               </div>
               <span
-                className={`text-xs font-medium ${isSelected ? "text-gray-800" : "text-gray-500"}`}
+                className={`text-sm font-medium ${isSelected ? "text-gray-800" : "text-gray-600"}`}
               >
                 {item}
               </span>
@@ -143,23 +142,23 @@ const ConditionSection = ({ selected, onChange }) => {
       id: "Working",
       label: "Working",
       sub: "Device is fully functional",
-      activeStyles: "border-emerald-500 bg-emerald-50/30 text-emerald-700",
+      activeStyles: "border-[#17708c] bg-emerald-50/40 text-[#17708c]",
     },
     {
       id: "Not Working",
       label: "Not Working",
       sub: "Some components not working",
-      activeStyles: "border-blue-500 bg-blue-50/30 text-blue-700",
+      activeStyles: "border-[#17708c] bg-emerald-50/40 text-[#17708c]",
     },
   ];
 
   return (
     <div className="space-y-3 w-full">
-      <label className="text-sm font-semibold text-slate-700 block text-left">
+      <label className="text-2xl font-bold text-gray-800 block text-left">
         Device Condition
       </label>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         {options.map((opt) => {
           const isSelected = selected === opt.id;
 
@@ -168,19 +167,19 @@ const ConditionSection = ({ selected, onChange }) => {
               key={opt.id}
               type="button"
               onClick={() => onChange(opt.id)}
-              className={`w-full p-4 rounded-xl border transition-all text-left flex flex-col justify-center gap-1 ${isSelected
-                  ? `${opt.activeStyles} ring-1 ring-inset ring-opacity-50`
-                  : "border-slate-200 bg-white hover:border-slate-300"
+              className={`w-full p-5 rounded-2xl border-2 transition-all text-left ${isSelected
+                  ? opt.activeStyles
+                  : "border-gray-100 bg-white hover:border-gray-200"
                 }`}
             >
               <span
-                className={`text-[15px] font-bold ${isSelected ? "" : "text-slate-700"
+                className={`text-base font-bold ${isSelected ? "" : "text-gray-800"
                   }`}
               >
                 {opt.label}
               </span>
 
-              <span className="text-xs text-slate-500 font-medium">
+              <span className="block text-sm text-gray-500 font-medium mt-0.5">
                 {opt.sub}
               </span>
             </button>
@@ -975,8 +974,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const areApplicableChecklistItemsComplete =
     getApplicableChecklistKeys().every((key) => checklist[key] === true);
 
-  const isStep3Complete =
+  const hasAttachments = formData.attachments.length > 0;
+
+  const isStep4Complete =
     hasMandatoryListingFields &&
+    hasAttachments &&
     areApplicableChecklistItemsComplete &&
     checklist.valuationAcknowledged;
 
@@ -1006,23 +1008,6 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     }
   };
 
-  const hasAttachments = formData.attachments.length > 0;
-
-  const canProceedToStep3 =
-    Boolean(formData.model?.trim()) &&
-    Boolean(formData.condition) &&
-    isAssessmentComplete &&
-    hasAttachments &&
-    (formData.condition === "Working" ||
-      Boolean(formData.last_working_date));
-
-  {
-    formData.condition === "Not Working" && !formData.last_working_date && (
-      <p className="text-xs text-red-500 font-medium">
-        Please specify when the device was last working.
-      </p>
-    )
-  }
 
 
   const handleFileChange = (e) => {
@@ -1210,9 +1195,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     }
   };
   const activeLabel = formData.category || "Device";
-  const steps = [1, 2, 3];
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl relative my-auto animate-in fade-in zoom-in-95 duration-300">
         {/* Modal Header */}
         <div className="flex justify-between items-center p-6 border-b border-gray-50">
@@ -1227,33 +1211,36 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           </button>
         </div>
 
-        {/* Step Indicator */}
-        <div className="flex items-center justify-center py-6 px-20 relative">
-          <div className="absolute h-[2px] left-32 right-32 top-1/2 -translate-y-1/2 bg-gray-100">
-            <div
-              className="h-full bg-[#2d7a7f] transition-all duration-500"
-              style={{ width: step === 1 ? "0%" : step === 2 ? "50%" : "100%" }}
-            ></div>
-          </div>
-          <div className="flex justify-between w-full max-w-[300px] z-10">
-            {[1, 2, 3].map((num) => (
-              <div
-                key={num}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-500 ${step >= num
-                  ? "bg-[#2d7a7f] border-[#2d7a7f] text-white"
-                  : "bg-white border-gray-200 text-gray-400"
+        {/* Step Indicator — 4 steps */}
+        <div className="px-8 pt-2 pb-6">
+          <div className="flex items-center">
+            {[1, 2, 3, 4].map((num, idx) => (
+              <React.Fragment key={num}>
+                {idx > 0 && (
+                  <div
+                    className={`flex-1 h-[3px] rounded-full transition-colors duration-500 ${
+                      step > idx ? "bg-[#17708c]" : "bg-gray-100"
+                    }`}
+                  />
+                )}
+                <div
+                  className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-500 ${
+                    step >= num
+                      ? "bg-[#17708c] text-white"
+                      : "bg-gray-100 text-gray-400"
                   }`}
-              >
-                {num}
-              </div>
+                >
+                  {num}
+                </div>
+              </React.Fragment>
             ))}
           </div>
         </div>
 
-        <div className="p-8">
+        <div className="p-8 pb-6 space-y-6 max-h-[70vh] overflow-y-auto">
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in">
-              <p className="text-sm font-semibold text-slate-700">
+              <p className="text-2xl font-bold text-gray-800 text-left">
                 Select Device Category
               </p>
 
@@ -1269,21 +1256,21 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                           model: "",
                         }) // Reset model when category changes
                     }
-                    className={`flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all duration-200 ${formData.category === cat.id
-                      ? "border-teal-500 bg-teal-50/30 text-teal-600"
-                      : "border-slate-100 text-slate-400 hover:border-slate-200"
-                      } ${cat.id === "Others" ? "col-span-1" : ""}`}
+                    className={`flex flex-col items-center justify-center p-7 rounded-2xl border-2 transition-all duration-200 ${formData.category === cat.id
+                      ? "border-[#17708c] bg-emerald-50/40 text-[#17708c]"
+                      : "border-gray-100 text-gray-400 hover:border-gray-200 hover:text-gray-500"
+                      }`}
                   >
-                    <div className="mb-3">{cat.icon}</div>
-                    <span className="text-xs font-medium">{cat.label}</span>
+                    <div className="mb-4">{cat.icon}</div>
+                    <span className="text-base font-medium">{cat.label}</span>
                   </button>
                 ))}
               </div>
 
-              {/* Dynamic Input field replacing the static Dropdown structure */}
-              <div className="mt-6">
-                <label className="text-sm font-semibold text-slate-700 block mb-2">
-                  Device Model / Name
+              {/* Select Model */}
+              <div className="pt-2">
+                <label className="text-2xl font-bold text-gray-800 block mb-3">
+                  Select Model
                 </label>
                 <input
                   type="text"
@@ -1295,7 +1282,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                         ? "e.g., iPhone 13 Pro - LCD Screen, MacBook Air M1 - Battery"
                         : "e.g., iPhone 13 Pro, MacBook Pro 2021, etc..."
                   }
-                  className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 focus:ring-teal-500/10 disabled:bg-slate-50 disabled:cursor-not-allowed"
+                  className="w-full p-4 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 outline-none focus:border-[#17708c] disabled:bg-slate-50 disabled:cursor-not-allowed placeholder:text-gray-300"
                   value={formData.model}
                   onChange={(e) =>
                     setFormData({ ...formData, model: e.target.value })
@@ -1320,9 +1307,9 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               <button
                 disabled={!formData.category || !formData.model || hasFormError}
                 onClick={() => setStep(2)}
-                className={`w-full py-4 mt-4 rounded-xl font-bold text-sm transition-all ${formData.category && formData.model && !hasFormError
-                  ? "bg-[#2d7a7f] text-white shadow-lg shadow-teal-900/10"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                className={`w-full py-4 mt-2 rounded-2xl font-bold text-base transition-all ${formData.category && formData.model && !hasFormError
+                  ? "bg-[#17708c] text-white shadow-lg shadow-teal-900/10 hover:bg-[#125f75]"
+                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
                   }`}
               >
                 Continue
@@ -1330,24 +1317,25 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
             </div>
           )}
           {step === 2 && (
-            <div className="space-y-6">
-              {/* Photo Upload (Simplified for brevity) */}
-              <div className="space-y-3">
-                <p className="text-sm font-bold text-gray-700">
+            <div className="space-y-6 animate-in fade-in">
+              {/* Photos and Videos */}
+              <div className="space-y-4">
+                <p className="text-2xl font-bold text-gray-800">
                   Photos and Videos ({formData.attachments.length}/5)
                 </p>
+                <p className="text-sm text-gray-400 -mt-3">
+                  Add photos and videos to help buyers see the device condition
+                </p>
+
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-gray-200 rounded-2xl p-8 flex flex-col items-center justify-center bg-gray-50/50 cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="border-2 border-dashed border-gray-200 rounded-2xl py-12 px-6 flex flex-col items-center justify-center bg-white cursor-pointer hover:border-[#17708c]/40 transition-colors"
                 >
-                  <div className="flex gap-2 text-gray-300 mb-2">
-                    <ImageIcon size={24} />
-                    <Film size={24} />
+                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 mb-4">
+                    <ImageIcon size={26} />
                   </div>
-                  <p className="text-sm font-bold text-gray-700">
-                    Add photos or videos
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-base font-medium text-gray-800">Add photos</p>
+                  <p className="text-sm text-gray-400 mt-1 text-center">
                     Supported formats: JPG, PNG, MP4, MOV • Max file size: 10MB
                     per file
                   </p>
@@ -1360,8 +1348,9 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     onChange={handleAssetAttachment}
                   />
                 </div>
+
                 {formData.attachments.length > 0 && (
-                  <div className="grid grid-cols-5 gap-2 pt-2">
+                  <div className="grid grid-cols-5 gap-2">
                     {formData.attachments.map((item, index) => (
                       <div
                         key={index}
@@ -1381,17 +1370,6 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                           />
                         )}
 
-                        {/* Status/Type pill indicator overlay */}
-                        <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-[2px] rounded px-1 py-0.5 text-xs font-bold text-white uppercase flex items-center gap-0.5">
-                          {item.type === "image" ? (
-                            <ImageIcon size={8} />
-                          ) : (
-                            <Film size={8} />
-                          )}
-                          {item.type}
-                        </div>
-
-                        {/* Action remove trigger click button icon hook */}
                         <button
                           type="button"
                           onClick={() => removeAttachment(index)}
@@ -1403,66 +1381,24 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     ))}
                   </div>
                 )}
-              </div>
 
-              {formData.attachments.length === 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
-                  <AlertTriangle size={18} className="text-red-500 shrink-0" />
-
-                  <div>
-                    <p className="text-xs font-bold text-red-900">
-                      Photos Required
-                    </p>
-
-                    <p className="text-xs text-red-700/80">
-                      Please upload at least one photo or video of the device to
-                      continue.
-                    </p>
+                {formData.attachments.length === 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
+                    <AlertTriangle size={18} className="text-red-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-red-900">
+                        Photos Required
+                      </p>
+                      <p className="text-xs text-red-700/80">
+                        Please upload at least one photo or video of the device
+                        to continue.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {/* Damage Assessment Info */}
-              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-4">
-                <Info size={20} className="text-blue-500 shrink-0" />
-                <div>
-                  <p className="text-xs font-bold text-blue-900">
-                    Damage Assessment
-                  </p>
-                  <p className="text-xs text-blue-700/80">
-                    Please select all damages and issues that apply to your
-                    device.
-                  </p>
-                </div>
-              </div>
-
-              {/* No Visible Damage */}
-              <button
-                onClick={handleNoDamageToggle}
-                className={`w-full flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${issues.noDamage ? "border-[#2d7a7f] bg-teal-50/20" : "border-gray-100 bg-white"}`}
-              >
-                <div className="flex items-center gap-4 text-left">
-                  <div
-                    className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${issues.noDamage ? "bg-[#2d7a7f] border-[#2d7a7f]" : "border-gray-200"}`}
-                  >
-                    {issues.noDamage && (
-                      <CheckCircle2 size={16} className="text-white" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">
-                      No Visible Damage
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Device is in excellent working condition
-                    </p>
-                  </div>
-                </div>
-                {issues.noDamage && (
-                  <CheckCircle2 size={24} className="text-emerald-500" />
                 )}
-              </button>
+              </div>
 
+              {/* Device Condition */}
               <ConditionSection
                 selected={formData.condition}
                 onChange={(val) =>
@@ -1480,28 +1416,29 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   <label className="text-sm font-semibold text-slate-700 block text-left">
                     When was this device last working?
                   </label>
-
                   <p className="text-xs text-slate-400">
-                    This helps Repair Shops determine the possible condition of the
-                    reusable parts.
+                    This helps Repair Shops determine the possible condition of
+                    the reusable parts.
                   </p>
-
                   <input
                     type="date"
                     value={formData.last_working_date}
-                    max={new Date().toISOString().split("T")[0]}
+                    max={(() => {
+                      const yesterday = new Date();
+                      yesterday.setDate(yesterday.getDate() - 1);
+                      const year = yesterday.getFullYear();
+                      const month = String(yesterday.getMonth() + 1).padStart(2, "0");
+                      const day = String(yesterday.getDate()).padStart(2, "0");
+                      return `${year}-${month}-${day}`;
+                    })()}
                     onChange={(e) =>
                       setFormData((prev) => ({
                         ...prev,
                         last_working_date: e.target.value,
                       }))
                     }
-                    className="w-full p-4 bg-white border border-slate-200 rounded-xl
-                 text-sm text-slate-700 outline-none
-                 focus:ring-2 focus:ring-teal-500/10
-                 focus:border-[#2d7a7f]"
+                    className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:border-[#17708c]"
                   />
-
                   {!formData.last_working_date && (
                     <p className="text-xs text-red-500 font-medium">
                       Please specify the device's last-used/last-working date.
@@ -1510,9 +1447,78 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 </div>
               )}
 
+              <div className="flex gap-4 pt-2">
+                <button
+                  onClick={() => setStep(1)}
+                  className="flex-1 py-4 border border-gray-200 text-gray-600 rounded-2xl font-bold hover:bg-gray-50 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  disabled={
+                    formData.attachments.length === 0 ||
+                    !formData.condition ||
+                    (formData.condition === "Not Working" &&
+                      !formData.last_working_date)
+                  }
+                  onClick={() => setStep(3)}
+                  className="flex-1 py-4 rounded-2xl font-bold text-base transition-all enabled:bg-[#17708c] enabled:text-white enabled:hover:bg-[#125f75] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          )}
+          {step === 3 && (
+            <div className="space-y-6 animate-in fade-in">
+              {/* Damage Assessment Info */}
+              <div className="bg-blue-50 border border-blue-200/70 rounded-2xl p-5 flex gap-3">
+                <Info size={20} className="text-blue-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-blue-900">
+                    Damage Assessment
+                  </p>
+                  <p className="text-xs text-blue-700/90 mt-1 leading-relaxed">
+                    Please select all damages and issues that apply to your
+                    device. This helps buyers understand the condition and
+                    helps us calculate accurate recovery values.
+                  </p>
+                </div>
+              </div>
+
+              {/* No Visible Damage */}
+              <button
+                onClick={handleNoDamageToggle}
+                className={`w-full flex items-center justify-between p-5 rounded-2xl border-2 transition-all text-left ${issues.noDamage ? "border-[#17708c] bg-emerald-50/40" : "border-gray-100 bg-white hover:border-gray-200"}`}
+              >
+                <div className="flex items-center gap-4">
+                  <div
+                    className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${issues.noDamage ? "bg-[#17708c] border-[#17708c]" : "border-gray-300"}`}
+                  >
+                    {issues.noDamage && (
+                      <CheckCircle2 size={16} className="text-white" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">
+                      No Visible Damage
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Device is in excellent working condition
+                    </p>
+                  </div>
+                </div>
+                {issues.noDamage && (
+                  <CheckCircle2
+                    size={24}
+                    className="text-emerald-500 shrink-0"
+                  />
+                )}
+              </button>
+
               {/* ISSUE SECTIONS */}
               {!issues.noDamage && (
-                <div className="space-y-8 h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-8">
                   <DiagnosisSection
                     title="Physical Damage"
                     count={issues.physical.length}
@@ -1557,59 +1563,58 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     selected={issues.cosmetic}
                     onToggle={(item) => toggleIssue("cosmetic", item)}
                   />
+                </div>
+              )}
 
-                  <div className="space-y-3">
-                    <p className="text-sm font-bold text-gray-700">
-                      Additional Details (Optional)
+              {/* Additional Details */}
+              <div className="space-y-3">
+                <p className="text-lg font-bold text-gray-800">
+                  Additional Details (Optional)
+                </p>
+                <textarea
+                  placeholder="Provide any additional information about the device condition, when damage occurred, etc..."
+                  className="w-full p-4 bg-white border border-gray-200 rounded-2xl text-sm min-h-[120px] outline-none focus:border-[#17708c] placeholder:text-gray-300"
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      description: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              {/* Assessment Summary */}
+              {(allSelectedIssues.length > 0 || issues.noDamage) && (
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5 space-y-3">
+                  <p className="text-xs font-bold text-gray-700">
+                    Assessment Summary
+                  </p>
+                  {issues.noDamage ? (
+                    <p className="text-xs text-emerald-600 font-medium">
+                      No issues identified - Excellent condition
                     </p>
-                    <textarea
-                      placeholder="Provide any additional information about the device condition..."
-                      className="w-full p-4 bg-gray-50/50 border border-gray-100 rounded-2xl text-xs min-h-[100px] outline-none focus:border-[#2d7a7f]"
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          description: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  {/* ASSESSMENT SUMMARY - Matches image_684bfa.png */}
-                  {(allSelectedIssues.length > 0 || issues.noDamage) && (
-                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5 space-y-3">
-                      <p className="text-xs font-bold text-gray-700">
-                        Assessment Summary
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500 font-medium">
+                        {allSelectedIssues.length}{" "}
+                        {allSelectedIssues.length === 1 ? "issue" : "issues"}{" "}
+                        identified
                       </p>
-                      {issues.noDamage ? (
-                        <p className="text-xs text-emerald-600 font-medium">
-                          No issues identified - Excellent condition
-                        </p>
-                      ) : (
-                        <div className="space-y-3">
-                          <p className="text-xs text-gray-500 font-medium">
-                            {allSelectedIssues.length}{" "}
-                            {allSelectedIssues.length === 1
-                              ? "issue"
-                              : "issues"}{" "}
-                            identified
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {allSelectedIssues.map((issue, idx) => (
-                              <span
-                                key={idx}
-                                className="bg-orange-50 text-orange-600 text-xs px-3 py-1 rounded-full border border-orange-100 font-medium"
-                              >
-                                {issue}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {allSelectedIssues.map((issue, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-orange-50 text-orange-600 text-xs px-3 py-1 rounded-full border border-orange-100 font-medium"
+                          >
+                            {issue}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Assessment Incomplete Warning */}
               {!isAssessmentComplete && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
                   <AlertTriangle
@@ -1621,62 +1626,50 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       Assessment Incomplete
                     </p>
                     <p className="text-xs text-amber-700/80">
-                      Please select at least one damage/issue or mark the device
-                      as "No Visible Damage" to continue.
+                      Please select at least one damage/issue or mark the
+                      device as "No Visible Damage" to continue.
                     </p>
                   </div>
                 </div>
               )}
 
-              <div className="flex gap-4 pt-4 sticky bottom-0 bg-white">
+              <div className="flex gap-4 pt-2">
                 <button
-                  onClick={() => setStep(1)}
-                  className="flex-1 py-4 border border-gray-100 text-gray-500 rounded-2xl font-bold"
+                  onClick={() => setStep(2)}
+                  className="flex-1 py-4 border border-gray-200 text-gray-600 rounded-2xl font-bold hover:bg-gray-50 transition-colors"
                 >
                   Back
                 </button>
                 <button
-                  disabled={!canProceedToStep3}
-                  onClick={() => setStep(3)}
-                  className="flex-1 py-4 bg-[#2d7a7f] text-white rounded-2xl font-bold disabled:bg-gray-100 disabled:text-gray-400"
+                  disabled={!isAssessmentComplete}
+                  onClick={() => setStep(4)}
+                  className="flex-1 py-4 rounded-2xl font-bold text-base transition-all enabled:bg-[#17708c] enabled:text-white enabled:hover:bg-[#125f75] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
-                  Complete Assessment
+                  Continue
                 </button>
               </div>
             </div>
           )}
-          {step === 3 && (
-            <div className="space-y-6 max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
+          {step === 4 && (
+            <div className="space-y-6 max-h-[85vh] pr-2">
               {/* Estimated Recovery Value Header (Green Card) */}
               {hasMarketHistory ? (
                 /* Dynamic Market Card View */
-                <div className="bg-[#00c853] text-white rounded-3xl p-6 relative shadow-lg">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-wider opacity-90">
-                        Estimated Recovery Value
-                      </p>
-                      <h3 className="text-4xl font-bold">
-                        ₱{reusableValue.toLocaleString()}
-                      </h3>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <span className="bg-white/20 text-xs px-3 py-1 rounded-full border border-white/30">
-                        Market Estimate
-                      </span>
-                      <span className="flex items-center gap-1 text-xs opacity-90">
-                        <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>{" "}
-                        Dynamic
-                      </span>
-                    </div>
+                <div className="bg-gradient-to-br from-[#22c55e] to-[#16a34a] text-white rounded-3xl p-6 relative shadow-lg">
+                  <div className="flex items-center gap-2 text-xs font-medium opacity-95">
+                    <Percent size={13} />
+                    Estimated Recovery Value
                   </div>
+                  <h3 className="text-4xl font-bold mt-1">
+                    ₱{reusableValue.toLocaleString()}
+                  </h3>
 
-                  <div className="grid grid-cols-2 gap-4 mt-6">
+                  <div className="grid grid-cols-2 gap-4 mt-5">
                     <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
                       <p className="text-xs opacity-80 mb-1">
-                        Reusable Part Value
+                        Reusable Parts Value
                       </p>
-                      <p className="text-xl font-bold">
+                      <p className="text-2xl font-bold">
                         ₱{reusableValue.toLocaleString()}
                       </p>
                     </div>
@@ -1684,15 +1677,28 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       <p className="text-xs opacity-80 mb-1">
                         Raw Scrap Value
                       </p>
-                      <p className="text-xl font-bold">
+                      <p className="text-2xl font-bold">
                         ₱{scrapValue.toLocaleString()}
+                      </p>
+                      <p className="text-[10px] opacity-70 mt-0.5">
+                        (15% of parts value)
                       </p>
                     </div>
                   </div>
-                  <p className="text-xs mt-4 opacity-80">
-                    Calculated based on actual historical listings of similar
-                    models.
+
+                  <p className="text-sm mt-4 opacity-90">
+                    Price Range: ₱
+                    {Math.round(reusableValue * 0.85).toLocaleString()} - ₱
+                    {Math.round(reusableValue * 1.15).toLocaleString()}
                   </p>
+
+                  <div className="bg-white/10 rounded-xl p-3.5 mt-4 flex gap-2.5 items-start">
+                    <Info size={14} className="shrink-0 mt-0.5 opacity-90" />
+                    <p className="text-xs leading-relaxed opacity-95">
+                      This is a non-binding estimate. Actual offers may vary
+                      based on buyer assessment and market conditions.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 /* "No Transaction History Found" Slate Alternative Card */
@@ -1729,24 +1735,15 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 </div>
               )}
 
-              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-4">
-                <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                  <p className="text-xs font-bold text-gray-800">
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm space-y-3">
+                <div className="flex items-center gap-2">
+                  <Package size={18} className="text-[#17708c]" />
+                  <p className="text-lg font-bold text-gray-800">
                     Component Breakdown
                   </p>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-bold ${hasMarketHistory
-                      ? "bg-teal-50 text-[#2d7a7f]"
-                      : "bg-amber-50 text-amber-700"
-                      }`}
-                  >
-                    {hasMarketHistory
-                      ? "Value Deducted Pricing"
-                      : "Hardware Integrity Map"}
-                  </span>
                 </div>
 
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {issues.noDamage ? (
                     <div className="text-center py-4 bg-emerald-50/20 rounded-xl border border-dashed border-emerald-100">
                       <p className="text-xs text-emerald-600 font-bold">
@@ -1758,39 +1755,23 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     componentBreakdown.map((comp, idx) => (
                       <div
                         key={idx}
-                        className="flex justify-between items-center text-xs"
+                        className="flex justify-between items-center bg-gray-50/80 rounded-xl px-4 py-3"
                       >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${comp.status === "Intact" ? "bg-emerald-500" : "bg-red-400"}`}
-                          />
-                          <span className="text-gray-600 font-medium">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm text-gray-700 font-medium truncate">
                             {comp.label}
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${comp.status === "Intact"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-red-50 text-red-600 line-through"
-                              }`}
-                          >
-                            {comp.status}
-                          </span>
-
-                          {/* ALTERNATIVE VIEW FOR NEW MODELS vs POPULAR MODELS */}
+                        <div className="flex items-center gap-3 shrink-0">
                           {hasMarketHistory ? (
                             <span
-                              className={`font-bold w-16 text-right ${comp.status === "Intact" ? "text-gray-700" : "text-gray-400"}`}
+                              className={`text-sm font-bold ${comp.status === "Intact" ? "text-gray-800" : "text-gray-400"}`}
                             >
-                              ₱
-                              {comp.status === "Intact"
-                                ? comp.value.toLocaleString()
-                                : "0"}
+                              ₱{comp.value.toLocaleString()}
                             </span>
                           ) : (
-                            <span className="text-xs font-bold text-gray-400 w-16 text-right">
+                            <span className="text-xs font-bold text-gray-400">
                               {comp.weightPercentage}% alloc
                             </span>
                           )}
@@ -1798,6 +1779,15 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       </div>
                     ))
                   )}
+                </div>
+
+                <div className="pt-2 border-t border-gray-100 flex justify-between items-center">
+                  <span className="text-sm text-gray-500">
+                    Total Estimated Value
+                  </span>
+                  <span className="text-lg font-bold text-[#17708c]">
+                    ₱{reusableValue.toLocaleString()}
+                  </span>
                 </div>
 
                 {/* Bottom Summary context toggle display */}
@@ -1827,34 +1817,23 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 )}
               </div>
 
-              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-4">
+              <div className="bg-white rounded-2xl p-6 border-2 border-[#17708c] space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="text-[#2d7a7f]">
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="8" cy="8" r="6" />
-                      <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
-                      <path d="M7 6h1v4" />
-                    </svg>
-                  </div>
-                  <p className="text-sm font-bold text-gray-800">
+                  <Percent size={18} className="text-[#17708c]" />
+                  <p className="text-lg font-bold text-gray-800">
                     Set Your Asking Price
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-700">
+                  <label className="text-sm font-bold text-gray-800">
                     Your Asking Price <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
+                    <Percent
+                      size={16}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
                     <input
                       type="number"
                       value={formData.price}
@@ -1863,52 +1842,54 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       }
                       placeholder={
                         hasMarketHistory
-                          ? `Recommended: ₱${reusableValue}`
-                          : "Input your desired price"
+                          ? `e.g., ${reusableValue}`
+                          : "e.g., 6,000"
                       }
-                      className="w-full pl-6 pr-4 py-4 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-teal-500/10 focus:border-[#2d7a7f]"
+                      className="w-full pl-11 pr-4 py-4 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:border-[#17708c] placeholder:text-gray-300"
                     />
                   </div>
+                  <p className="text-xs text-gray-400">
+                    Set the minimum price you're willing to accept. Buyers can
+                    bid at or above this price.
+                  </p>
                 </div>
               </div>
 
               {/* Market Insights */}
-              <div className="bg-white rounded-2xl p-5 border border-gray-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <BarChart3 size={16} className="text-teal-500" />
-                  <p className="text-sm font-bold text-gray-800">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <BarChart3 size={18} className="text-[#17708c]" />
+                  <p className="text-lg font-bold text-gray-800">
                     Market Insights
                   </p>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-3">
                   {[
                     {
                       label: "Market Trend",
-                      val: hasMarketHistory ? "Active" : "New Model",
-                      icon: <TrendingUp size={14} />,
+                      val: hasMarketHistory ? "Stable" : "New Model",
+                      icon: <TrendingUp size={16} />,
                     },
                     {
                       label: "Price Range",
-                      val: hasMarketHistory
-                        ? `₱${scrapValue.toLocaleString()} - ₱${Math.round(reusableValue * 1.3).toLocaleString()}`
-                        : "Open Market",
-                      icon: <Percent size={14} />,
+                      val: hasMarketHistory ? "±30%" : "Open Market",
+                      icon: <Percent size={16} />,
                     },
                     {
                       label: "Confidence",
-                      val: hasMarketHistory ? "High" : "Low",
-                      icon: <ShieldCheck size={14} />,
+                      val: hasMarketHistory ? "Medium" : "Low",
+                      icon: <ShieldCheck size={16} />,
                     },
                   ].map((stat, i) => (
                     <div
                       key={i}
-                      className="bg-gray-50/50 p-3 rounded-xl text-center border border-gray-50 flex flex-col items-center justify-center"
+                      className="bg-gray-50/70 p-4 rounded-2xl text-center border border-gray-100 flex flex-col items-center justify-center gap-1"
                     >
-                      <div className="text-teal-500 mb-1">{stat.icon}</div>
-                      <p className="text-xs text-gray-400 mb-1 uppercase font-bold">
+                      <div className="text-[#17708c]">{stat.icon}</div>
+                      <p className="text-xs text-gray-400 font-medium">
                         {stat.label}
                       </p>
-                      <p className="text-xs font-bold text-gray-800 leading-tight">
+                      <p className="text-sm font-bold text-gray-800 leading-tight">
                         {stat.val}
                       </p>
                     </div>
@@ -1935,16 +1916,18 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               </div>
 
               {/* 2. Recommended Preparation Videos */}
-              <div className="bg-red-50/30 border border-red-100 rounded-2xl p-5 space-y-4">
-                <div className="flex items-center gap-2 text-red-600">
-                  <Video size={16} />
-                  <p className="text-sm font-bold">
+              <div className="bg-red-50/50 border border-red-100 rounded-2xl p-6 space-y-4">
+                <div className="flex items-center gap-2.5 text-gray-800">
+                  <div className="w-7 h-7 rounded-lg bg-red-100 flex items-center justify-center text-red-600">
+                    <Video size={16} />
+                  </div>
+                  <p className="text-lg font-bold">
                     Recommended Preparation Videos
                   </p>
                 </div>
-                <p className="text-xs text-gray-500">
-                  Watch these certified video tutorials to securely wipe and
-                  arrange your hardware:
+                <p className="text-sm text-gray-500">
+                  Watch these helpful guides to properly prepare your{" "}
+                  {formData.model || activeLabel} for sale:
                 </p>
                 <div className="space-y-2">
                   {[
@@ -1972,8 +1955,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       className="flex items-center justify-between p-3 bg-white border border-red-50 rounded-xl group hover:border-red-200 transition-colors block text-left decoration-none"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="bg-red-50 p-2 rounded-lg text-red-500">
-                          <Video size={14} />
+                        <div className="bg-red-100 p-2.5 rounded-xl text-red-500">
+                          <Video size={16} />
                         </div>
                         <div>
                           <p className="text-xs font-bold text-gray-800 group-hover:text-red-600 transition-colors">
@@ -1991,33 +1974,32 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               </div>
 
               {/* 3. Data Sanitization Header & Checklist */}
-              <div className="bg-orange-50/30 border border-orange-100 rounded-2xl p-5 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 space-y-4">
                 <div className="flex items-start gap-3">
                   <AlertTriangle
-                    size={18}
-                    className="text-orange-500 shrink-0"
+                    size={20}
+                    className="text-amber-500 shrink-0 mt-0.5"
                   />
 
                   {/* STEP 1: Add 'relative' and 'z-index' to this wrapper */}
                   <div className="space-y-2 relative z-[60]">
-                    <p className="text-sm font-bold text-gray-800">
+                    <p className="text-base font-bold text-gray-800">
                       Data Sanitization Required
                     </p>
-                    <p className="text-xs text-gray-500 leading-tight">
+                    <p className="text-sm text-gray-600 leading-relaxed">
                       Before listing your device, please ensure all personal
                       data has been removed.
                     </p>
 
-                    {/* STEP 2: Ensure the button has 'cursor-pointer' and 'pointer-events-auto' */}
                     <button
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation(); // Prevents the click from triggering parent scroll events
                         setShowSanitizationGuide(true);
                       }}
-                      className="flex items-center gap-2 px-3 py-1.5 border border-orange-200 rounded-lg text-orange-600 text-xs font-bold bg-white hover:bg-orange-50 active:scale-95 transition-all cursor-pointer pointer-events-auto"
+                      className="flex items-center gap-2 px-4 py-2 border-2 border-amber-400 rounded-xl text-amber-600 text-sm font-bold bg-transparent hover:bg-amber-100 active:scale-95 transition-all cursor-pointer pointer-events-auto"
                     >
-                      <ExternalLink size={12} /> View Sanitization Guide
+                      <ExternalLink size={14} /> View Sanitization Guide
                     </button>
                   </div>
                 </div>
@@ -2040,8 +2022,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-5 shadow-sm">
                   {applicableChecklistItems.length > 0 ? (
                     <>
-                      <p className="text-xs text-gray-400">
-                        Confirm each applicable preparation step has been completed for{" "}
+                      <p className="text-sm text-gray-500">
+                        Confirm each step has been completed for{" "}
                         {formData.model || "this device"}:
                       </p>
 
@@ -2074,10 +2056,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                           </div>
 
                           <div className="space-y-1">
-                            <p className="text-xs font-bold text-gray-800 group-hover:text-[#2d7a7f]">
+                            <p className="text-base font-bold text-gray-800 group-hover:text-[#2d7a7f]">
                               {item.label}
                             </p>
-                            <p className="text-xs text-gray-400 leading-tight">
+                            <p className="text-sm text-gray-400 leading-snug">
                               {item.sub}
                             </p>
                           </div>
@@ -2106,11 +2088,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
               {/* 4. Hazardous Materials Section */}
               {showHazardWarning && (
-                <div className="bg-orange-50/30 border border-orange-100 rounded-2xl p-5 space-y-4">
+                <div className="bg-orange-50/60 border border-orange-200 rounded-2xl p-6 space-y-4">
                   <div className="flex items-start gap-3">
                     <ShieldCheck
-                      size={20}
-                      className="text-orange-500 shrink-0"
+                      size={22}
+                      className="text-orange-500 shrink-0 mt-0.5"
                     />
                     <div className="space-y-3 w-full">
                       <p className="text-sm font-bold text-gray-800">
@@ -2155,7 +2137,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
               {/* Footer Acknowledgement Section */}
               <div className="space-y-4 pt-4">
-                <label className="flex items-start gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer border border-gray-100">
+                <label className="flex items-start gap-3 p-5 bg-gray-50 rounded-2xl cursor-pointer border border-gray-100">
                   <input
                     type="checkbox"
                     checked={checklist.valuationAcknowledged}
@@ -2165,20 +2147,29 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     className="mt-1 w-4 h-4 rounded border-gray-300 text-[#2d7a7f]"
                   />
                   <div className="space-y-1">
-                    <p className="text-xs font-bold text-gray-800">
-                      {hasMarketHistory
-                        ? "I acknowledge the valuation terms"
-                        : "I acknowledge the new model manual listing pricing terms"}
+                    <p className="text-base font-bold text-gray-800">
+                      I acknowledge the valuation is a non-binding estimate
                     </p>
-                    <p className="text-xs text-gray-500 leading-tight">
-                      {hasMarketHistory
-                        ? `I understand the Estimated Recovery Value (₱${reusableValue.toLocaleString()}) is for decision support only. Actual offers from buyers may vary based on assessment.`
-                        : "I understand that estimated marketplace recovery values are currently inactive for this model, and I am establishing an open-market target price manual configuration."}
+                    <p className="text-sm text-gray-500 leading-relaxed">
+                      {hasMarketHistory ? (
+                        <>
+                          I understand the Estimated Recovery Value (
+                          <span className="text-[#17708c] font-semibold inline-flex items-center gap-1">
+                            <Percent size={12} className="inline" />₱
+                            {reusableValue.toLocaleString()}
+                          </span>
+                          ) is for decision-support only. Actual offers from
+                          buyers may vary based on their assessment and market
+                          conditions.
+                        </>
+                      ) : (
+                        "I understand that estimated marketplace recovery values are currently inactive for this model, and I am establishing an open-market target price manual configuration."
+                      )}
                     </p>
                   </div>
                 </label>
 
-                {!isStep3Complete && (
+                {!isStep4Complete && (
                   <p className="text-center text-xs text-red-500 font-bold px-6">
                     Mandatory fields missing. Complete the device model, condition,
                     asking price, all applicable checks ({getApplicableChecklistKeys().length}),
@@ -2187,17 +2178,17 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   </p>
                 )}
 
-                <div className="flex gap-4 sticky bottom-0 bg-white/90 backdrop-blur pb-4">
+                <div className="flex gap-4 sticky bottom-0 bg-white/90 backdrop-blur pb-2">
                   <button
-                    onClick={() => setStep(2)}
-                    className="flex-1 py-4 border border-gray-200 text-gray-500 rounded-2xl font-bold"
+                    onClick={() => setStep(3)}
+                    className="flex-1 py-4 border border-gray-200 text-gray-600 rounded-2xl font-bold hover:bg-gray-50 transition-colors"
                   >
                     Back
                   </button>
                   <button
-                    disabled={!isStep3Complete || loading}
+                    disabled={!isStep4Complete || loading}
                     onClick={handleFinish}
-                    className="flex-[2] py-4 bg-[#ccd2d9] text-white rounded-2xl font-bold disabled:bg-[#ccd2d9] enabled:bg-[#2d7a7f]"
+                    className="flex-1 py-4 rounded-2xl font-bold text-base transition-all enabled:bg-[#17708c] enabled:text-white enabled:hover:bg-[#125f75] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
                   >
                     {loading ? "Processing..." : "Create Listing"}
                   </button>

@@ -6,15 +6,12 @@ import AdminSignup from "./AdminSignup";
 import wastelessLogo from "./assets/wasteless-logo.png";
 
 import {
-  Recycle,
-  Shield,
   Mail,
   Lock,
   ArrowRight,
 } from "lucide-react";
 
 const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
-  const [role, setRole] = useState("");
   const [isAdminView, setIsAdminView] = useState(false);
   const [isOfficerView, setIsOfficerView] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -201,11 +198,9 @@ if (isForgotPasswordView) {
 
     setErrorMsg("");
 
-    if (!role) {
-      setErrorMsg("Please select your role before signing in.");
-      return;
-    }
-
+    // Role selection was removed: the account's role is read from its
+    // profile after authentication and the correct dashboard is rendered
+    // automatically. One account = one role, enforced by the profile.
     if (!email || !password) {
       setErrorMsg("Please enter your email and password.");
       return;
@@ -245,32 +240,15 @@ if (isForgotPasswordView) {
         throw profileError;
       }
 
-      console.log("Selected role:", role);
-      console.log("Database role:", profile?.role);
-
-      // Check whether selected role matches database role
-
-      // Check whether selected role matches database role
-      const roleNames = {
-        seller: "Seller",
-        harvester: "Tech-Owner/Dealer",
-        repair_shop: "Repair Shop",
-      };
-
-      if (!profile || profile.role !== role) {
-        const selectedRole = roleNames[role] || role;
-        const registeredRole =
-          roleNames[profile?.role] || "another role";
-
-        setErrorMsg(
-          `Wrong Role Selected: You selected ${selectedRole}, but this account is registered as a ${registeredRole}. Please select the correct role to sign in.`
-        );
-
+      // The profile's own role decides which dashboard opens; no manual
+      // role pick means users can never sign in "as the wrong role".
+      if (!profile || !profile.role) {
         await supabase.auth.signOut();
+        setErrorMsg(
+          "This account has no role assigned yet. Please complete your registration first."
+        );
         return;
       }
-
-      console.log("Auth and Role match success!");
 
       if (setIsRoleChecking) {
         setIsRoleChecking(false);
@@ -299,14 +277,9 @@ if (isForgotPasswordView) {
   // =========================
   const handleSocialLogin = async (provider) => {
     try {
-      if (!role) {
-        setErrorMsg("Please select your role before continuing.");
-        return;
-      }
-
       setErrorMsg("");
-      // Remember the selected role for the OAuth callback
-localStorage.setItem("wasteless_login_role", role);
+      // No manual role: App.jsx routes social logins by the profile's role.
+      localStorage.removeItem("wasteless_login_role");
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -328,24 +301,6 @@ localStorage.setItem("wasteless_login_role", role);
       setErrorMsg("Authentication failed. Please try again.");
     }
   };
-
-  // =========================
-  // ROLE OPTIONS
-  // =========================
-  const roles = [
-    {
-      id: "harvester",
-      title: "Tech-Owner/Dealer",
-      desc: "Buy and sell electronic items.",
-      icon: <Recycle size={20} />,
-    },
-    {
-      id: "repair_shop",
-      title: "Repair Shop",
-      desc: "Browse and bid on components",
-      icon: <Shield size={20} />,
-    },
-  ];
 
   return (
     <div className="flex min-h-screen w-full bg-white font-sans overflow-hidden">
@@ -425,60 +380,6 @@ localStorage.setItem("wasteless_login_role", role);
               </button>
             </div>
           )}
-
-          {/* ROLE LABEL */}
-          <label className="text-xs font-bold text-[#4d5667] mb-3 block">
-            Select Your Role
-          </label>
-
-          {/* ROLE CARDS */}
-          <div className="grid grid-cols-2 gap-3 mb-7">
-
-            {roles.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setRole(item.id);
-                  setErrorMsg("");
-                }}
-                className={`
-                  min-h-[104px]
-                  p-4
-                  rounded-xl
-                  border
-                  text-left
-                  transition-all
-                  duration-200
-                  ${role === item.id
-                    ? "border-[#238ba5] bg-[#f4fbfc] ring-1 ring-[#238ba5]"
-                    : "border-[#dfe3e8] bg-white hover:border-[#bfc6cf]"
-                  }
-                `}
-              >
-
-                <div
-                  className={`
-                    mb-3
-                    ${role === item.id
-                      ? "text-[#238ba5]"
-                      : "text-[#9ca3af]"
-                    }
-                  `}
-                >
-                  {item.icon}
-                </div>
-
-                <p className="text-[12px] font-bold text-[#182033] leading-tight">
-                  {item.title}
-                </p>
-
-                <p className="text-xs text-[#7c8494] leading-tight mt-1">
-                  {item.desc}
-                </p>
-              </button>
-            ))}
-          </div>
 
           {/* LOGIN FORM */}
           <form onSubmit={handleEmailLogin} className="space-y-5">

@@ -945,6 +945,40 @@ React.useEffect(() => {
   shopLocation,
 ]);
 
+
+  // Never trust a cached auth user ID on its own. The Auth user may have been
+  // deleted/recreated in Supabase while old signup progress remained in this
+  // browser. Confirm the cached ID against the active session; otherwise drop
+  // the stale identity and return to the OTP stage (or credentials stage).
+  React.useEffect(() => {
+    let cancelled = false;
+    const validateRestoredIdentity = async () => {
+      if (!savedProgress.authUserId) return;
+      try {
+        // getUser() validates with the Auth server; getSession() alone may
+        // return a locally cached session for a user deleted from Auth.
+        const { data, error } = await supabase.auth.getUser();
+        if (cancelled) return;
+        const activeUserId = data?.user?.id || null;
+        if (error || activeUserId !== savedProgress.authUserId) {
+          setAuthUserId(null);
+          setEmailVerified(false);
+          setStep(savedProgress.step >= 3 ? 3 : 2);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.warn("Could not validate restored signup identity:", error);
+        setAuthUserId(null);
+        setEmailVerified(false);
+        setStep(savedProgress.step >= 3 ? 3 : 2);
+      }
+    };
+    validateRestoredIdentity();
+    return () => { cancelled = true; };
+  // Run once on mount: savedProgress is the snapshot used to initialize state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // =========================
   // Turn a raw Supabase/Auth error into something a
   // non-technical user can actually understand and act on.
@@ -1388,15 +1422,23 @@ React.useEffect(() => {
     }
 
     if (step === 2) {
-      // If this email already passed the account-creation step, do not call
-      // supabase.auth.signUp() again when the user navigates backward.
-      // Continue to OTP when the email is still unverified, or return directly
-      // to the details step when verification is already complete. This also
-      // supports a page refresh, where passwords are intentionally not restored.
+      // A cached ID is not proof that the Auth user still exists. Validate it
+      // against the current Supabase session before allowing the flow to skip
+      // account creation. This prevents a deleted user's old localStorage ID
+      // from jumping straight to the document/details stage.
       if (authUserId) {
-        setErrors((prev) => ({ ...prev, email: "" }));
-        setStep(emailVerified ? 4 : 3);
-        return;
+        try {
+          const { data, error } = await supabase.auth.getUser();
+          if (!error && data?.user?.id === authUserId) {
+            setErrors((prev) => ({ ...prev, email: "" }));
+            setStep(emailVerified ? 4 : 3);
+            return;
+          }
+        } catch (identityError) {
+          console.warn("Cached signup identity is no longer valid:", identityError);
+        }
+        setAuthUserId(null);
+        setEmailVerified(false);
       }
 
       if (!formData.email.trim() || !formData.password || !formData.confirmPassword) { alert("Please enter your email and password, then confirm your password."); return; }
@@ -1428,6 +1470,7 @@ React.useEffect(() => {
         }
 
         setAuthUserId(data.user.id);
+        setEmailVerified(false);
         setStep(3);
         alert("A verification code has been sent to your email. Check your inbox and spam folder.");
       } catch (err) {
@@ -2623,19 +2666,7 @@ React.useEffect(() => {
                 <p className="text-xs text-emerald-800 leading-relaxed">Review all information carefully. You can edit any field by going back before creating your account.</p>
               </div>
 
-              {accountType === "harvester" && (
-                <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">✓</div>
-                    <div>
-                      <p className="text-sm font-black text-emerald-900">Government ID Scan Verified</p>
-                      <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
-                        The extracted <strong>name, address, and barangay</strong> are shown below. Please check them carefully before creating the account.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              
 
               <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden text-sm">
                 {[
