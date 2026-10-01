@@ -2670,7 +2670,7 @@ React.useEffect(() => {
 
               <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden text-sm">
                 {[
-                  ["Account Type", accountType === "harvester" ? "Community User / Tech-Dealer" : "Repair Shop"],
+                  ["Role", accountType === "harvester" ? "Community User / Tech-Dealer" : "Repair Shop"],
                   ["Email", formData.email],
                   ["Full Name", formData.fullName],
                   ["Address", formData.address],

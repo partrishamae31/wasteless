@@ -1364,7 +1364,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       return new Date(b.created_at) - new Date(a.created_at);
     });
   return (
-    <div className="min-h-screen bg-[#f1f5f9] font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
       {/* =========================================================
           TC_ALT_01 — COMPONENT ALERT LIVE TOAST
           ========================================================= */}
@@ -1410,7 +1410,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       )}
       {/* ===== TOP BANNER ===== */}
       <div
-        className="relative overflow-hidden min-h-[380px] px-6 pt-6 pb-8 bg-cover bg-center"
+        className="relative overflow-hidden min-h-[360px] px-6 pt-6 pb-8 bg-cover bg-center"
         style={{
           backgroundImage: `linear-gradient(
           rgba(255, 255, 255, 0.09),
@@ -1424,7 +1424,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         {/* CONTENT */}
         <div className="relative z-10">
           {/* --- TOP HEADER SECTION --- */}
-          <div className="flex justify-end items-center mb-10 gap-3">
+          <div className="flex justify-end items-center min-h-11 mb-8 gap-3">
             {/* Message Icon Container */}
             <div className="relative">
               <button
@@ -1451,7 +1451,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             <div className="relative">
               <div
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="bg-white/90 backdrop-blur-md p-2.5 rounded-full shadow-sm border border-white/50 cursor-pointer hover:bg-white transition-all text-slate-600"
+                className="w-11 h-11 flex items-center justify-center bg-white/90 backdrop-blur-md rounded-full shadow-sm border border-white/60 cursor-pointer hover:bg-white transition-all text-slate-600"
               >
                 <Bell size={20} />
               </div>
@@ -1472,7 +1472,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     aria-hidden="true"
                   />
 
-                  <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div className="absolute right-0 top-full mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
                   <div className="p-5 border-b border-slate-50 flex justify-between items-center">
                     <h3 className="font-black text-slate-800 text-xs uppercase tracking-tight">
                       Notifications
@@ -1675,10 +1675,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             />
           )}
           {showProfileModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-              <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 backdrop-blur-sm p-4 sm:p-6">
+              <div className="bg-white w-full max-w-2xl rounded-[2rem] overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[92vh] flex flex-col border border-white/80">
                 {/* HEADER */}
-                <div className="bg-gradient-to-br from-[#769c2d] to-lime-700 p-6 text-white relative">
+                <div className="bg-gradient-to-br from-[#527a24] via-[#769c2d] to-[#8fb83c] p-6 sm:p-7 text-white relative min-h-[148px]">
                   <button
                     onClick={() => {
                       setShowProfileModal(false);
@@ -1709,8 +1709,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
                           <Shield size={10} />
                           {verificationStatus === "verified"
-                            ? "Verified Repair Shop"
-                            : "Pending Verification"}
+                            ? (isRepairShop ? "Verified Repair Shop" : "Verified Harvester")
+                            : (isRepairShop ? "Pending Verification" : "Account Verification")}
                         </span>
 
                         <span className="text-xs opacity-80">
@@ -1729,7 +1729,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 </div>
 
                 {/* CONTENT */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+                <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6 bg-slate-50">
                   {/* EDIT BUTTON */}
                   <div className="flex justify-end">
                     <button
@@ -1742,21 +1742,21 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   </div>
 
                   {/* STATS */}
-                  <div className="grid grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {[
                       {
                         label: "Active Bids",
                         val: profileData?.active_bids || 0,
                         icon: <Gavel size={16} />,
-                        color: "text-blue-500",
-                        bg: "bg-blue-50",
+                        color: "text-[#527a24]",
+                        bg: "bg-lime-50",
                       },
                       {
                         label: "Recovered",
                         val: profileData?.completed_pickups || 0,
                         icon: <Package size={16} />,
-                        color: "text-green-500",
-                        bg: "bg-green-50",
+                        color: "text-emerald-600",
+                        bg: "bg-emerald-50",
                       },
                       {
                         label: "Rating",
@@ -1764,20 +1764,20 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           1,
                         ),
                         icon: <Star size={16} />,
-                        color: "text-yellow-500",
-                        bg: "bg-yellow-50",
+                        color: "text-amber-500",
+                        bg: "bg-amber-50",
                       },
                       {
                         label: "Reviews",
                         val: profileData?.total_reviews || 0,
                         icon: <MessageSquareText size={16} />,
-                        color: "text-purple-500",
-                        bg: "bg-purple-50",
+                        color: "text-sky-600",
+                        bg: "bg-sky-50",
                       },
                     ].map((stat, i) => (
                       <div
                         key={i}
-                        className={`${stat.bg} p-3 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center`}
+                        className={`${stat.bg} p-3 rounded-2xl border border-slate-200/70 shadow-sm flex flex-col items-center justify-center text-center min-h-[88px]`}
                       >
                         <div className={`${stat.color} mb-1`}>{stat.icon}</div>
 
@@ -1848,7 +1848,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   </div>
 
                   {/* TRUST TIER */}
-                  <div className="bg-gradient-to-br from-purple-700 via-indigo-700 to-slate-900 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
+                  <div className="bg-gradient-to-br from-[#365c20] via-[#527a24] to-[#18351f] rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
                     <Award
                       className="absolute right-4 top-4 opacity-10"
                       size={72}
@@ -1857,7 +1857,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     <div className="relative z-10">
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <p className="text-xs font-black uppercase tracking-[0.2em] text-purple-200">
+                          <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-200">
                             Trust Tier
                           </p>
                           <h3 className="text-2xl font-black mt-1">
@@ -1989,12 +1989,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           </span>
                         )}
 
-                        <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                        <span className="bg-white/10 text-lime-100 border border-white/15 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                           <Star size={10} />
                           {Number(userTrustStats.averageRating || 0).toFixed(1)} Rating
                         </span>
 
-                        <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                        <span className="bg-white/10 text-lime-100 border border-white/15 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                           <MessageSquareText size={10} />
                           {userTrustStats.totalReviews} Reviews
                         </span>
@@ -2004,14 +2004,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
                   {/* PERSONAL INFO */}
                   {/* PERSONAL INFO */}
-                  <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center justify-between border-b pb-2">
-                      <h3 className="font-bold text-gray-800 text-sm">
+                  <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-200/80">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <h3 className="font-black text-slate-800 text-sm">
                         Personal Information
                       </h3>
 
                       {isEditingProfile && (
-                        <span className="text-xs font-bold uppercase text-[#769c2d] bg-lime-50 px-2 py-1 rounded-full">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#527a24] bg-lime-50 border border-lime-100 px-2.5 py-1 rounded-full">
                           Editing
                         </span>
                       )}
@@ -2034,6 +2034,99 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           </p>
                         </div>
                       </div>
+
+                      {/* ABOUT / SERVICES OFFERED */}
+                      {isRepairShop && (
+                        <div className="flex items-start gap-3">
+                          <Building2
+                            size={14}
+                            className="text-slate-400 mt-1 shrink-0"
+                          />
+
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-xs font-bold text-slate-400 uppercase">
+                                About / Services Offered
+                              </p>
+                              {isEditingProfile && (
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-[#769c2d]">
+                                  Editable
+                                </span>
+                              )}
+                            </div>
+
+                            {isEditingProfile ? (
+                              <textarea
+                                value={profileData?.business_activity || ""}
+                                onChange={(e) =>
+                                  setProfileData((prev) => ({
+                                    ...prev,
+                                    business_activity: e.target.value,
+                                  }))
+                                }
+                                rows={4}
+                                maxLength={500}
+                                placeholder="Tell customers what repair services you offer, such as phone repair, laptop repair, diagnostics, parts replacement, software troubleshooting, and other services."
+                                className="w-full mt-2 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none resize-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              />
+                            ) : (
+                              <p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-line">
+                                {profileData?.business_activity?.trim() ||
+                                  "No services or business description provided yet."}
+                              </p>
+                            )}
+
+                            {isEditingProfile && (
+                              <p className="text-[11px] text-slate-400 mt-1.5">
+                                {String(profileData?.business_activity || "").length}/500 characters. This information can help customers understand your repair services.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* TECHNICAL SPECIALIZATION */}
+                      {isRepairShop && (
+                        <div className="flex items-start gap-3">
+                          <Settings
+                            size={14}
+                            className="text-slate-400 mt-1 shrink-0"
+                          />
+
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-slate-400 uppercase">
+                              Technical Specialization
+                            </p>
+
+                            {isEditingProfile ? (
+                              <textarea
+                                value={profileData?.tech_specialization || ""}
+                                onChange={(e) =>
+                                  setProfileData((prev) => ({
+                                    ...prev,
+                                    tech_specialization: e.target.value,
+                                  }))
+                                }
+                                rows={3}
+                                maxLength={300}
+                                placeholder="Example: Smartphone diagnostics, iPhone repair, Android repair, laptop motherboard repair, data recovery..."
+                                className="w-full mt-2 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none resize-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              />
+                            ) : (
+                              <p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-line">
+                                {profileData?.tech_specialization?.trim() ||
+                                  "No technical specialization provided yet."}
+                              </p>
+                            )}
+
+                            {isEditingProfile && (
+                              <p className="text-[11px] text-slate-400 mt-1.5">
+                                {String(profileData?.tech_specialization || "").length}/300 characters.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       {/* FULL NAME */}
                       <div className="flex items-start gap-3">
@@ -2058,7 +2151,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                                 }))
                               }
                               placeholder="Enter your full name"
-                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 bg-slate-50/60 rounded-xl text-sm text-slate-700 outline-none transition-all focus:bg-white focus:border-[#769c2d] focus:ring-4 focus:ring-lime-100"
                             />
                           ) : (
                             <p className="text-sm font-semibold text-slate-700">
@@ -2124,7 +2217,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                                 }))
                               }
                               placeholder="Enter your phone number"
-                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 bg-slate-50/60 rounded-xl text-sm text-slate-700 outline-none transition-all focus:bg-white focus:border-[#769c2d] focus:ring-4 focus:ring-lime-100"
                             />
                           ) : (
                             <p className="text-sm font-semibold text-slate-700">
@@ -2157,7 +2250,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                                 }))
                               }
                               placeholder="Enter your barangay"
-                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 bg-slate-50/60 rounded-xl text-sm text-slate-700 outline-none transition-all focus:bg-white focus:border-[#769c2d] focus:ring-4 focus:ring-lime-100"
                             />
                           ) : (
                             <p className="text-sm font-semibold text-slate-700">
@@ -2180,7 +2273,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           </p>
 
                           <div className="mt-1">
-                            <span className="inline-flex items-center gap-1 bg-lime-50 text-[#769c2d] px-3 py-1.5 rounded-full text-xs font-bold">
+                            <span className="inline-flex items-center gap-1 bg-lime-50 border border-lime-100 text-[#527a24] px-3 py-1.5 rounded-full text-xs font-black">
                               <Shield size={11} />
                               {profileData?.role || "Harvester"}
                             </span>
@@ -2222,7 +2315,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   <div className="mx-6 mb-6 space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
                     <div className="flex items-start justify-between gap-4 border-b pb-3">
                       <div>
-                        <h3 className="font-bold text-gray-800 text-sm">
+                        <h3 className="font-black text-slate-800 text-sm">
                           Verification Documents
                         </h3>
                         <p className="text-xs text-slate-400 mt-1">
@@ -2318,7 +2411,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           type="button"
                           onClick={handleResubmitVerification}
                           disabled={resubmittingVerification}
-                          className="w-full bg-[#769c2d] text-white py-3 rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-lime-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                          className="w-full bg-[#527a24] text-white py-3 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-[#3f611c] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
                         >
                           {resubmittingVerification ? "Resubmitting Documents..." : "Resubmit for Verification"}
                         </button>
@@ -2333,10 +2426,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
                 {/* FOOTER */}
                 {isEditingProfile && (
-                  <div className="p-4 border-t border-slate-100 flex gap-3 bg-white">
+                  <div className="p-4 sm:p-5 border-t border-slate-200 flex gap-3 bg-white">
                     <button
                       onClick={() => setIsEditingProfile(false)}
-                      className="flex-1 py-3 text-xs font-black text-slate-400"
+                      className="flex-1 py-3 text-xs font-black text-slate-500 rounded-xl hover:bg-slate-50 transition-colors"
                     >
                       Cancel
                     </button>
@@ -2355,6 +2448,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                             email: profileData.email,
                             contact_number: profileData.contact_number,
                             barangay: profileData.assigned_area,
+                            business_activity: profileData.business_activity,
+                            tech_specialization: profileData.tech_specialization,
                           });
 
                           const { data, error } = await supabase
@@ -2366,6 +2461,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               contact_number: profileData.contact_number?.trim() || null,
                               barangay:
                                 profileData.assigned_area?.trim() || null,
+                              business_activity:
+                                profileData.business_activity?.trim() || null,
+                              tech_specialization:
+                                profileData.tech_specialization?.trim() || null,
                             })
                             .eq("id", session.user.id)
                             .select()
@@ -2386,6 +2485,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                             email: data.email,
                             contact_number: data.contact_number || "",
                             assigned_area: data.barangay || "",
+                            business_activity: data.business_activity || "",
+                            tech_specialization: data.tech_specialization || "",
                           }));
 
                           setIsEditingProfile(false);
@@ -2473,7 +2574,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           )}
 
           {/* --- STATS GRID --- */}
-          <div className="grid grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5 mb-8">
             <StatCard
               label="Active Alerts"
               value={dashboardStats.activeAlerts.toString()}
@@ -2497,7 +2598,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           </div>
 
           {/* --- NAVIGATION --- */}
-          <div className="bg-white/90 backdrop-blur-md rounded-[2rem] border border-white/50 shadow-lg px-9 py-6 flex flex-wrap gap-16 items-center">
+          <div className="bg-white/95 backdrop-blur-md rounded-[2rem] border border-white shadow-lg px-16 py-4 flex flex-wrap gap-8 items-stretch z-1000">
             <NavBtn
               active={activeTab === "browse"}
               onClick={() => setActiveTab("browse")}
@@ -2561,7 +2662,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         </div>
       </div>
 
-      <div className="bg-white  border border-slate-100 shadow-sm p-4 mb-8">
+      <div className="bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5 mb-8 rounded-[2rem]">
         {/* =========================================================
     SEARCH + FILTER
     TC_MAP_01: Listing filter/search UI is shown ONLY on Browse Listings.
@@ -2569,7 +2670,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 ========================================================= */}
         {activeTab === "browse" && (
           <>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-5">
+            <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 shadow-sm p-4 mb-5">
               <div className="flex flex-col md:flex-row gap-3">
                 {/* SEARCH */}
                 <div className="relative flex-1">
@@ -2644,7 +2745,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
         {/* --- TAB CONTENT --- */}
         {activeTab === "browse" ? (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-20">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 pb-20">
             {loading ? (
               <div className="xl:col-span-2 py-20 text-center">
                 <div className="w-8 h-8 border-2 border-[#769c2d] border-t-transparent rounded-full animate-spin mx-auto" />
@@ -3942,9 +4043,9 @@ const NavBtn = ({ active, onClick, icon, label, disabled }) => (
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`flex items-center gap-2 px-11 py-4 rounded-2xl font-black text-xs transition-all ${active
-      ? "bg-[#769c2d] text-white shadow-md"
-      : "bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 border border-white/50"
+    className={`flex-1 sm:flex-none min-w-[150px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-black text-xs transition-all ${active
+      ? "bg-[#527a24] text-white shadow-md"
+      : "bg-white text-slate-500 hover:bg-lime-50 hover:text-[#527a24] border border-slate-100"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
   >
     {icon}
@@ -4987,3 +5088,4 @@ const PlaceBidModal = ({
 };
 
 export default HarvesterDashboard;
+// UI enhancement: stabilized dashboard layout and standardized profile visual styling.

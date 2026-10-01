@@ -8,15 +8,13 @@ import {
   User,
   Star,
   Filter,
-  Users,
-  Activity,
-  BadgeCheck,
-  Database,
 } from "lucide-react";
 
 import VerifyCredentialsModal from "./src/components/modals/VerifyCredentialsModal";
 import UserDetailsModal from "./src/components/modals/UserDetailsModal";
 import { scopeQuery } from "./barangayScope";
+
+const UNAVAILABLE_PROFILE_STATUSES = new Set(["deactivated", "suspended"]);
 
 const UserManagement = ({ adminBarangay }) => {
   const [users, setUsers] = useState([]);
@@ -32,11 +30,11 @@ const UserManagement = ({ adminBarangay }) => {
 
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedUserForDetails, setSelectedUserForDetails] = useState(null);
+  const [unavailableProfile, setUnavailableProfile] = useState(null);
 
   const fetchUsers = async () => {
     setLoading(true);
 
-    // BARANGAY COORDINATOR SCOPE: only users registered in this admin's barangay.
     let query = supabase
       .from("profiles")
       .select("*")
@@ -92,8 +90,20 @@ const UserManagement = ({ adminBarangay }) => {
     setFilteredUsers(result);
   }, [searchQuery, roleFilter, verificationFilter, users]);
 
+  const getProfileStatus = (user) =>
+    String(user?.status || "active").trim().toLowerCase();
+
+  const isProfileUnavailable = (user) =>
+    UNAVAILABLE_PROFILE_STATUSES.has(getProfileStatus(user));
+
+  const getUnavailableStatusLabel = (user) =>
+    getProfileStatus(user) === "deactivated" ? "deactivated" : "suspended";
+
   const getVerificationState = (user) => {
-    if (user?.is_verified || user?.verification_status?.toLowerCase() === "verified") {
+    if (
+      user?.is_verified ||
+      user?.verification_status?.toLowerCase() === "verified"
+    ) {
       return "verified";
     }
 
@@ -149,10 +159,16 @@ const UserManagement = ({ adminBarangay }) => {
   };
 
   const handleSuspendToggle = async (user) => {
-    const currentStatus = (user.status || "").toLowerCase();
+    const currentStatus = getProfileStatus(user);
+
+    // Deactivated accounts are intentionally not silently reactivated from
+    // the suspend control. Their status is different from a temporary suspension.
+    if (currentStatus === "deactivated") {
+      setUnavailableProfile(user);
+      return;
+    }
 
     const newStatus = currentStatus === "active" ? "suspended" : "active";
-
     const action = currentStatus === "active" ? "SUSPEND" : "ACTIVATE";
 
     if (
@@ -166,7 +182,15 @@ const UserManagement = ({ adminBarangay }) => {
       if (error) {
         alert(error.message);
       } else {
-        fetchUsers();
+        // Immediately close any private profile view if the viewed account
+        // has just become unavailable.
+        if (newStatus === "suspended" && selectedUserForDetails?.id === user.id) {
+          setSelectedUserForDetails(null);
+          setIsDetailsOpen(false);
+          setUnavailableProfile({ ...user, status: newStatus });
+        }
+
+        await fetchUsers();
       }
     }
   };
@@ -177,21 +201,22 @@ const UserManagement = ({ adminBarangay }) => {
   };
 
   const handleViewDetails = (user) => {
+    // TC_VUP_07: never pass private profile data into UserDetailsModal when
+    // the target account is suspended or deactivated.
+    if (isProfileUnavailable(user)) {
+      setSelectedUserForDetails(null);
+      setIsDetailsOpen(false);
+      setUnavailableProfile(user);
+      return;
+    }
+
+    setUnavailableProfile(null);
     setSelectedUserForDetails(user);
     setIsDetailsOpen(true);
   };
 
-  // DASHBOARD COUNTS
   const totalUsers = users.length;
-  const activeListings = users.filter((u) => u.status === "active").length;
-
   const verifiedUsers = users.filter((u) => u.is_verified).length;
-
-  const totalTransactions = users.reduce(
-    (acc, user) => acc + (user.transactions_count || 0),
-    0,
-  );
-
   const pendingUsers = users.filter((u) => u.verification_status === "pending");
 
   const handleDismiss = async (user) => {
@@ -226,9 +251,6 @@ const UserManagement = ({ adminBarangay }) => {
       return;
     }
 
-    // The reason is intentionally not written to a guessed database column.
-    // If a verification_rejection_reason column is added later, this handler
-    // can persist `reason` there and the email workflow can use the same value.
     console.info("Verification rejection reason:", reason);
 
     await fetchUsers();
@@ -240,7 +262,6 @@ const UserManagement = ({ adminBarangay }) => {
 
   return (
     <div className="min-h-screen bg-[#f6f8fb] p-6 lg:p-8">
-      {/* PAGE TITLE */}
       <div className="mb-6">
         <h1 className="text-[28px] font-semibold text-slate-800">
           User Management
@@ -253,7 +274,6 @@ const UserManagement = ({ adminBarangay }) => {
         </p>
       </div>
 
-      {/* PENDING REQUESTS */}
       <div className="mt-6 rounded-2xl border border-orange-100 bg-[#fff7ed] p-5">
         <div className="flex items-center gap-2">
           <div className="rounded-lg bg-orange-500 p-2 text-white">
@@ -272,7 +292,6 @@ const UserManagement = ({ adminBarangay }) => {
         </div>
       </div>
 
-      {/* PENDING CARDS */}
       <div className="mt-4 space-y-4">
         {pendingUsers.slice(0, 3).map((user) => (
           <div
@@ -329,10 +348,8 @@ const UserManagement = ({ adminBarangay }) => {
         ))}
       </div>
 
-      {/* SEARCH + FILTERS */}
       <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          {/* SEARCH */}
           <div className="relative flex-1">
             <Search
               className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
@@ -348,7 +365,6 @@ const UserManagement = ({ adminBarangay }) => {
             />
           </div>
 
-          {/* ROLE FILTER */}
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -361,7 +377,6 @@ const UserManagement = ({ adminBarangay }) => {
           </select>
         </div>
 
-        {/* FILTERS */}
         <div className="mt-4 flex flex-wrap gap-2">
           <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
             <Filter size={14} />
@@ -423,7 +438,6 @@ const UserManagement = ({ adminBarangay }) => {
           </button>
         </div>
 
-        {/* SUMMARY */}
         <div className="mt-5 flex gap-6 border-b border-slate-100 pb-4 text-xs">
           <div>
             <span className="font-semibold text-slate-700">{totalUsers}</span>{" "}
@@ -445,7 +459,6 @@ const UserManagement = ({ adminBarangay }) => {
           </div>
         </div>
 
-        {/* TABLE */}
         <div className="mt-2 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -464,31 +477,37 @@ const UserManagement = ({ adminBarangay }) => {
               {filteredUsers.length > 0 ? (
                 filteredUsers.map((user) => {
                   const role = user.role?.toLowerCase();
-
                   const isRepairShop =
                     role === "repair shop" || role === "repair_shop";
-
                   const isHarvester = role === "harvester";
-
                   const isSeller = role === "seller";
+                  const profileUnavailable = isProfileUnavailable(user);
+                  const profileStatus = getProfileStatus(user);
 
                   return (
                     <tr
                       key={user.id}
-                      className="border-b border-slate-100 text-sm transition hover:bg-slate-50"
+                      className={`border-b border-slate-100 text-sm transition ${
+                        profileUnavailable
+                          ? "bg-slate-50/80 hover:bg-slate-100"
+                          : "hover:bg-slate-50"
+                      }`}
                     >
-                      {/* USER */}
                       <td className="px-2 py-5">
-                        <div className="font-medium text-slate-800">
-                          {user.full_name || "Anonymous"}
-                        </div>
-
-                        <div className="text-xs text-slate-400">
-                          {user.email}
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <div className="font-medium text-slate-800">
+                              {user.full_name || "Anonymous"}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {profileUnavailable
+                                ? "Private information hidden"
+                                : user.email}
+                            </div>
+                          </div>
                         </div>
                       </td>
 
-                      {/* ROLE */}
                       <td className="px-2 py-5">
                         <div className="flex items-center gap-2 text-slate-600">
                           {isRepairShop ? (
@@ -496,39 +515,43 @@ const UserManagement = ({ adminBarangay }) => {
                           ) : (
                             <User size={14} className="text-sky-500" />
                           )}
-
                           <span>{getRoleLabel(user.role)}</span>
                         </div>
                       </td>
 
-                      {/* DATE */}
                       <td className="px-2 py-5 text-slate-500">
                         {user.created_at
                           ? new Date(user.created_at).toLocaleDateString()
                           : "—"}
                       </td>
 
-                      {/* VERIFICATION / USER BADGE */}
                       <td className="px-2 py-5">
-                        <div
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${getVerificationBadge(user).className}`}
-                        >
-                          {getVerificationBadge(user).icon}
-                          {getVerificationBadge(user).label}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${getVerificationBadge(user).className}`}
+                          >
+                            {getVerificationBadge(user).icon}
+                            {getVerificationBadge(user).label}
+                          </div>
+
+                          {profileUnavailable && (
+                            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                              {profileStatus === "deactivated"
+                                ? "Deactivated"
+                                : "Suspended"}
+                            </span>
+                          )}
                         </div>
                       </td>
 
-                      {/* TRANSACTIONS */}
                       <td className="px-2 py-5 text-slate-600">
                         {user.transactions_count || 0}
                       </td>
 
-                      {/* RATING */}
                       <td className="px-2 py-5">
                         {user.rating ? (
                           <div className="flex items-center gap-1 text-slate-700">
                             {user.rating}
-
                             <Star
                               size={13}
                               className="fill-yellow-400 text-yellow-400"
@@ -539,11 +562,11 @@ const UserManagement = ({ adminBarangay }) => {
                         )}
                       </td>
 
-                      {/* ACTIONS */}
                       <td className="px-2 py-5">
                         <div className="flex justify-end gap-2">
                           {(isRepairShop || isHarvester || isSeller) &&
-                            getVerificationState(user) !== "verified" && (
+                            getVerificationState(user) !== "verified" &&
+                            !profileUnavailable && (
                               <button
                                 onClick={() => handleVerifyClick(user)}
                                 className="rounded-lg bg-emerald-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
@@ -556,23 +579,33 @@ const UserManagement = ({ adminBarangay }) => {
 
                           <button
                             onClick={() => handleViewDetails(user)}
-                            className="rounded-lg border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                          >
-                            View
-                          </button>
-
-                          <button
-                            onClick={() => handleSuspendToggle(user)}
-                            className={`rounded-lg px-4 py-1.5 text-xs font-medium text-white ${
-                              user.status === "suspended"
-                                ? "bg-sky-500 hover:bg-sky-600"
-                                : "bg-red-500 hover:bg-red-600"
+                            className={`rounded-lg px-4 py-1.5 text-xs font-medium transition ${
+                              profileUnavailable
+                                ? "border border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                : "border border-slate-200 text-slate-600 hover:bg-slate-50"
                             }`}
                           >
-                            {user.status === "suspended"
-                              ? "Unsuspend"
-                              : "Suspend"}
+                            {profileUnavailable ? "Profile Unavailable" : "View"}
                           </button>
+
+                          {!profileUnavailable || profileStatus === "suspended" ? (
+                            <button
+                              onClick={() => handleSuspendToggle(user)}
+                              className={`rounded-lg px-4 py-1.5 text-xs font-medium text-white ${
+                                profileStatus === "suspended"
+                                  ? "bg-sky-500 hover:bg-sky-600"
+                                  : "bg-red-500 hover:bg-red-600"
+                              }`}
+                            >
+                              {profileStatus === "suspended"
+                                ? "Unsuspend"
+                                : "Suspend"}
+                            </button>
+                          ) : (
+                            <span className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-1.5 text-xs font-medium text-slate-400">
+                              Deactivated
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -581,7 +614,7 @@ const UserManagement = ({ adminBarangay }) => {
               ) : (
                 <tr>
                   <td colSpan="7" className="py-10 text-center text-slate-400">
-                    No users found.
+                    {loading ? "Loading users..." : "No users found."}
                   </td>
                 </tr>
               )}
@@ -590,7 +623,6 @@ const UserManagement = ({ adminBarangay }) => {
         </div>
       </div>
 
-      {/* MODALS */}
       <VerifyCredentialsModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -606,27 +638,64 @@ const UserManagement = ({ adminBarangay }) => {
         onClose={() => setIsDetailsOpen(false)}
         userData={selectedUserForDetails}
       />
-    </div>
-  );
-};
 
-/* =========================
-   REUSABLE STAT CARD
-========================= */
-const StatCard = ({ title, value, icon, color }) => {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-slate-500">{title}</p>
+      {unavailableProfile && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="profile-unavailable-title"
+          onClick={() => setUnavailableProfile(null)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="bg-gradient-to-br from-slate-700 to-slate-900 px-6 py-7 text-white">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                  <ShieldAlert size={24} />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
+                    Profile Access Restricted
+                  </p>
+                  <h2
+                    id="profile-unavailable-title"
+                    className="mt-1 text-xl font-semibold"
+                  >
+                    This profile is no longer available
+                  </h2>
+                </div>
+              </div>
+            </div>
 
-          <h2 className="mt-2 text-3xl font-semibold text-slate-800">
-            {value}
-          </h2>
+            <div className="space-y-4 p-6">
+              <p className="text-sm leading-6 text-slate-600">
+                The selected account has been {getUnavailableStatusLabel(unavailableProfile)}.
+                Private profile information is hidden while this account is unavailable.
+              </p>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Account status
+                </p>
+                <p className="mt-1 text-sm font-semibold capitalize text-slate-700">
+                  {getProfileStatus(unavailableProfile)}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setUnavailableProfile(null)}
+                className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-900"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
-
-        <div className={`rounded-xl bg-slate-50 p-3 ${color}`}>{icon}</div>
-      </div>
+      )}
     </div>
   );
 };

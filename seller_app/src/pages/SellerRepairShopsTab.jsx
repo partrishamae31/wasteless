@@ -234,7 +234,7 @@ const RepairShopMap = ({
                       </span>
                     ) : (
                       <span className="text-xs text-slate-400">
-                        No reviews yet
+                        No reviews available
                       </span>
                     )}
                   </div>
@@ -507,6 +507,8 @@ const SellerRepairShopsTab = ({
           contact_number,
           average_rating,
           total_reviews,
+          business_activity,
+          tech_specialization,
           buyer_type
         `)
         .eq("role", "repair_shop");
@@ -1038,7 +1040,7 @@ const SellerRepairShopsTab = ({
 
     if (!canRequestRepair) {
       alert(
-        "Only Tech Harvester accounts can request repair appointments from repair shops."
+        "Only Tech Harvester accounts can schedule appointment from repair shops."
       );
       return;
     }
@@ -1842,7 +1844,7 @@ const SellerRepairShopsTab = ({
                           </>
                         ) : (
                           <span className="text-xs text-slate-400">
-                            No reviews yet
+                            No reviews available
                           </span>
                         )}
                       </div>
@@ -1976,7 +1978,7 @@ const SellerRepairShopsTab = ({
                       </span>
                     ) : (
                       <span className="text-sm font-semibold text-slate-400">
-                        No reviews yet
+                        No reviews available
                       </span>
                     )}
                   </div>
@@ -2051,6 +2053,61 @@ const SellerRepairShopsTab = ({
               </div>
 
               {/* =================================================
+                  ABOUT / SERVICES OFFERED
+              ================================================= */}
+              <div className="mt-7 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-[1.5rem] border border-[#3285a1]/15 bg-gradient-to-br from-[#3285a1]/10 via-white to-emerald-50 p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#3285a1] shadow-sm">
+                      <Building2 size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-wider text-[#3285a1]">
+                        About the Shop
+                      </p>
+                      <h3 className="mt-1 text-base font-black text-slate-800">
+                        About / Bio
+                      </h3>
+                    </div>
+                  </div>
+                  <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                    {selectedShop.business_activity?.trim() ||
+                      "This repair shop has not added an About / Bio description yet."}
+                  </p>
+                </div>
+
+                <div className="rounded-[1.5rem] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-[#3285a1]/5 p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
+                      <Wrench size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-wider text-emerald-600">
+                        What We Do
+                      </p>
+                      <h3 className="mt-1 text-base font-black text-slate-800">
+                        Services Offered
+                      </h3>
+                    </div>
+                  </div>
+                  <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                    {selectedShop.business_activity?.trim() ||
+                      "Services offered have not been added yet."}
+                  </p>
+                  {selectedShop.tech_specialization?.trim() && (
+                    <div className="mt-4 border-t border-emerald-100 pt-3">
+                      <p className="text-xs font-black uppercase tracking-wider text-slate-400">
+                        Technical Specialization
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-600">
+                        {selectedShop.tech_specialization.trim()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* =================================================
                   APPOINTMENT AREA
               ================================================= */}
 
@@ -2085,7 +2142,7 @@ const SellerRepairShopsTab = ({
                           className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white transition hover:bg-violet-700"
                         >
                           <Calendar size={16} />
-                          Request Repair Appointment
+                          Schedule Appointment
                         </button>
                       ) : (
                         <div className="mt-4 space-y-2">
@@ -2268,7 +2325,7 @@ const SellerRepairShopsTab = ({
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-xs font-black uppercase tracking-wider text-blue-600">
-                          Selling Transactions
+                          Purchase Transactions
                         </p>
                         <p className="mt-1 text-2xl font-black text-slate-700">
                           {shopReviews.length}
@@ -2406,7 +2463,7 @@ const SellerRepairShopsTab = ({
             <div className="flex items-center justify-between bg-gradient-to-r from-violet-700 to-indigo-700 p-5 text-white">
               <div>
                 <p className="text-sm font-black">
-                  Request Repair Appointment
+                  Schedule Appointment
                 </p>
                 <p className="mt-0.5 text-xs text-white/70">
                   {getShopName(appointmentShop)}
