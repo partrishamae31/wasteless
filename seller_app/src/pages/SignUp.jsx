@@ -797,6 +797,11 @@ const extractDocument = async ({ file, documentType, barangays, onStatus, localP
 };
 
 const SignUp = ({ onLoginClick }) => {
+  // A verified signup session is NOT a normal login session. App.jsx uses
+  // this marker to keep Supabase auth events inside the signup flow until
+  // registration is completely finished and the user explicitly logs in.
+  localStorage.setItem("wasteless_signup_in_progress", "true");
+
   // Restore typed signup progress after refresh. Passwords and uploaded files
   // are deliberately not persisted; users must re-enter/re-upload those.
   const savedProgress = readSignupProgress() || {};
@@ -1508,6 +1513,9 @@ React.useEffect(() => {
         if (!data?.user?.id) throw new Error("Email verification could not be confirmed.");
         setEmailVerified(true);
         setAuthUserId(data.user.id);
+        // Keep the Supabase session during Steps 4-5 so a refresh can validate
+        // the signup identity. App.jsx intentionally ignores this session as
+        // a normal login while wasteless_signup_in_progress is active.
         setOtpError("");
         setStep(4);
         alert("Email verified! Please complete your account verification details.");
@@ -1815,9 +1823,11 @@ React.useEffect(() => {
       // through the Login screen rather than being silently logged in after signup.
       await supabase.auth.signOut();
 
-      // Registration is done: forget the saved progress so a later visit
-      // to /signup starts a fresh registration instead of restoring old data.
+      // Registration is done: remove both the saved signup progress and the
+      // signup-only auth guard. The next authentication must happen through
+      // the normal Login screen.
       clearSignupProgress();
+      localStorage.removeItem("wasteless_signup_in_progress");
 
       setIsSubmitted(true);
       alert("Account created successfully. Your badge is New User while verification is pending. Please log in with your email and password.");
@@ -1831,10 +1841,97 @@ React.useEffect(() => {
   };
   const steps = [1, 2, 3, 4, 5];
 
-  const handleBackToLogin = () => {
-  clearSignupProgress();
-  onLoginClick();
-};
+  // OTP verification creates the Supabase Auth user before the final
+  // registration step. If the user leaves signup before Step 5, delete that
+  // temporary Auth user so the email can be used for a fresh signup.
+  const cancelUnfinishedSignup = async () => {
+    const temporaryUserId = authUserId || savedProgress.authUserId;
+
+    if (!temporaryUserId) {
+      await supabase.auth.signOut();
+      clearSignupProgress();
+      localStorage.removeItem("wasteless_signup_in_progress");
+      return true;
+    }
+
+    try {
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      if (sessionError || !accessToken) {
+        console.error("No active signup session found:", sessionError);
+        throw new Error(
+          "The unfinished signup could not be cancelled because the verification session is no longer active. Please refresh the page and try Login again."
+        );
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "cancel-unfinished-signup",
+        {
+          body: { userId: temporaryUserId },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (error) {
+        console.error("cancel-unfinished-signup failed:", error);
+        let detail = error.message || "Unknown Edge Function error.";
+
+        try {
+          const response = error.context;
+          if (response?.clone) {
+            const body = await response.clone().json();
+            detail = body?.error || body?.message || detail;
+          }
+        } catch {
+          // Keep the original error message when the response is not JSON.
+        }
+
+        throw new Error(detail);
+      }
+
+      if (data?.deleted !== true) {
+        if (data?.reason === "profile_exists") {
+          throw new Error(
+            "This signup has already been completed. Please log in instead of starting a new account."
+          );
+        }
+
+        throw new Error(
+          "The unfinished account was not deleted. Please try again."
+        );
+      }
+
+      // The temporary Auth user is now gone. Sign out only after the server
+      // confirms deletion, then clear the browser's signup progress.
+      await supabase.auth.signOut();
+      clearSignupProgress();
+      localStorage.removeItem("wasteless_signup_in_progress");
+      return true;
+    } catch (error) {
+      console.error("Cancel unfinished signup error:", error);
+      alert(
+        error?.message ||
+          "We couldn't cancel the unfinished signup. Please try again."
+      );
+      return false;
+    }
+  };
+
+  const handleBackToLogin = async () => {
+    if (loading) return;
+
+    setLoading(true);
+    const cancelled = await cancelUnfinishedSignup();
+    setLoading(false);
+
+    if (!cancelled) return;
+
+    onLoginClick();
+  };
 
   const governmentIdReady =
     accountType !== "harvester" ||
@@ -2690,20 +2787,20 @@ React.useEffect(() => {
                 ].map(([label, value]) => {
                   const highlighted =
                     accountType === "harvester" &&
-                    ["Full Name", "Address", "Barangay of Residence"].includes(label);
+                    ["Full Name", "Address", "Barangay of Residence", "Contact Number", "Email", "Role"].includes(label);
 
                   return (
                     <div
                       key={label}
-                      className={`p-3 flex flex-col gap-1 ${
-                        highlighted ? "bg-emerald-50/70 border-l-4 border-emerald-400" : ""
+                      className={`p-3  flex flex-col gap-1 ${
+                        highlighted ? "bg-white/70" : ""
                       }`}
                     >
-                      <span className={`text-xs font-bold uppercase tracking-wide ${highlighted ? "text-emerald-700" : "text-gray-400"}`}>
+                      <span className={`text-xs font-bold uppercase tracking-wide ${highlighted ? "text-black-700" : "text-gray-400"}`}>
                         {label}
-                        {highlighted && " • EXTRACTED FROM ID"}
+                
                       </span>
-                      <span className={`break-words ${highlighted ? "text-emerald-900 font-bold" : "text-gray-800"}`}>
+                      <span className={`break-words ${highlighted ? "text-gray-900" : "text-gray-800"}`}>
                         {value || "—"}
                       </span>
                     </div>
@@ -2749,8 +2846,10 @@ React.useEffect(() => {
           <p className="text-center text-xs text-gray-400 mt-6">
             Already have an account?{" "}
             <span
-              onClick={onLoginClick}
-              className="text-teal-600 font-bold cursor-pointer hover:underline"
+              onClick={handleBackToLogin}
+              className={`text-teal-600 font-bold hover:underline ${
+                loading ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+              }`}
             >
               Login
             </span>

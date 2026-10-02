@@ -976,9 +976,14 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
   const hasAttachments = formData.attachments.length > 0;
 
+  // Step 4 is only the valuation and asking-price stage.
+  // Data-sanitization and preparation checks are completed in Step 5.
   const isStep4Complete =
     hasMandatoryListingFields &&
-    hasAttachments &&
+    hasAttachments;
+
+  // Step 5 is the final preparation/sanitization stage.
+  const isStep5Complete =
     areApplicableChecklistItemsComplete &&
     checklist.valuationAcknowledged;
 
@@ -1211,10 +1216,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           </button>
         </div>
 
-        {/* Step Indicator — 4 steps */}
+        {/* Step Indicator — 5 steps */}
         <div className="px-8 pt-2 pb-6">
           <div className="flex items-center">
-            {[1, 2, 3, 4].map((num, idx) => (
+            {[1, 2, 3, 4, 5].map((num, idx) => (
               <React.Fragment key={num}>
                 {idx > 0 && (
                   <div
@@ -1652,6 +1657,45 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           )}
           {step === 4 && (
             <div className="space-y-6 max-h-[85vh] pr-2">
+              <div className="bg-white rounded-2xl p-6 border-2 border-[#17708c] space-y-4">
+                <div className="flex items-center gap-2">
+                  <Percent size={18} className="text-[#17708c]" />
+                  <p className="text-lg font-bold text-gray-800">
+                    Set Your Asking Price
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-800">
+                    Your Asking Price <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Percent
+                      size={16}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+                    <input
+                      type="number"
+                      value={formData.price}
+                      onChange={(e) =>
+                        setFormData({ ...formData, price: e.target.value })
+                      }
+                      placeholder={
+                        hasMarketHistory
+                          ? `e.g., ${reusableValue}`
+                          : "e.g., 6,000"
+                      }
+                      className="w-full pl-11 pr-4 py-4 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:border-[#17708c] placeholder:text-gray-300"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Set the minimum price you're willing to accept. Buyers can
+                    bid at or above this price.
+                  </p>
+                </div>
+              </div>
+
+
               {/* Estimated Recovery Value Header (Green Card) */}
               {hasMarketHistory ? (
                 /* Dynamic Market Card View */
@@ -1817,43 +1861,6 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 )}
               </div>
 
-              <div className="bg-white rounded-2xl p-6 border-2 border-[#17708c] space-y-4">
-                <div className="flex items-center gap-2">
-                  <Percent size={18} className="text-[#17708c]" />
-                  <p className="text-lg font-bold text-gray-800">
-                    Set Your Asking Price
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-800">
-                    Your Asking Price <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Percent
-                      size={16}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                    />
-                    <input
-                      type="number"
-                      value={formData.price}
-                      onChange={(e) =>
-                        setFormData({ ...formData, price: e.target.value })
-                      }
-                      placeholder={
-                        hasMarketHistory
-                          ? `e.g., ${reusableValue}`
-                          : "e.g., 6,000"
-                      }
-                      className="w-full pl-11 pr-4 py-4 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:border-[#17708c] placeholder:text-gray-300"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Set the minimum price you're willing to accept. Buyers can
-                    bid at or above this price.
-                  </p>
-                </div>
-              </div>
 
               {/* Market Insights */}
               <div className="space-y-4">
@@ -1913,6 +1920,36 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     • All original parts (+5% value)
                   </li>
                 </ul>
+              </div>
+
+              <div className="flex gap-4 pt-4 sticky bottom-0 bg-white/90 backdrop-blur pb-2">
+                <button
+                  onClick={() => setStep(3)}
+                  className="flex-1 py-4 border border-gray-200 text-gray-600 rounded-2xl font-bold hover:bg-gray-50 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  disabled={!isStep4Complete || loading}
+                  onClick={() => setStep(5)}
+                  className="flex-1 py-4 rounded-2xl font-bold text-base transition-all enabled:bg-[#17708c] enabled:text-white enabled:hover:bg-[#125f75] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="space-y-6 animate-in fade-in">
+              <div className="space-y-1">
+                <p className="text-2xl font-bold text-gray-800">
+                  Preparation & Data Sanitization
+                </p>
+                <p className="text-sm text-gray-500">
+                  Watch the recommended guides, then confirm the preparation and
+                  data-sanitization checklist before publishing your listing.
+                </p>
               </div>
 
               {/* 2. Recommended Preparation Videos */}
@@ -2168,31 +2205,29 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     </p>
                   </div>
                 </label>
+              </div>
 
-                {!isStep4Complete && (
-                  <p className="text-center text-xs text-red-500 font-bold px-6">
-                    Mandatory fields missing. Complete the device model, condition,
-                    asking price, all applicable checks ({getApplicableChecklistKeys().length}),
-                    and the valuation acknowledgement. A last-working date is required
-                    only for Not Working devices.
-                  </p>
-                )}
+              {!isStep5Complete && (
+                <p className="text-center text-xs text-red-500 font-bold px-6">
+                  Complete all applicable data-sanitization checks and acknowledge
+                  that the valuation is a non-binding estimate before creating the listing.
+                </p>
+              )}
 
-                <div className="flex gap-4 sticky bottom-0 bg-white/90 backdrop-blur pb-2">
-                  <button
-                    onClick={() => setStep(3)}
-                    className="flex-1 py-4 border border-gray-200 text-gray-600 rounded-2xl font-bold hover:bg-gray-50 transition-colors"
-                  >
-                    Back
-                  </button>
-                  <button
-                    disabled={!isStep4Complete || loading}
-                    onClick={handleFinish}
-                    className="flex-1 py-4 rounded-2xl font-bold text-base transition-all enabled:bg-[#17708c] enabled:text-white enabled:hover:bg-[#125f75] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
-                  >
-                    {loading ? "Processing..." : "Create Listing"}
-                  </button>
-                </div>
+              <div className="flex gap-4 sticky bottom-0 bg-white/90 backdrop-blur pb-2 pt-2">
+                <button
+                  onClick={() => setStep(4)}
+                  className="flex-1 py-4 border border-gray-200 text-gray-600 rounded-2xl font-bold hover:bg-gray-50 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  disabled={!isStep5Complete || loading}
+                  onClick={handleFinish}
+                  className="flex-1 py-4 rounded-2xl font-bold text-base transition-all enabled:bg-[#17708c] enabled:text-white enabled:hover:bg-[#125f75] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                >
+                  {loading ? "Processing..." : "Create Listing"}
+                </button>
               </div>
             </div>
           )}

@@ -250,20 +250,22 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
               <button
                 type="button"
                 onClick={() => setRecommend(true)}
-                className={`py-3 rounded-xl text-xs font-black border ${recommend
+                className={`py-3 rounded-xl text-xs font-black border ${
+                  recommend
                     ? "bg-emerald-50 border-emerald-300 text-emerald-700"
                     : "bg-white border-slate-200 text-slate-500"
-                  }`}
+                }`}
               >
                 Yes, I recommend
               </button>
               <button
                 type="button"
                 onClick={() => setRecommend(false)}
-                className={`py-3 rounded-xl text-xs font-black border ${!recommend
+                className={`py-3 rounded-xl text-xs font-black border ${
+                  !recommend
                     ? "bg-red-50 border-red-300 text-red-700"
                     : "bg-white border-slate-200 text-slate-500"
-                  }`}
+                }`}
               >
                 No
               </button>
@@ -429,9 +431,9 @@ const MarketplaceRatingModal = ({
       const totalReviews = validReviews.length;
       const averageRating = totalReviews
         ? validReviews.reduce(
-          (sum, review) => sum + Number(review.overall_rating),
-          0
-        ) / totalReviews
+            (sum, review) => sum + Number(review.overall_rating),
+            0
+          ) / totalReviews
         : 0;
 
       const { error: profileError } = await supabase
@@ -462,7 +464,7 @@ const MarketplaceRatingModal = ({
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-white/80 text-xs font-black uppercase tracking-widest">
-                Marketplace Review
+                 Marketplace Review
               </div>
               <h2 className="text-2xl font-black mt-2">
                 Rate {isRatingBuyer ? "Buyer" : "Seller"}
@@ -520,10 +522,11 @@ const MarketplaceRatingModal = ({
                   key={value}
                   type="button"
                   onClick={() => setRecommend(value)}
-                  className={`py-3 rounded-xl text-xs font-black border ${recommend === value
+                  className={`py-3 rounded-xl text-xs font-black border ${
+                    recommend === value
                       ? activeClass
                       : "bg-white border-slate-200 text-slate-500"
-                    }`}
+                  }`}
                 >
                   {label}
                 </button>
@@ -707,28 +710,28 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
 
   const rows = isRepair
     ? [
-      ["Reference No.", referenceNumber],
-      ["Date", formattedDate],
-      ["Time", formattedTime],
-      ["Device", itemName],
-      ["Category", repairCategory],
-      ["Customer", sellerName],
-      ["Repair Shop", repairShopName],
-      ["Issue", repairIssue],
-      ["Appointment Date", transaction.meetup_date || "Not set"],
-      ["Appointment Time", transaction.meetup_time || "Not set"],
-      ...(repairNotes ? [["Service Notes", repairNotes]] : []),
-      ["Payment", "No payment required"],
-    ]
+        ["Reference No.", referenceNumber],
+        ["Date", formattedDate],
+        ["Time", formattedTime],
+        ["Device", itemName],
+        ["Category", repairCategory],
+        ["Customer", sellerName],
+        ["Repair Shop", repairShopName],
+        ["Issue", repairIssue],
+        ["Appointment Date", transaction.meetup_date || "Not set"],
+        ["Appointment Time", transaction.meetup_time || "Not set"],
+        ...(repairNotes ? [["Service Notes", repairNotes]] : []),
+        ["Payment", "No payment required"],
+      ]
     : [
-      ["Reference No.", referenceNumber],
-      ["Date", formattedDate],
-      ["Time", formattedTime],
-      ["Item", itemName],
-      ["Seller", sellerName],
-      ["Buyer", buyerName],
-      ["Your Role", yourRole],
-    ];
+        ["Reference No.", referenceNumber],
+        ["Date", formattedDate],
+        ["Time", formattedTime],
+        ["Item", itemName],
+        ["Seller", sellerName],
+        ["Buyer", buyerName],
+        ["Your Role", yourRole],
+      ];
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
@@ -822,17 +825,6 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
     </div>
   );
 };
-const UNAVAILABLE_PROFILE_STATUSES = new Set(["deactivated", "deleted", "suspended"]);
-
-const isUnavailableProfile = (profileOrStatus) => {
-  const status = typeof profileOrStatus === "string"
-    ? profileOrStatus
-    : profileOrStatus?.status;
-  return UNAVAILABLE_PROFILE_STATUSES.has(String(status || "").trim().toLowerCase());
-};
-
-const getUnavailableProfileMessage = () => "This profile is no longer available";
-
 const SellerDashboard = ({ session }) => {
   const [activeTab, setActiveTab] = useState("listings");
   const [listings, setListings] = useState([]);
@@ -840,11 +832,7 @@ const SellerDashboard = ({ session }) => {
   const [myDonations, setMyDonations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [profileData, setProfileData] = useState(null);
-  const [showEditProfile, setShowEditProfile] = useState(false);
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [editProfile, setEditProfile] = useState({ full_name: "", contact_number: "", barangay: "" });
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState("");
@@ -854,37 +842,15 @@ const SellerDashboard = ({ session }) => {
     event.preventDefault();
     setPasswordError("");
     setPasswordSuccess("");
-    if (!passwordForm.current || !passwordForm.next || !passwordForm.confirm) {
-      setPasswordError("Please complete all password fields.");
-      return;
-    }
-    if (passwordForm.next.length < 6) {
-      setPasswordError("Your new password must contain at least 6 characters.");
-      return;
-    }
-    if (passwordForm.next !== passwordForm.confirm) {
-      setPasswordError("The new passwords do not match.");
-      return;
-    }
-    if (passwordForm.current === passwordForm.next) {
-      setPasswordError("Your new password must be different from your current password.");
-      return;
-    }
+    if (passwordForm.next.length < 6) return setPasswordError("Your new password must contain at least 6 characters.");
+    if (passwordForm.next !== passwordForm.confirm) return setPasswordError("The new passwords do not match.");
+    if (passwordForm.current === passwordForm.next) return setPasswordError("Your new password must be different from your current password.");
     const email = session?.user?.email;
-    if (!email) {
-      setPasswordError("Unable to identify your account. Please sign in again.");
-      return;
-    }
+    if (!email) return setPasswordError("Unable to identify your account. Please sign in again.");
     setPasswordSaving(true);
     try {
-      const { error: verifyError } = await supabase.auth.signInWithPassword({
-        email,
-        password: passwordForm.current,
-      });
-      if (verifyError) {
-        setPasswordError("Your current password is incorrect.");
-        return;
-      }
+      const { error: verifyError } = await supabase.auth.signInWithPassword({ email, password: passwordForm.current });
+      if (verifyError) return setPasswordError("Your current password is incorrect.");
       const { error: updateError } = await supabase.auth.updateUser({ password: passwordForm.next });
       if (updateError) throw updateError;
       setPasswordForm({ current: "", next: "", confirm: "" });
@@ -896,6 +862,12 @@ const SellerDashboard = ({ session }) => {
       setPasswordSaving(false);
     }
   };
+
+  const [profileData, setProfileData] = useState(null);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [editProfile, setEditProfile] = useState({ full_name: "", contact_number: "", barangay: "" });
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   const [showAchievementsModal, setShowAchievementsModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -919,15 +891,8 @@ const SellerDashboard = ({ session }) => {
   });
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-  const [cancelDetails, setCancelDetails] = useState("");
-  const [cancellingTransactionId, setCancellingTransactionId] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [selectedReceiptTransaction, setSelectedReceiptTransaction] = useState(null);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportReason, setReportReason] = useState("");
-  const [reportDetails, setReportDetails] = useState("");
-  const [reportingTransactionId, setReportingTransactionId] = useState(null);
-  const [reportedTransactionIds, setReportedTransactionIds] = useState(new Set());
 
   // Trust Tier data is loaded from the same trust_tiers table used by Admin.
   const [trustTiers, setTrustTiers] = useState([]);
@@ -948,6 +913,9 @@ const SellerDashboard = ({ session }) => {
   const [reviewedRepairAppointments, setReviewedRepairAppointments] = useState(new Set());
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [selectedBidder, setSelectedBidder] = useState(null);
+  const [listingSubTab, setListingSubTab] = useState("all");
+  const [selectedBidListing, setSelectedBidListing] = useState(null);
+  const [selectedListingDetails, setSelectedListingDetails] = useState(null);
   const isRepairShop = user?.role === "repair_shop";
   const isHarvester = user?.role === "harvester";
 
@@ -1098,39 +1066,39 @@ const SellerDashboard = ({ session }) => {
   };
 
   const handleConfirmDonation = async (
-    listingId,
-    dropOffPointId = null,
-    savedListing = null
-  ) => {
-    try {
-      if (!listingId) {
-        alert("No listing selected for donation.");
-        return;
-      }
+  listingId,
+  dropOffPointId = null,
+  savedListing = null
+) => {
+  try {
+    if (!listingId) {
+      alert("No listing selected for donation.");
+      return;
+    }
 
-      // If SellerDonationTab already selected a drop-off point,
-      // preserve that exact point instead of resetting it to null.
-      const selectedDropOffPointId =
-        dropOffPointId ||
-        savedListing?.drop_off_point_id ||
-        null;
+    // If SellerDonationTab already selected a drop-off point,
+    // preserve that exact point instead of resetting it to null.
+    const selectedDropOffPointId =
+      dropOffPointId ||
+      savedListing?.drop_off_point_id ||
+      null;
 
-      if (!selectedDropOffPointId) {
-        alert(
-          "Please select a drop-off point before confirming the donation."
-        );
-        return;
-      }
+    if (!selectedDropOffPointId) {
+      alert(
+        "Please select a drop-off point before confirming the donation."
+      );
+      return;
+    }
 
-      const { data, error } = await supabase
-        .from("listings")
-        .update({
-          status: "donated",
-          drop_off_point_id: selectedDropOffPointId,
-        })
-        .eq("id", listingId)
-        .eq("seller_id", session.user.id)
-        .select(`
+    const { data, error } = await supabase
+      .from("listings")
+      .update({
+        status: "donated",
+        drop_off_point_id: selectedDropOffPointId,
+      })
+      .eq("id", listingId)
+      .eq("seller_id", session.user.id)
+      .select(`
         id,
         seller_id,
         status,
@@ -1140,60 +1108,60 @@ const SellerDashboard = ({ session }) => {
         created_at,
         asking_price
       `)
-        .single();
+      .single();
 
-      if (error) throw error;
+    if (error) throw error;
 
-      if (!data?.drop_off_point_id) {
-        throw new Error(
-          "The donation was saved, but the drop-off point was not returned by the database."
-        );
-      }
+    if (!data?.drop_off_point_id) {
+      throw new Error(
+        "The donation was saved, but the drop-off point was not returned by the database."
+      );
+    }
 
-      console.log("Donation saved successfully:", data);
+    console.log("Donation saved successfully:", data);
 
-      // Preserve the complete listing information in local state.
-      setMyListings((prev) =>
-        prev.map((listing) =>
-          listing.id === listingId
-            ? {
+    // Preserve the complete listing information in local state.
+    setMyListings((prev) =>
+      prev.map((listing) =>
+        listing.id === listingId
+          ? {
               ...listing,
               ...data,
               status: "donated",
               drop_off_point_id: data.drop_off_point_id,
             }
-            : listing
-        )
-      );
+          : listing
+      )
+    );
 
-      // Update donation history without losing the drop-off point.
-      setMyDonations((prev) => {
-        const existing = prev.find((item) => item.id === listingId);
+    // Update donation history without losing the drop-off point.
+    setMyDonations((prev) => {
+      const existing = prev.find((item) => item.id === listingId);
 
-        const updatedDonation = {
-          ...(existing || listingToDonate || {}),
-          ...data,
-          status: "donated",
-          drop_off_point_id: data.drop_off_point_id,
-        };
+      const updatedDonation = {
+        ...(existing || listingToDonate || {}),
+        ...data,
+        status: "donated",
+        drop_off_point_id: data.drop_off_point_id,
+      };
 
-        const filtered = prev.filter((item) => item.id !== listingId);
+      const filtered = prev.filter((item) => item.id !== listingId);
 
-        return [updatedDonation, ...filtered];
-      });
+      return [updatedDonation, ...filtered];
+    });
 
-      // Close donation modal if it is open.
-      setIsDonationModalOpen(false);
-      setListingToDonate(null);
+    // Close donation modal if it is open.
+    setIsDonationModalOpen(false);
+    setListingToDonate(null);
 
-      alert(
-        "Thank you for donating! Your selected drop-off point has been saved."
-      );
-    } catch (err) {
-      console.error("Donation error:", err);
-      alert(`Failed to process donation: ${err.message}`);
-    }
-  };
+    alert(
+      "Thank you for donating! Your selected drop-off point has been saved."
+    );
+  } catch (err) {
+    console.error("Donation error:", err);
+    alert(`Failed to process donation: ${err.message}`);
+  }
+};
 
   const handleOpenRepairReview = async (transaction) => {
     if (!transaction?.repair_appointment_id) return alert("Repair appointment information is missing.");
@@ -1492,15 +1460,15 @@ const SellerDashboard = ({ session }) => {
 
   const transactionProgress = nextTrustTier
     ? Math.min(
-      (userTrustStats.completedTransactions / Math.max(Number(nextTrustTier.min_transactions), 1)) * 100,
-      100
-    )
+        (userTrustStats.completedTransactions / Math.max(Number(nextTrustTier.min_transactions), 1)) * 100,
+        100
+      )
     : 100;
   const ratingProgress = nextTrustTier
     ? Math.min(
-      (userTrustStats.averageRating / Math.max(Number(nextTrustTier.min_rating), 0.1)) * 100,
-      100
-    )
+        (userTrustStats.averageRating / Math.max(Number(nextTrustTier.min_rating), 0.1)) * 100,
+        100
+      )
     : 100;
   const progressPercent = nextTrustTier
     ? Math.round(Math.min(transactionProgress, ratingProgress))
@@ -1566,262 +1534,49 @@ const SellerDashboard = ({ session }) => {
     }
   };
 
-  const handleReportTransaction = async (txId) => {
-    if (reportingTransactionId) return;
-
-    const txToReport = transactions.find((t) => t.id === txId);
-    if (!txToReport) {
-      alert("Transaction not found. Please refresh and try again.");
-      return;
-    }
-
-    if (txToReport.repair_appointment_id) {
-      alert("This report is only available for marketplace meetups.");
-      return;
-    }
-
-    if (txToReport.status !== "meetup_scheduled") {
-      alert("You can report a transaction only while the meetup is scheduled.");
-      return;
-    }
-
-    if (txToReport.seller_id !== session.user.id) {
-      alert("Only the seller can submit this seller-side meetup report.");
-      return;
-    }
-
-    if (reportedTransactionIds.has(txId)) {
-      alert("You have already reported this transaction.");
-      return;
-    }
-
-    const reason = String(reportReason || "").trim();
-    const details = String(reportDetails || "").trim();
-
-    if (!reason) {
-      alert("Please select a report reason.");
-      return;
-    }
-
-    if (reason === "Other" && !details) {
-      alert("Please describe what happened.");
-      return;
-    }
-
-    setReportingTransactionId(txId);
-
+  const handleCancelTransaction = async (txId) => {
     try {
-      const { data: existingReport, error: existingReportError } = await supabase
-        .from("transaction_reports")
-        .select("id, status")
-        .eq("transaction_id", txId)
-        .eq("reporter_id", session.user.id)
-        .eq("status", "open")
-        .maybeSingle();
+      const txToCancel = transactions.find((t) => t.id === txId);
 
-      if (existingReportError) throw existingReportError;
-
-      if (existingReport) {
-        setReportedTransactionIds((prev) => new Set(prev).add(txId));
-        setShowReportModal(false);
-        alert("You already have an open report for this transaction.");
+      if (!txToCancel) throw new Error("Transaction not found.");
+      if (txToCancel.seller_id !== session.user.id) {
+        alert("Only the seller can cancel this transaction.");
+        return;
+      }
+      if (txToCancel.status === "completed") {
+        alert("A completed transaction cannot be cancelled.");
         return;
       }
 
-      const finalReason = reason === "Other"
-        ? `Other: ${details}`
-        : reason;
-
-      const { data: report, error: reportError } = await supabase
-        .from("transaction_reports")
-        .insert([{
-          transaction_id: txId,
-          reporter_id: session.user.id,
-          reason: finalReason,
-          details: details || null,
-          status: "open",
-        }])
-        .select("id, transaction_id, reporter_id, reason, details, status, created_at")
-        .single();
-
-      if (reportError) throw reportError;
-
-      // Notify the other party that the transaction has been reported.
-      // The open transaction_reports row is what flags the transaction for Admin.
-      if (txToReport.harvester_id) {
-        const { error: notificationError } = await supabase
-          .from("notifications")
-          .insert([{
-            user_id: txToReport.harvester_id,
-            title: "Transaction Reported",
-            description: `The seller reported an issue with the meetup for ${txToReport.listing?.device_model || "this transaction"}.`,
-            type: "transaction_reported",
-            is_read: false,
-          }]);
-
-        if (notificationError) {
-          console.error("Report notification failed:", notificationError);
-        }
-      }
-
-      setReportedTransactionIds((prev) => new Set(prev).add(txId));
-      setTransactions((prev) =>
-        prev.map((tx) =>
-          tx.id === txId
-            ? { ...tx, has_open_report: true, transaction_report: report }
-            : tx
-        )
-      );
-      setShowReportModal(false);
-      setReportReason("");
-      setReportDetails("");
-      setSelectedTxId(txId);
-
-      alert("Transaction reported successfully. The transaction will remain open for Administrator review and will not be auto-completed while the report is open.");
-    } catch (error) {
-      console.error("Transaction report error:", error);
-      alert(`Failed to submit transaction report: ${error.message}`);
-    } finally {
-      setReportingTransactionId(null);
-    }
-  };
-
-  const handleCancelTransaction = async (txId) => {
-    if (cancellingTransactionId) return;
-
-    const txToCancel = transactions.find((t) => t.id === txId);
-    if (!txToCancel) {
-      alert("Transaction not found. Please refresh and try again.");
-      return;
-    }
-
-    if (txToCancel.seller_id !== session.user.id) {
-      alert("Only the seller/customer who started this transaction can cancel it.");
-      return;
-    }
-
-    if (["completed", "cancelled"].includes(String(txToCancel.status || "").toLowerCase())) {
-      alert("This transaction is already closed and cannot be cancelled.");
-      return;
-    }
-
-    const reason = String(cancelReason || "").trim();
-    if (!reason) {
-      alert("Please select a reason for cancellation.");
-      return;
-    }
-
-    const finalReason = reason === "Other"
-      ? `Other: ${String(cancelDetails || "").trim()}`.trim()
-      : reason;
-
-    if (reason === "Other" && !String(cancelDetails || "").trim()) {
-      alert("Please describe the cancellation reason.");
-      return;
-    }
-
-    setCancellingTransactionId(txId);
-
-    try {
-      // 1) Cancel the transaction with an ownership + status guard.
-      const { data: updatedTx, error: txError } = await supabase
+      const { error: txError } = await supabase
         .from("transactions")
         .update({
           status: "cancelled",
-          cancel_reason: finalReason,
+          cancel_reason: cancelReason,
         })
         .eq("id", txId)
-        .eq("seller_id", session.user.id)
-        .not("status", "eq", "completed")
-        .select(`
-          *,
-          seller:seller_id (full_name, business_name, role),
-          harvester:harvester_id (full_name, business_name, role),
-          listing:listing_id (device_model, asking_price)
-        `)
-        .maybeSingle();
+        .eq("seller_id", session.user.id);
 
       if (txError) throw txError;
-      if (!updatedTx) {
-        throw new Error("The transaction could not be cancelled. It may already be completed, cancelled, or you may not have permission to change it.");
-      }
 
-      // 2) Marketplace: reopen the listing and release the accepted bid.
-      if (txToCancel.listing_id) {
+      if (txToCancel?.listing_id) {
         const { error: listingError } = await supabase
           .from("listings")
           .update({ status: "active" })
-          .eq("id", txToCancel.listing_id)
-          .eq("seller_id", session.user.id);
+          .eq("id", txToCancel.listing_id);
 
-        if (listingError) {
-          console.error("Listing reactivation failed after cancellation:", listingError);
-        }
-
-        const { error: bidReleaseError } = await supabase
-          .from("bids")
-          .update({ status: "declined" })
-          .eq("listing_id", txToCancel.listing_id)
-          .eq("status", "accepted");
-
-        if (bidReleaseError) {
-          console.error("Accepted bid release failed after cancellation:", bidReleaseError);
-        }
+        if (listingError) throw listingError;
       }
 
-      // 3) Repair: cancel the linked appointment as well.
-      if (txToCancel.repair_appointment_id) {
-        const { error: appointmentError } = await supabase
-          .from("repair_appointments")
-          .update({ status: "cancelled" })
-          .eq("id", txToCancel.repair_appointment_id)
-          .eq("harvester_id", session.user.id)
-          .not("status", "eq", "completed");
-
-        if (appointmentError) {
-          console.error("Repair appointment cancellation failed after transaction cancellation:", appointmentError);
-        }
-      }
-
-      // 4) Notify the other party. Notification failure must not undo a successful cancellation.
-      const otherUserId = txToCancel.seller_id === session.user.id
-        ? txToCancel.harvester_id
-        : txToCancel.seller_id;
-
-      if (otherUserId) {
-        const itemLabel = txToCancel.listing?.device_model ||
-          (txToCancel.repair_appointment_id ? "repair service" : "transaction");
-        const { error: notificationError } = await supabase
-          .from("notifications")
-          .insert([{
-            user_id: otherUserId,
-            title: "Transaction Cancelled",
-            description: `The ${itemLabel} transaction was cancelled. Reason: ${finalReason}`,
-            type: "transaction_cancelled",
-            is_read: false,
-          }]);
-
-        if (notificationError) {
-          console.error("Cancellation notification failed:", notificationError);
-        }
-      }
-
-      // 5) Update the UI with the server response immediately.
       setTransactions((prev) =>
-        prev.map((t) => (t.id === txId ? { ...t, ...updatedTx, status: "cancelled", cancel_reason: finalReason } : t)),
+        prev.map((t) => (t.id === txId ? { ...t, status: "cancelled" } : t)),
       );
 
       setShowCancelModal(false);
-      setSelectedTxId(txId);
-      setCancelReason("");
-      setCancelDetails("");
-
-      alert("Transaction cancelled successfully. The transaction is now closed.");
+      alert("Transaction cancelled successfully.");
     } catch (err) {
-      console.error("Error cancelling transaction:", err);
-      alert(`Failed to cancel transaction: ${err?.message || "Unknown database error."}`);
-    } finally {
-      setCancellingTransactionId(null);
+      console.error("Error cancelling:", err.message);
+      alert("Failed to cancel: Check your database permissions.");
     }
   };
 
@@ -2083,7 +1838,7 @@ const SellerDashboard = ({ session }) => {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("role, status")
+        .select("role")
         .eq("id", session.user.id)
         .single();
 
@@ -2091,12 +1846,6 @@ const SellerDashboard = ({ session }) => {
 
       if (error || !data) {
         alert("Profile not found in database.");
-        await supabase.auth.signOut();
-        return;
-      }
-
-      if (isUnavailableProfile(data)) {
-        alert(getUnavailableProfileMessage());
         await supabase.auth.signOut();
         return;
       }
@@ -2143,23 +1892,11 @@ const SellerDashboard = ({ session }) => {
   }, [session]);
   useEffect(() => {
     const fetchProfile = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", session.user.id)
         .single();
-
-      if (error || !data) {
-        console.error("Profile fetch failed:", error?.message);
-        return;
-      }
-
-      if (isUnavailableProfile(data)) {
-        alert(getUnavailableProfileMessage());
-        await supabase.auth.signOut();
-        return;
-      }
-
       setProfileData(data);
     };
     if (session && isAuthorized) fetchProfile(); // Added isAuthorized check inside
@@ -2277,17 +2014,14 @@ const SellerDashboard = ({ session }) => {
         // ==========================================
         const { data: otherListings, error: otherError } = await supabase
           .from("listings")
-          .select(`*, bids (*), seller:seller_id (id, full_name, business_name, role, status)`)
+          .select(`*, seller:seller_id (full_name, business_name, role, barangay), bids (*)`)
           .neq("seller_id", session.user.id)
           .eq("status", "active")
-          .eq("condition", "Working")
           .order("created_at", { ascending: false });
 
         if (otherError) throw otherError;
 
-        setListings(
-          (otherListings || []).filter((listing) => !isUnavailableProfile(listing.seller)),
-        );
+        setListings(otherListings || []);
 
         // ==========================================
         // LOGGED-IN USER'S OWN LISTINGS
@@ -2297,13 +2031,18 @@ const SellerDashboard = ({ session }) => {
           .select(
             `
             *,
+            seller:seller_id (
+              full_name,
+              business_name,
+              role,
+              barangay
+            ),
             bids (
               *,
               profiles:bidder_id (
                 full_name,
                 business_name,
-                role,
-                status
+                role
               )
             )
           `,
@@ -2352,8 +2091,7 @@ const SellerDashboard = ({ session }) => {
               profiles:bidder_id (
                 full_name,
                 business_name,
-                role,
-                status
+                role
               )
             )
           `
@@ -2372,17 +2110,14 @@ const SellerDashboard = ({ session }) => {
 
         const { data: otherListings, error: otherError } = await supabase
           .from("listings")
-          .select(`*, bids (*)`)
+          .select(`*, seller:seller_id (full_name, business_name, role, barangay), bids (*)`)
           .neq("seller_id", userId)
           .eq("status", "active")
-          .eq("condition", "Working")
           .order("created_at", { ascending: false });
 
         if (otherError) throw otherError;
 
-        setListings(
-          (otherListings || []).filter((listing) => !isUnavailableProfile(listing.seller)),
-        );
+        setListings(otherListings || []);
       } catch (err) {
         console.error("Realtime listing refresh error:", err.message);
       }
@@ -2397,6 +2132,17 @@ const SellerDashboard = ({ session }) => {
           schema: "public",
           table: "listings",
           filter: `seller_id=eq.${userId}`,
+        },
+        () => {
+          refreshListings();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bids",
         },
         () => {
           refreshListings();
@@ -2498,44 +2244,16 @@ const SellerDashboard = ({ session }) => {
   };
 
   const handleDeactivateAccount = async () => {
-    if (!window.confirm("Deactivate your account? Your profile will become unavailable to other users and you will be signed out.")) return;
+    if (!window.confirm("Deactivate your account? You will be signed out. Contact support to reactivate it.")) return;
     try {
       const { error } = await supabase.from("profiles")
         .update({ status: "deactivated" }).eq("id", session.user.id);
       if (error) throw error;
-      setProfileData((prev) => (prev ? { ...prev, status: "deactivated" } : prev));
-      setShowProfileMenu(false);
-      setShowProfileModal(false);
-      setShowEditProfile(false);
       await supabase.auth.signOut();
+      alert("Your account has been deactivated.");
     } catch (error) {
       console.error("Account deactivation failed:", error);
       alert(`Could not deactivate account: ${error.message}`);
-    }
-  };
-
-  // Soft-delete the profile so the account can no longer be exposed through
-  // public profile/listing queries. Permanent Auth-user deletion requires a
-  // trusted server-side Supabase Edge Function/Admin API and is intentionally
-  // not attempted from the browser.
-  const handleDeleteAccount = async () => {
-    const confirmed = window.confirm(
-      "Delete your account? Your profile will become unavailable to other users and you will be signed out. This action cannot be undone from this dashboard."
-    );
-    if (!confirmed) return;
-
-    try {
-      const { error } = await supabase.from("profiles")
-        .update({ status: "deleted" }).eq("id", session.user.id);
-      if (error) throw error;
-      setProfileData((prev) => (prev ? { ...prev, status: "deleted" } : prev));
-      setShowProfileMenu(false);
-      setShowProfileModal(false);
-      setShowEditProfile(false);
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error("Account deletion failed:", error);
-      alert(`Could not delete account: ${error.message}`);
     }
   };
 
@@ -2685,7 +2403,7 @@ const SellerDashboard = ({ session }) => {
       {/* Header Area */}
       <div className="relative z-10 p-6">
         <div className="flex justify-end items-center gap-4 mb-8 relative z-40">
-
+          
 
           {/* Message Icon */}
           <div className="relative">
@@ -2895,15 +2613,15 @@ const SellerDashboard = ({ session }) => {
                   <Settings size={18} className="text-slate-400" /> Settings
                 </button>
                 <button
-                  type="button"
-                  onClick={() => {
-                    setShowAchievementsModal(true);
-                    setShowProfileMenu(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition"
-                >
-                  <Award size={18} className="text-slate-400" /> Achievements
-                </button>
+                                  type="button"
+                                  onClick={() => {
+                                    setShowAchievementsModal(true);
+                                    setShowProfileMenu(false);
+                                  }}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition"
+                                >
+                                  <Award size={18} className="text-slate-400" /> Achievements
+                                </button>
 
                 {showAchievements && (
                   <div className="mx-1 mb-2 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3 space-y-3">
@@ -3062,7 +2780,7 @@ const SellerDashboard = ({ session }) => {
           ))}
         </div>
 
-
+        
 
         {/* Tabs Navigation */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex mb-8">
@@ -3084,7 +2802,7 @@ const SellerDashboard = ({ session }) => {
               {tab === "transactions" && <ArrowLeftRight size={18} />}
               {tab === "repair-shops" && <Wrench size={18} />}
               {tab === "donation" && <Gift size={18} />}
-
+              
 
               {tab === "listings"
                 ? "Listings"
@@ -3125,689 +2843,411 @@ const SellerDashboard = ({ session }) => {
 
         {/* --- MAIN CONTENT AREA --- */}
         <div className="min-h-[600px]">
-          {activeTab === "listings" && (
-            <div className="grid grid-cols-3 gap-6">
+          {activeTab === "listings" && (() => {
+            const normalizeCondition = (condition) =>
+              String(condition || "").toLowerCase() === "working"
+                ? "Working"
+                : "Not Working";
 
-              {/* ==========================================
-      LEFT SIDE — AVAILABLE LISTINGS
-  =========================================== */}
-              <div className="col-span-2">
+            const formatStatus = (status) => {
+              const value = String(status || "active").toLowerCase();
+              if (value === "inactive") return "Sold";
+              if (value === "donated") return "For Donation";
+              if (value === "drop_off_assigned") return "Drop-off Assigned";
+              if (value === "processed") return "Processed";
+              if (value === "matched") return "Matched";
+              return value.charAt(0).toUpperCase() + value.slice(1);
+            };
 
-                {/* LOGGED-IN USER'S LISTINGS — kept separate from other users' listings */}
-                <section className="mt-7 mb-7 bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-emerald-50 text-emerald-700 p-2 rounded-xl">
-                        <Package size={20} />
+            const getListingOwner = (item) => {
+              if (item.seller_id === session.user.id) {
+                return displayName || currentProfileName || "You";
+              }
+              return (
+                item.seller?.business_name ||
+                item.seller?.full_name ||
+                item.owner_name ||
+                "Seller"
+              );
+            };
+
+            const getListingBarangay = (item) =>
+              item.barangay || item.seller?.barangay ||
+              (item.seller_id === session.user.id ? currentProfileBarangay : "Barangay not set");
+
+            const getVisibleBids = (item) =>
+              (item.bids || []).filter((bid) => bid.status !== "declined");
+
+            // The marketplace view includes every active listing, regardless of
+            // condition, and includes the current user's active listings too.
+            const allMarketplaceListings = Array.from(
+              new Map(
+                [
+                  ...listings,
+                  ...myListings.filter(
+                    (item) => String(item.status || "").toLowerCase() === "active"
+                  ),
+                ]
+                  // Listings tab should display ONLY Working items.
+                  .filter(
+                    (item) =>
+                      String(item.condition || "").trim().toLowerCase() === "working"
+                  )
+                  .map((item) => [item.id, item])
+              ).values()
+            ).sort(
+              (a, b) =>
+                new Date(b.created_at || 0).getTime() -
+                new Date(a.created_at || 0).getTime()
+            );
+
+            // Keep the Listings tab restricted to Working items only.
+            // Non-working / defective listings remain in the database but are
+            // intentionally not rendered in this tab.
+            const myCreatedListings = myListings.filter(
+              (item) => String(item.condition || "").trim().toLowerCase() === "working"
+            );
+            const receivedBids = myCreatedListings
+              .flatMap((listing) =>
+                getVisibleBids(listing).map((bid) => ({ ...bid, listing }))
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.created_at || 0).getTime() -
+                  new Date(a.created_at || 0).getTime()
+              );
+            const myBids = allMarketplaceListings
+              .filter((listing) => listing.seller_id !== session.user.id)
+              .flatMap((listing) =>
+                getVisibleBids(listing)
+                  .filter((bid) => bid.bidder_id === session.user.id)
+                  .map((bid) => ({ ...bid, listing }))
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.created_at || 0).getTime() -
+                  new Date(a.created_at || 0).getTime()
+              );
+
+            const tabs = [
+              { key: "all", label: "All Marketplace Listings", count: allMarketplaceListings.length },
+              { key: "created", label: "My Created Listings", count: myCreatedListings.length },
+              { key: "received", label: "Bids Received", count: receivedBids.length },
+              { key: "my-bids", label: "My Bids", count: myBids.length },
+            ];
+
+            const activeItems =
+              listingSubTab === "all"
+                ? allMarketplaceListings
+                : listingSubTab === "created"
+                  ? myCreatedListings
+                  : listingSubTab === "received"
+                    ? receivedBids
+                    : myBids;
+
+            const openNewListing = () => {
+              if (profileData?.verification_status !== "verified") {
+                alert("Your account is still pending admin verification. You cannot create listings yet.");
+                return;
+              }
+              setIsModalOpen(true);
+            };
+
+            const renderListingCard = (item, mode = "listing") => {
+              const bidsForItem = getVisibleBids(item);
+              const isMine = item.seller_id === session.user.id;
+              const status = String(item.status || "active").toLowerCase();
+              const isActive = status === "active";
+              const condition = normalizeCondition(item.condition);
+              const statusLabel = formatStatus(item.status);
+              const owner = getListingOwner(item);
+              const barangay = getListingBarangay(item);
+              const deviceId = item.device_id || item.model_number || item.serial_number || "Electronic Device";
+              const firstBid = bidsForItem[0];
+
+              if (mode === "bid") {
+                const bid = item;
+                const listing = item.listing;
+                const asking = Number(listing?.asking_price || 0);
+                const amount = Number(bid.amount || 0);
+                const percentage = asking > 0 ? Math.round((amount / asking) * 100) : 0;
+                return (
+                  <article key={`my-bid-${bid.id}`} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-[#3285a1]/50">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eef7fa] text-[#3285a1]">
+                          <Package size={22} />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate text-base font-black text-slate-800">{listing?.device_model || "Electronic Device"}</h3>
+                          <p className="mt-1 text-xs text-slate-400">{listing?.device_id || listing?.model_number || "Device"}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h2 className="font-bold text-lg text-slate-800">My Listings</h2>
-                        <p className="text-xs text-slate-500 mt-1">Listings created by your account, separate from other users' items.</p>
+                      <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${bid.status === "accepted" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                        {bid.status === "accepted" ? "Accepted" : "Pending"}
+                      </span>
+                    </div>
+                    <div className="mt-5 grid grid-cols-3 gap-2">
+                      <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+                        <p className="text-[11px] text-slate-400">Asking</p>
+                        <p className="mt-1 text-sm font-black text-slate-800">₱{asking.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-xl bg-[#eef7fa] px-3 py-3 text-center">
+                        <p className="text-[11px] text-slate-400">Your Bid</p>
+                        <p className="mt-1 text-sm font-black text-[#3285a1]">₱{amount.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+                        <p className="text-[11px] text-slate-400">Share</p>
+                        <p className="mt-1 text-sm font-black text-slate-800">{percentage}%</p>
                       </div>
                     </div>
-                    <span className="text-xs font-bold bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full">
-                      {myListings.length} {myListings.length === 1 ? "listing" : "listings"}
+                    <div className="mt-4 flex items-center gap-2 text-xs text-slate-400">
+                      <MapPin size={14} /> {getListingBarangay(listing)} <span>·</span> {getListingOwner(listing)}
+                    </div>
+                    <button type="button" onClick={() => handleSelectListing(listing)} className="mt-4 w-full rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189] transition">
+                      View Listing
+                    </button>
+                  </article>
+                );
+              }
+
+              return (
+                <article key={item.id} className={`rounded-2xl border bg-white p-5 shadow-sm transition ${isMine ? "border-[#a9d9e7] ring-1 ring-[#dff2f7]" : "border-slate-200 hover:border-[#a9d9e7]"}`}>
+                  {isMine && mode === "all" && (
+                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[#eef7fa] px-2.5 py-1 text-[10px] font-bold text-[#3285a1]">
+                      <User size={12} /> Your Listing
+                    </div>
+                  )}
+
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f0f8f3] to-[#edf7fa] text-[#3285a1]">
+                        <Package size={22} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-black text-slate-800">{item.device_model || "Electronic Device"}</h3>
+                        <p className="mt-1 truncate text-xs text-slate-400">{deviceId}</p>
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${status === "active" ? "bg-emerald-100 text-emerald-700" : status === "donated" ? "bg-purple-100 text-purple-700" : status === "inactive" ? "bg-slate-100 text-slate-600" : "bg-blue-100 text-blue-700"}`}>
+                      {statusLabel}
                     </span>
                   </div>
 
-                  {loading ? (
-                    <p className="text-sm text-slate-400 py-5 text-center">Loading your listings...</p>
-                  ) : myListings.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {myListings.map((item) => {
-                        const itemBids = (item.bids || []).filter((bid) => bid.status !== "declined");
-                        const status = String(item.status || "unknown").replace(/_/g, " ");
-                        return (
-                          <article key={item.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <h3 className="font-bold text-slate-800 truncate">{item.device_model || "Electronic Device"}</h3>
-                                <p className="text-xs text-slate-500 mt-1">{item.category || "Electronics"} · {item.condition || "Condition not set"}</p>
-                              </div>
-                              <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${String(item.status).toLowerCase() === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
-                                {status}
-                              </span>
-                            </div>
-                            <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
-                              <span className="font-black text-[#3285a1]">₱{Number(item.asking_price || 0).toLocaleString()}</span>
-                              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><MessageSquare size={14} /> {itemBids.length} {itemBids.length === 1 ? "bid" : "bids"}</span>
-                            </div>
-                          </article>
-                        );
-                      })}
+                  <div className="mt-5 grid grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+                      <p className="text-[11px] text-slate-400">Asking</p>
+                      <p className="mt-1 text-sm font-black text-slate-800">₱{Number(item.asking_price || 0).toLocaleString()}</p>
                     </div>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 py-8 px-4 text-center">
-                      <p className="text-sm font-semibold text-slate-500">You haven't created any listings yet.</p>
-                      <p className="text-xs text-slate-400 mt-1">Use Create Listing to add your first item.</p>
+                    <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+                      <p className="text-[11px] text-slate-400">Condition</p>
+                      <p className={`mt-1 text-sm font-semibold ${condition === "Working" ? "text-emerald-600" : "text-orange-500"}`}>{condition}</p>
                     </div>
-                  )}
-                </section>
-                {/* LANDING PAGE — BIDS RECEIVED */}
-                <section className="mb-8 rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Gavel size={19} className="text-[#3285a1]" />
-                        <h2 className="text-base font-black text-slate-800">Bids Received</h2>
-                        {(() => {
-                          const count = myListings.reduce(
-                            (total, listing) =>
-                              total +
-                              (listing.bids || []).filter(
-                                (bid) => bid.status !== "declined"
-                              ).length,
-                            0
-                          );
-                          return (
-                            <span className="rounded-full bg-[#3285a1]/10 px-2.5 py-1 text-xs font-black text-[#3285a1]">
-                              {count}
-                            </span>
-                          );
-                        })()}
-                      </div>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Review offers made on your listings without opening your profile.
-                      </p>
+                    <div className={`rounded-xl px-3 py-3 text-center ${bidsForItem.length > 0 ? "bg-[#eef5ff]" : "bg-slate-50"}`}>
+                      <p className="text-[11px] text-slate-400">Bids</p>
+                      <p className="mt-1 text-sm font-black text-[#3285a1]">{bidsForItem.length}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("listings")}
-                      className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
-                    >
-                      View My Listings
-                    </button>
                   </div>
 
-                  {(() => {
-                    const receivedBids = myListings
-                      .flatMap((listing) =>
-                        (listing.bids || [])
-                          .filter((bid) => bid.status !== "declined")
-                          .map((bid) => ({ ...bid, listing }))
-                      )
-                      .sort(
-                        (a, b) =>
-                          new Date(b.created_at || 0).getTime() -
-                          new Date(a.created_at || 0).getTime()
-                      );
+                  <div className="mt-4 flex items-center gap-2 truncate text-xs text-slate-400">
+                    <MapPin size={14} className="shrink-0" />
+                    <span className="truncate">{barangay}</span>
+                    <span>·</span>
+                    <span className="truncate">{owner}</span>
+                  </div>
 
-                    if (loading) {
-                      return (
-                        <p className="p-6 text-center text-sm text-slate-400">
-                          Loading received bids...
-                        </p>
-                      );
-                    }
+                  {mode === "all" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isMine) {
+                          if (firstBid) setSelectedBidListing(item);
+                          else setSelectedListingDetails(item);
+                        } else {
+                          setSelectedListingDetails(item);
+                        }
+                      }}
+                      className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition ${isMine && firstBid ? "bg-[#3285a1] text-white hover:bg-[#2a7189]" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+                    >
+                      {isMine ? (firstBid ? `View ${bidsForItem.length} Bid${bidsForItem.length === 1 ? "" : "s"}` : "Manage Listing") : "Marketplace Listing"}
+                    </button>
+                  ) : mode === "created" ? (
+                    <button
+                      type="button"
+                      onClick={() => firstBid ? setSelectedBidListing(item) : setSelectedListingDetails(item)}
+                      className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition ${firstBid ? "bg-[#3285a1] text-white hover:bg-[#2a7189]" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+                    >
+                      {firstBid ? `View ${bidsForItem.length} Bid${bidsForItem.length === 1 ? "" : "s"}` : "View Details"}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setSelectedListingDetails(item)} className="mt-4 w-full rounded-xl bg-slate-50 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">
+                      View Details
+                    </button>
+                  )}
+                </article>
+              );
+            };
 
-                    if (!receivedBids.length) {
-                      return (
-                        <div className="p-8 text-center">
-                          <Gavel size={28} className="mx-auto text-slate-300" />
-                          <p className="mt-3 text-sm font-bold text-slate-600">
-                            No bids received yet
-                          </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            Offers on your active listings will appear here.
-                          </p>
-                        </div>
-                      );
-                    }
+            return (
+              <div className="animate-in fade-in duration-300 pt-8">
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-xl font-black text-slate-900">Listings</h2>
+                  <button type="button" onClick={openNewListing} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#3285a1] px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-[#2a7189] transition">
+                    <Plus size={18} /> New Listing
+                  </button>
+                </div>
 
-                    return (
-                      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {receivedBids.map(({ listing, ...bid }) => {
+                <div className="mb-7 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setListingSubTab(tab.key)}
+                      className={`flex shrink-0 items-center gap-2 rounded-full border px-5 py-3 text-sm font-medium transition ${listingSubTab === tab.key ? "border-[#3285a1] bg-[#3285a1] text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
+                    >
+                      {tab.label}
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${listingSubTab === tab.key ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{tab.count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {loading ? (
+                  <div className="rounded-2xl border border-slate-100 bg-white py-16 text-center shadow-sm">
+                    <Package size={28} className="mx-auto text-slate-300" />
+                    <p className="mt-3 text-sm font-semibold text-slate-500">Loading listings...</p>
+                  </div>
+                ) : activeItems.length === 0 ? (
+                  <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white px-6 py-16 text-center">
+                    <Package size={32} className="mx-auto text-slate-300" />
+                    <p className="mt-3 text-sm font-bold text-slate-600">
+                      {listingSubTab === "created" ? "You haven't created any listings yet." : listingSubTab === "received" ? "No bids received yet." : listingSubTab === "my-bids" ? "You haven't placed any bids yet." : "No marketplace listings available."}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {listingSubTab === "created" ? "Create a listing to make your item available in the marketplace." : "Your listing activity will appear here when available."}
+                    </p>
+                    {listingSubTab === "created" && (
+                      <button type="button" onClick={openNewListing} className="mt-5 rounded-xl bg-[#3285a1] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#2a7189]">Create Listing</button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                    {listingSubTab === "received"
+                      ? receivedBids.map(({ listing, ...bid }) => {
                           const bidderName = getBuyerDisplayName(bid.profiles);
-                          const initials =
-                            bidderName
-                              ?.split(/\s+/)
-                              .filter(Boolean)
-                              .map((part) => part[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase() || "TH";
-
+                          const initials = bidderName.split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "TH";
                           return (
-                            <article
-                              key={bid.id}
-                              className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                            >
+                            <article key={bid.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex min-w-0 items-center gap-3">
-                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3285a1] to-[#6da43a] text-xs font-black text-white">
-                                    {initials}
-                                  </div>
+                                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#eef7fa] text-sm font-black text-[#3285a1]">{initials}</div>
                                   <div className="min-w-0">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setSelectedBidder({
-                                          ...(bid.profiles || {}),
-                                          id: bid.bidder_id,
-                                        })
-                                      }
-                                      className="block max-w-full truncate text-left text-sm font-black text-slate-800 hover:text-[#3285a1]"
-                                    >
-                                      {bidderName}
-                                    </button>
-                                    <p className="truncate text-xs text-slate-500">
-                                      {listing.device_model || "Your listing"}
-                                    </p>
+                                    <button type="button" onClick={() => setSelectedBidder({ ...(bid.profiles || {}), id: bid.bidder_id })} className="block truncate text-left text-base font-black text-slate-800 hover:text-[#3285a1]">{bidderName}</button>
+                                    <p className="mt-1 truncate text-xs text-slate-500">{listing.device_model || "Your listing"}</p>
                                   </div>
                                 </div>
-                                <span
-                                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black ${bid.status === "accepted"
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : "bg-amber-100 text-amber-700"
-                                    }`}
-                                >
-                                  {bid.status === "accepted" ? "Accepted" : "Pending"}
-                                </span>
+                                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${bid.status === "accepted" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{bid.status === "accepted" ? "Accepted" : "Pending"}</span>
                               </div>
-
-                              <div className="mt-4 flex items-end justify-between gap-3">
-                                <div>
-                                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                                    Offer amount
-                                  </p>
-                                  <p className="mt-1 text-xl font-black text-[#3285a1]">
-                                    ₱{Number(bid.amount || 0).toLocaleString()}
-                                  </p>
-                                </div>
-                                <p className="text-right text-xs text-slate-400">
-                                  Asking: ₱
-                                  {Number(listing.asking_price || 0).toLocaleString()}
-                                </p>
+                              <div className="mt-5 grid grid-cols-3 gap-2">
+                                <div className="rounded-xl bg-slate-50 px-3 py-3 text-center"><p className="text-[11px] text-slate-400">Asking</p><p className="mt-1 text-sm font-black text-slate-800">₱{Number(listing.asking_price || 0).toLocaleString()}</p></div>
+                                <div className="rounded-xl bg-[#eef5ff] px-3 py-3 text-center"><p className="text-[11px] text-slate-400">Offer</p><p className="mt-1 text-sm font-black text-[#3285a1]">₱{Number(bid.amount || 0).toLocaleString()}</p></div>
+                                <div className="rounded-xl bg-slate-50 px-3 py-3 text-center"><p className="text-[11px] text-slate-400">Bids</p><p className="mt-1 text-sm font-black text-slate-800">{getVisibleBids(listing).length}</p></div>
                               </div>
-
+                              <div className="mt-4 flex items-center gap-2 text-xs text-slate-400"><MapPin size={14} /> {getListingBarangay(listing)} <span>·</span> {getListingOwner(listing)}</div>
                               {bid.status === "pending" && (
                                 <div className="mt-4 flex gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAcceptBid(bid, listing)}
-                                    className="flex-1 rounded-xl bg-[#3285a1] py-2.5 text-xs font-black text-white transition hover:bg-[#2a7089]"
-                                  >
-                                    <Check size={14} className="mr-1 inline" />
-                                    Accept
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeclineBid(bid, listing)}
-                                    className="flex-1 rounded-xl border border-red-200 bg-white py-2.5 text-xs font-black text-red-600 transition hover:bg-red-50"
-                                  >
-                                    <X size={14} className="mr-1 inline" />
-                                    Decline
-                                  </button>
+                                  <button type="button" onClick={() => handleAcceptBid(bid, listing)} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-xs font-black text-white hover:bg-[#2a7189]"><Check size={14} className="mr-1 inline" /> Accept</button>
+                                  <button type="button" onClick={() => handleDeclineBid(bid, listing)} className="flex-1 rounded-xl border border-red-200 py-3 text-xs font-black text-red-600 hover:bg-red-50"><X size={14} className="mr-1 inline" /> Decline</button>
                                 </div>
                               )}
                             </article>
                           );
+                        })
+                      : listingSubTab === "my-bids"
+                        ? myBids.map((item) => renderListingCard(item, "bid"))
+                        : activeItems.map((item) => renderListingCard(item, listingSubTab))}
+                  </div>
+                )}
+
+                {selectedBidListing && (
+                  <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-2xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+                      <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+                        <div>
+                          <h3 className="text-lg font-black text-slate-800">Bids for {selectedBidListing.device_model || "Listing"}</h3>
+                          <p className="mt-1 text-xs text-slate-400">Review offers and manage the listing.</p>
+                        </div>
+                        <button type="button" onClick={() => setSelectedBidListing(null)} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"><X size={18} /></button>
+                      </div>
+                      <div className="max-h-[65vh] space-y-3 overflow-y-auto p-6">
+                        {getVisibleBids(selectedBidListing).length === 0 ? (
+                          <div className="py-10 text-center text-sm text-slate-400">No active bids on this listing.</div>
+                        ) : getVisibleBids(selectedBidListing).map((bid) => {
+                          const bidderName = getBuyerDisplayName(bid.profiles);
+                          return (
+                            <div key={bid.id} className="rounded-2xl border border-slate-200 p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <button type="button" onClick={() => setSelectedBidder({ ...(bid.profiles || {}), id: bid.bidder_id })} className="text-sm font-black text-slate-800 hover:text-[#3285a1]">{bidderName}</button>
+                                  <p className="mt-1 text-xs text-slate-400">Offer for {selectedBidListing.device_model}</p>
+                                </div>
+                                <span className="text-lg font-black text-[#3285a1]">₱{Number(bid.amount || 0).toLocaleString()}</span>
+                              </div>
+                              <div className="mt-3 flex items-center justify-between">
+                                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${bid.status === "accepted" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{bid.status === "accepted" ? "Accepted" : "Pending"}</span>
+                                {bid.status === "pending" && selectedBidListing.seller_id === session.user.id && (
+                                  <div className="flex gap-2">
+                                    <button type="button" onClick={() => { handleAcceptBid(bid, selectedBidListing); setSelectedBidListing(null); }} className="rounded-lg bg-[#3285a1] px-3 py-2 text-xs font-bold text-white">Accept</button>
+                                    <button type="button" onClick={() => handleDeclineBid(bid, selectedBidListing)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Decline</button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
                         })}
                       </div>
-                    );
-                  })()}
-                </section>
-
-
-                {/* Browse Banner */}
-                <div className="bg-white border border-slate-100 rounded-2xl p-5 mb-5 mt-7 shadow-sm">
-                  <div className="flex items-start gap-3">
-
-                    <div className="bg-[#3285a1]/10 p-2 rounded-xl text-[#3285a1]">
-                      <Package size={20} />
                     </div>
-
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-800">
-                        Browse Available E-Waste Listings
-                      </h3>
-
-                      <p className="text-xs text-slate-500 mt-1">
-                        These are active listings from other users. Select an item
-                        to view its details and place your bid.
-                      </p>
-                    </div>
-
                   </div>
-                </div>
+                )}
 
-
-                {/* HEADER */}
-                <div className="flex justify-between items-center mb-4">
-
-                  <h2 className="font-bold text-lg text-slate-800">
-                    Available Listings
-                  </h2>
-
-                  <button
-                    onClick={() => {
-                      if (profileData?.verification_status !== "verified") {
-                        alert(
-                          "Your account is still pending admin verification. You cannot create listings yet."
-                        );
-                        return;
-                      }
-
-                      setIsModalOpen(true);
-                    }}
-                    className="bg-[#3285a1] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-90 transition"
-                  >
-                    <Plus size={18} />
-                    Create Listing
-                  </button>
-
-                </div>
-
-
-                {/* LISTINGS */}
-                <div className="space-y-4">
-
-                  {loading ? (
-
-                    <p className="text-center text-slate-400 py-10">
-                      Syncing with Wasteless database...
-                    </p>
-
-                  ) : listings.length > 0 ? (
-
-                    listings.map((item) => {
-
-                      // Find the currently logged-in user's bid
-                      const myBid = (item.bids || []).find(
-                        (bid) =>
-                          bid.bidder_id === session.user.id &&
-                          bid.status !== "declined"
-                      );
-
-                      return (
-                        <div
-                          key={item.id}
-                          className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-[#3285a1]/50 transition"
-                        >
-
-                          {/* LISTING HEADER */}
-                          <div className="flex justify-between items-start">
-
-                            <div className="space-y-1">
-
-                              <div className="flex items-center gap-2">
-
-                                <h3 className="font-bold text-slate-800 text-lg">
-                                  {item.device_model}
-                                </h3>
-
-                                <span className="bg-emerald-100 text-emerald-600 text-xs px-2 py-0.5 rounded-full font-bold uppercase">
-                                  {item.condition}
-                                </span>
-
-                              </div>
-
-
-
-                              <p className="text-xs text-slate-500 mt-2">
-                                {item.description ||
-                                  "Screen not working, battery still good"}
-                              </p>
-
-                            </div>
-
-
-                            <div className="bg-slate-50 p-3 rounded-xl">
-                              <Package
-                                className="text-slate-300"
-                                size={24}
-                              />
-                            </div>
-
+                {selectedListingDetails && (
+                  <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-lg overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+                      <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eef7fa] text-[#3285a1]"><Package size={22} /></div>
+                          <div>
+                            <h3 className="text-lg font-black text-slate-800">{selectedListingDetails.device_model || "Electronic Device"}</h3>
+                            <p className="mt-1 text-xs text-slate-400">{selectedListingDetails.device_id || selectedListingDetails.model_number || "Device"}</p>
                           </div>
-
-
-                          {/* FOOTER */}
-                          <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-50">
-
-                            <div className="flex gap-8">
-
-                              {/* ASKING PRICE */}
-                              <div className="flex items-center gap-2">
-
-                                <span className="text-[#3285a1] font-bold text-sm">
-                                  ₱
-                                  {Number(
-                                    item.asking_price || 0
-                                  ).toLocaleString()}
-                                </span>
-
-                              </div>
-
-
-                              {/* TOTAL BIDS */}
-                              <div className="flex items-center gap-2 text-slate-400">
-
-                                <MessageSquare size={14} />
-
-                                <span className="text-xs font-bold">
-                                  {
-                                    (item.bids || []).filter(
-                                      (bid) =>
-                                        bid.status !== "declined"
-                                    ).length
-                                  }{" "}
-                                  bids
-                                </span>
-
-                              </div>
-
-                            </div>
-
-
-                            {/* MAKE OFFER */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-
-                                if (myBid) {
-                                  alert(
-                                    "You already placed an offer on this listing."
-                                  );
-                                  return;
-                                }
-
-                                handleSelectListing(item);
-                              }}
-                              className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition ${myBid
-                                ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                                : "bg-[#5b9e29] text-white hover:bg-[#4e8924]"
-                                }`}
-                            >
-
-                              <Link2 size={15} />
-
-                              {myBid
-                                ? "Bid Placed"
-                                : "Place Bid"}
-
-                            </button>
-
-                          </div>
-
-
-                          {/* SHOW USER'S BID ON THIS LISTING */}
-                          {myBid && (
-                            <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-4">
-
-                              <div className="flex justify-between items-center">
-
-                                <div>
-
-                                  <p className="text-xs uppercase tracking-wider font-black text-blue-400">
-                                    Your Offer
-                                  </p>
-
-                                  <p className="text-xl font-black text-[#3285a1]">
-                                    ₱
-                                    {Number(
-                                      myBid.amount || 0
-                                    ).toLocaleString()}
-                                  </p>
-
-                                </div>
-
-
-                                <span
-                                  className={`px-3 py-1 rounded-full text-xs font-black ${myBid.status === "accepted"
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-amber-100 text-amber-700"
-                                    }`}
-                                >
-                                  {myBid.status === "accepted"
-                                    ? "Accepted"
-                                    : "Pending"}
-                                </span>
-
-                              </div>
-
-                            </div>
-                          )}
-
                         </div>
-                      );
-                    })
-
-                  ) : (
-
-                    <div className="bg-white p-10 rounded-2xl text-center border-2 border-dashed border-slate-200">
-
-                      <p className="text-slate-400">
-                        No active listings found.
-                      </p>
-
-                    </div>
-
-                  )}
-
-                </div>
-
-              </div>
-
-
-              {/* ==========================================
-      RIGHT SIDE — MY BIDS
-  =========================================== */}
-              <div className="col-span-1">
-
-                <div className="bg-white rounded-2xl border mt-7 border-slate-100 shadow-sm sticky top-6">
-
-                  {/* HEADER */}
-                  <div className="p-5 border-b border-slate-100">
-
-                    <div className="flex items-center justify-between">
-
-                      <div>
-
-                        <h3 className="font-bold text-sm text-slate-800">
-                          My Bids
-                        </h3>
-
-                        <p className="text-xs text-slate-400 mt-1">
-                          Offers you have placed
-                        </p>
-
+                        <button type="button" onClick={() => setSelectedListingDetails(null)} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500"><X size={18} /></button>
                       </div>
-
-                      <div className="bg-[#3285a1]/10 p-2.5 rounded-xl">
-
-                        <TrendingUp
-                          size={17}
-                          className="text-[#3285a1]"
-                        />
-
+                      <div className="space-y-4 p-6">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-xl bg-slate-50 p-4"><p className="text-[11px] text-slate-400">Asking Price</p><p className="mt-1 text-lg font-black text-slate-800">₱{Number(selectedListingDetails.asking_price || 0).toLocaleString()}</p></div>
+                          <div className="rounded-xl bg-slate-50 p-4"><p className="text-[11px] text-slate-400">Condition</p><p className={`mt-1 text-lg font-bold ${normalizeCondition(selectedListingDetails.condition) === "Working" ? "text-emerald-600" : "text-orange-500"}`}>{normalizeCondition(selectedListingDetails.condition)}</p></div>
+                        </div>
+                        <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">{selectedListingDetails.description || "No additional description provided."}</div>
+                        <div className="flex items-center gap-2 text-xs text-slate-400"><MapPin size={14} /> {getListingBarangay(selectedListingDetails)} <span>·</span> {getListingOwner(selectedListingDetails)}</div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setSelectedListingDetails(null)} className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50">Close</button>
+                          {selectedListingDetails.seller_id !== session.user.id && String(selectedListingDetails.status).toLowerCase() === "active" && (
+                            <button type="button" onClick={() => { setSelectedListingDetails(null); handleSelectListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189]">Place Bid</button>
+                          )}
+                          {selectedListingDetails.seller_id === session.user.id && getVisibleBids(selectedListingDetails).length > 0 && (
+                            <button type="button" onClick={() => { setSelectedListingDetails(null); setSelectedBidListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189]">View Bids</button>
+                          )}
+                          {selectedListingDetails.seller_id === session.user.id && String(selectedListingDetails.status).toLowerCase() === "active" && getVisibleBids(selectedListingDetails).length === 0 && (
+                            <button type="button" onClick={() => { setSelectedListingDetails(null); handleOpenDonation(selectedListingDetails); }} className="flex-1 rounded-xl border border-purple-200 bg-purple-50 py-3 text-sm font-bold text-purple-700 hover:bg-purple-100">Donate</button>
+                          )}
+                        </div>
                       </div>
-
                     </div>
-
                   </div>
-
-
-                  {/* MY BIDS */}
-                  <div className="p-4 space-y-3 max-h-[650px] overflow-y-auto">
-
-                    {(() => {
-
-                      /*
-                       * IMPORTANT:
-                       * Only show bids where bidder_id is the
-                       * currently logged-in user.
-                       */
-                      const myBids = listings.flatMap((listing) =>
-                        (listing.bids || [])
-                          .filter(
-                            (bid) =>
-                              bid.bidder_id === session.user.id &&
-                              bid.status !== "declined"
-                          )
-                          .map((bid) => ({
-                            ...bid,
-                            listing,
-                          }))
-                      );
-
-
-                      if (myBids.length === 0) {
-
-                        return (
-                          <div className="py-10 text-center">
-
-                            <div className="w-12 h-12 mx-auto bg-slate-50 rounded-2xl flex items-center justify-center">
-
-                              <Package
-                                size={22}
-                                className="text-slate-300"
-                              />
-
-                            </div>
-
-                            <p className="text-xs font-bold text-slate-500 mt-3">
-                              No bids placed yet
-                            </p>
-
-                            <p className="text-xs text-slate-400 mt-1">
-                              Your offers will appear here.
-                            </p>
-
-                          </div>
-                        );
-
-                      }
-
-
-                      return myBids.map((bid) => {
-
-                        const listing = bid.listing;
-
-                        const askingPrice = Number(
-                          listing.asking_price || 0
-                        );
-
-                        const bidAmount = Number(
-                          bid.amount || 0
-                        );
-
-                        const percentage =
-                          askingPrice > 0
-                            ? Math.round(
-                              (bidAmount / askingPrice) * 100
-                            )
-                            : 0;
-
-
-                        return (
-                          <div
-                            key={bid.id}
-                            className="border border-slate-200 rounded-2xl p-4 hover:border-[#3285a1]/40 transition"
-                          >
-
-                            {/* DEVICE */}
-                            <div className="flex justify-between items-start gap-3">
-
-                              <div className="min-w-0">
-
-                                <p className="text-sm font-black text-slate-800">
-                                  {listing.device_model}
-                                </p>
-
-                                <p className="text-xs text-slate-400 mt-1">
-                                  Asking Price: ₱
-                                  {askingPrice.toLocaleString()}
-                                </p>
-
-                              </div>
-
-                              <Package
-                                size={17}
-                                className="text-slate-300"
-                              />
-
-                            </div>
-
-
-                            {/* YOUR BID */}
-                            <div className="bg-blue-50 rounded-xl p-3 mt-3">
-
-                              <p className="text-xs uppercase tracking-wider font-black text-blue-400">
-                                Your Offer
-                              </p>
-
-                              <p className="text-xl font-black text-[#3285a1] mt-1">
-                                ₱{bidAmount.toLocaleString()}
-                              </p>
-
-                              <p className="text-xs text-slate-400 mt-1">
-                                {percentage}% of asking price
-                              </p>
-
-                            </div>
-
-
-                            {/* STATUS */}
-                            <div className="flex items-center justify-between mt-3">
-
-                              <span
-                                className={`px-2.5 py-1 rounded-full text-xs font-black ${bid.status === "accepted"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-amber-100 text-amber-700"
-                                  }`}
-                              >
-                                {bid.status === "accepted"
-                                  ? "Accepted"
-                                  : "Pending"}
-                              </span>
-
-
-                              {bid.created_at && (
-                                <span className="text-xs text-slate-400">
-
-                                  {new Date(
-                                    bid.created_at
-                                  ).toLocaleDateString("en-US", {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  })}
-
-                                </span>
-                              )}
-
-                            </div>
-
-
-                            {/* VIEW LISTING */}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleSelectListing(listing)
-                              }
-                              className="w-full mt-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-black hover:bg-slate-50 transition"
-                            >
-                              View Listing
-                            </button>
-
-                          </div>
-                        );
-
-                      });
-
-                    })()}
-
-                  </div>
-
-                </div>
-
+                )}
               </div>
-
-
-            </div>
-          )}
+            );
+          })()}
 
           {/* --- TRANSACTIONS TAB --- */}
           {activeTab === "transactions" && (
@@ -3824,7 +3264,7 @@ const SellerDashboard = ({ session }) => {
               </div>
 
               {transactions.length === 0 ? (
-                <div className="bg-white rounded-xl border-2 border-dashed border-slate-100 p-12 text-center">
+                <div className="bg-white rounded-xl border-2 mt-7border-dashed border-slate-100 p-12 text-center">
                   <ArrowLeftRight size={30} className="mx-auto text-slate-300" />
                   <p className="text-sm mt-7 font-bold text-slate-500 mt-3">
                     No active transactions
@@ -3841,7 +3281,6 @@ const SellerDashboard = ({ session }) => {
                       const isSeller = tx.seller_id === session.user.id;
                       const isBuyer = tx.harvester_id === session.user.id;
                       const isCompleted = tx.status === "completed";
-                      const isCancelled = tx.status === "cancelled";
                       const isRepair = isRepairTransaction(tx);
 
                       const otherParty = isSeller ? tx.harvester : tx.seller;
@@ -3854,28 +3293,26 @@ const SellerDashboard = ({ session }) => {
                         <button
                           key={tx.id}
                           onClick={() => setSelectedTxId(tx.id)}
-                          className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${selectedTxId === tx.id
-                              ? isCancelled
-                                ? "border-red-500 bg-red-50 shadow-sm"
-                                : "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
-                              : isCancelled
-                                ? "border-red-200 bg-red-50/50 hover:border-red-300"
-                                : "border-slate-100 bg-white hover:border-slate-200"
-                            }`}
+                          className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${
+                            selectedTxId === tx.id
+                              ? "border-[#2d7a7f] bg-blue-50/50 shadow-sm"
+                              : "border-slate-100 bg-white hover:border-slate-200"
+                          }`}
                         >
                           <div className="flex justify-between items-start mb-1 gap-2">
                             <h4 className="font-bold text-sm text-slate-800 truncate">
                               {isRepair ? getRepairDevice(tx) : tx.listing?.device_model || "Electronic Item"}
                             </h4>
                             <span
-                              className={`text-xs px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${isCancelled
-                                  ? "bg-red-100 text-red-700 border-red-300"
-                                  : isCompleted
-                                    ? "bg-green-50 text-green-600 border-green-200"
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${
+                                isCompleted
+                                  ? "bg-green-50 text-green-600 border-green-200"
+                                  : tx.status === "cancelled"
+                                    ? "bg-red-50 text-red-600 border-red-200"
                                     : tx.status === "meetup_scheduled"
                                       ? "bg-blue-50 text-blue-600 border-blue-200"
                                       : "bg-amber-50 text-amber-600 border-amber-200"
-                                }`}
+                              }`}
                             >
                               {isRepair
                                 ? isCompleted
@@ -3904,14 +3341,13 @@ const SellerDashboard = ({ session }) => {
                               {isRepair ? "No payment" : `₱${Number(tx.amount || 0).toLocaleString()}`}
                             </p> */}
                             <span
-                              className={`text-xs font-black px-2 py-1 rounded-full ${isCancelled
-                                  ? "bg-red-100 text-red-700 border border-red-200"
-                                  : isSeller
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-blue-50 text-blue-700"
-                                }`}
+                              className={`text-xs font-black px-2 py-1 rounded-full ${
+                                isSeller
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-blue-50 text-blue-700"
+                              }`}
                             >
-                              {isCancelled ? "CANCELLED" : isRepair ? "REPAIR" : isSeller ? "SELLING" : "BUYING"}
+                              {isRepair ? "REPAIR" : isSeller ? "SELLING" : "BUYING"}
                             </span>
                           </div>
                         </button>
@@ -3927,7 +3363,6 @@ const SellerDashboard = ({ session }) => {
                         const isSeller = tx.seller_id === session.user.id;
                         const isBuyer = tx.harvester_id === session.user.id;
                         const isCompleted = tx.status === "completed";
-                        const isCancelled = tx.status === "cancelled";
                         const isMeetupScheduled = tx.status === "meetup_scheduled";
                         const isRepair = isRepairTransaction(tx);
                         const repairDevice = getRepairDevice(tx);
@@ -3945,9 +3380,8 @@ const SellerDashboard = ({ session }) => {
                           "Unknown Buyer";
 
                         return (
-                          <div className={`bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full ${isCancelled ? "border-2 border-red-200" : "border border-slate-100"
-                            }`}>
-                            <div className={`${isCancelled ? "bg-red-600" : "bg-[#2d7a7f]"} p-6 text-white flex justify-between items-start`}>
+                          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-full">
+                            <div className="bg-[#2d7a7f] p-6 text-white flex justify-between items-start">
                               <div>
                                 <h2 className="text-xl font-bold">
                                   {isRepair ? repairDevice : tx.listing?.device_model || "Electronic Item"}
@@ -3957,50 +3391,34 @@ const SellerDashboard = ({ session }) => {
                                 </p>
                               </div>
                               <div className="flex flex-col items-end gap-2">
-                                <span className={`px-4 py-1 rounded-full text-xs font-medium backdrop-blur-sm ${isCancelled
-                                    ? "bg-white/15 text-white border border-white/40"
-                                    : "bg-white/20 text-white"
-                                  }`}>
-                                  {isCancelled
-                                    ? "Cancelled"
-                                    : isRepair
-                                      ? isCompleted
-                                        ? "Repair Completed"
-                                        : isMeetupScheduled
-                                          ? "Repair Scheduled"
-                                          : "Repair Matched"
-                                      : isCompleted
-                                        ? "Completed"
-                                        : isMeetupScheduled
-                                          ? "Meetup Scheduled"
-                                          : "Matched"}
+                                <span className="bg-white/20 px-4 py-1 rounded-full text-xs font-medium backdrop-blur-sm">
+                                  {isRepair
+                                    ? isCompleted
+                                      ? "Repair Completed"
+                                      : isMeetupScheduled
+                                        ? "Repair Scheduled"
+                                        : "Repair Matched"
+                                    : isCompleted
+                                      ? "Completed"
+                                      : isMeetupScheduled
+                                        ? "Meetup Scheduled"
+                                        : "Matched"}
                                 </span>
-                                <span className={`${isCancelled ? "bg-white/15 border border-white/30" : "bg-white/10"} px-3 py-1 rounded-full text-xs font-black uppercase`}>
-                                  {isCancelled ? "TRANSACTION CANCELLED" : isSeller ? "You are selling" : "You are buying"}
+                                <span className="bg-white/10 px-3 py-1 rounded-full text-xs font-black uppercase">
+                                  {isSeller ? "You are selling" : "You are buying"}
                                 </span>
                               </div>
                             </div>
 
                             {/* PROGRESS */}
-                            <div className={`p-10 border-b ${isCancelled ? "border-red-100 bg-red-50/30" : "border-slate-50"}`}>
-                              {isCancelled ? (
-                                <div className="relative max-w-lg mx-auto">
-                                  <div className="flex items-center justify-center gap-3 rounded-2xl border-2 border-red-200 bg-red-50 px-5 py-4">
-                                    <div className="w-10 h-10 rounded-full bg-red-100 border border-red-200 flex items-center justify-center shrink-0">
-                                      <XCircle size={22} className="text-red-600" />
-                                    </div>
-                                    <div>
-                                      <p className="text-sm font-black text-red-700 uppercase tracking-wide">Transaction Cancelled</p>
-                                      <p className="text-xs font-semibold text-red-600 mt-1">This transaction is no longer active.</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : isRepair ? (
+                            <div className="p-10 border-b border-slate-50">
+                              {isRepair ? (
                                 <div className="relative flex justify-between items-center max-w-lg mx-auto">
                                   <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2" />
                                   <div
-                                    className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${isCompleted ? "bg-green-500 w-full" : isMeetupScheduled ? "bg-purple-500 w-1/2" : "bg-purple-500 w-0"
-                                      }`}
+                                    className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${
+                                      isCompleted ? "bg-green-500 w-full" : isMeetupScheduled ? "bg-purple-500 w-1/2" : "bg-purple-500 w-0"
+                                    }`}
                                   />
                                   {[
                                     ["Matched", true],
@@ -4049,33 +3467,13 @@ const SellerDashboard = ({ session }) => {
                                 {!isRepair && (
                                   <div>
                                     <p className="text-xs text-slate-400 font-bold uppercase mb-1">Amount</p>
-                                    <p className={`text-xl font-black ${isCancelled ? "text-red-600" : "text-[#2d7a7f]"}`}>₱{Number(tx.amount || 0).toLocaleString()}</p>
+                                    <p className="text-xl font-black text-[#2d7a7f]">₱{Number(tx.amount || 0).toLocaleString()}</p>
                                   </div>
                                 )}
                               </div>
 
                               {/* REPAIR / MARKETPLACE DETAILS AND ACTIONS */}
-                              {isCancelled ? (
-                                <div className="space-y-4">
-                                  <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 flex items-start gap-4">
-                                    <div className="bg-red-100 p-2 rounded-full text-red-600 border border-red-200 shrink-0">
-                                      <XCircle size={22} />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-black text-red-700">Transaction Cancelled</p>
-                                      <p className="text-xs font-semibold text-red-600 mt-1">
-                                        This transaction is closed and no further action is available.
-                                      </p>
-                                      {tx.cancel_reason && (
-                                        <div className="mt-3 pt-3 border-t border-red-200">
-                                          <p className="text-[11px] font-black uppercase tracking-wider text-red-500">Cancellation Reason</p>
-                                          <p className="text-sm font-bold text-red-700 mt-1 break-words">{tx.cancel_reason}</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : isRepair ? (
+                              {isRepair ? (
                                 <>
                                   {(isMeetupScheduled || isCompleted) && (
                                     <div className="bg-purple-50 border border-purple-100 rounded-2xl p-5 mb-6">
@@ -4105,10 +3503,11 @@ const SellerDashboard = ({ session }) => {
                                       <button
                                         onClick={() => handleOpenRepairReview(tx)}
                                         disabled={reviewedRepairAppointments.has(tx.repair_appointment_id)}
-                                        className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedRepairAppointments.has(tx.repair_appointment_id)
+                                        className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                                          reviewedRepairAppointments.has(tx.repair_appointment_id)
                                             ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                                             : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100"
-                                          }`}
+                                        }`}
                                       >
                                         <Star size={18} fill="currentColor" />
                                         {reviewedRepairAppointments.has(tx.repair_appointment_id)
@@ -4122,7 +3521,7 @@ const SellerDashboard = ({ session }) => {
                                       <div className="grid grid-cols-2 gap-3 mt-4"><div className="bg-white rounded-xl p-3 border border-purple-100"><p className="text-xs font-black uppercase text-slate-400">Date</p><p className="text-xs font-bold text-slate-700 mt-1">{tx.meetup_date || "Not scheduled"}</p></div><div className="bg-white rounded-xl p-3 border border-purple-100"><p className="text-xs font-black uppercase text-slate-400">Time</p><p className="text-xs font-bold text-slate-700 mt-1">{tx.meetup_time || "Not scheduled"}</p></div></div>
                                     </div>
                                   ) : (
-                                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-5"><div className="flex items-center gap-3"><Wrench className="text-purple-600" size={20} /><div><p className="text-sm font-bold text-purple-800">Repair Service Request</p><p className="text-xs text-purple-600 mt-1">Your repair request is being processed. The repair shop will confirm the appointment before the service begins.</p></div></div></div>
+                                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-5"><div className="flex items-center gap-3"><Wrench className="text-purple-600" size={20}/><div><p className="text-sm font-bold text-purple-800">Repair Service Request</p><p className="text-xs text-purple-600 mt-1">Your repair request is being processed. The repair shop will confirm the appointment before the service begins.</p></div></div></div>
                                   )}
                                 </>
                               ) : (
@@ -4132,7 +3531,7 @@ const SellerDashboard = ({ session }) => {
                                     <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6">
                                       <div className="flex items-center gap-2 mb-4"><Calendar size={17} className="text-blue-600" /><p className="text-sm font-bold text-blue-800">Meetup Details</p></div>
                                       <div className="grid grid-cols-2 gap-4">
-                                        <div><p className="text-xs uppercase font-bold text-blue-400">Date</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_date ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Not set"}</p></div>
+                                        <div><p className="text-xs uppercase font-bold text-blue-400">Date</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_date ? new Date(`${tx.meetup_date}T00:00:00`).toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"}) : "Not set"}</p></div>
                                         <div><p className="text-xs uppercase font-bold text-blue-400">Time</p><p className="text-sm font-bold text-slate-700 mt-1">{tx.meetup_time || "Not set"}</p></div>
                                         <div className="col-span-2"><p className="text-xs uppercase font-bold text-blue-400">Location</p><p className="text-sm font-bold text-slate-700 mt-1 flex items-center gap-1"><MapPin size={14} className="text-blue-500" />{tx.barangay || "Not set"}</p></div>
                                         {tx.notes && <div className="col-span-2"><p className="text-xs uppercase font-bold text-blue-400">Notes</p><p className="text-xs text-slate-600 mt-1">{tx.notes}</p></div>}
@@ -4143,22 +3542,23 @@ const SellerDashboard = ({ session }) => {
                                   {isCompleted ? (
                                     <div className="space-y-4">
                                       <div className={`border rounded-xl p-5 flex items-center gap-4 ${isRepair ? "bg-purple-50 border-purple-100" : "bg-green-50 border-green-100"}`}>
-                                        <div className={`bg-white p-2 rounded-full shadow-sm border ${isRepair ? "text-purple-600 border-purple-100" : "text-green-500 border-green-100"}`}>{isRepair ? <Wrench size={20} /> : <Check size={20} strokeWidth={3} />}</div>
-                                        <div><p className={`text-sm font-bold ${isRepair ? "text-purple-800" : "text-green-800"}`}>{isRepair ? "Repair Service Completed" : "Transaction Completed"}</p><p className={`text-xs mt-1 ${isRepair ? "text-purple-600" : "text-green-600"}`}>{isRepair ? "The repair shop has marked your repair service as completed." : <>The handover has been confirmed by the buyer.{tx.updated_at && <> Completed on {new Date(tx.updated_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.</>}</>}</p></div>
+                                        <div className={`bg-white p-2 rounded-full shadow-sm border ${isRepair ? "text-purple-600 border-purple-100" : "text-green-500 border-green-100"}`}>{isRepair ? <Wrench size={20}/> : <Check size={20} strokeWidth={3}/>}</div>
+                                        <div><p className={`text-sm font-bold ${isRepair ? "text-purple-800" : "text-green-800"}`}>{isRepair ? "Repair Service Completed" : "Transaction Completed"}</p><p className={`text-xs mt-1 ${isRepair ? "text-purple-600" : "text-green-600"}`}>{isRepair ? "The repair shop has marked your repair service as completed." : <>The handover has been confirmed by the buyer.{tx.updated_at && <> Completed on {new Date(tx.updated_at).toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"})}.</>}</>}</p></div>
                                       </div>
-                                      <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100"><Download size={18} />{isRepair ? "View Repair Service Record" : "View Transaction Receipt"}</button>
+                                      <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100"><Download size={18}/>{isRepair ? "View Repair Service Record" : "View Transaction Receipt"}</button>
                                       {isRepair ? (
-                                        <button onClick={() => handleOpenRepairReview(tx)} disabled={reviewedRepairAppointments.has(tx.repair_appointment_id)} className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedRepairAppointments.has(tx.repair_appointment_id) ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100"}`}><Star size={18} fill="currentColor" />{reviewedRepairAppointments.has(tx.repair_appointment_id) ? "Repair Shop Already Rated" : "Rate Repair Shop"}</button>
+                                        <button onClick={() => handleOpenRepairReview(tx)} disabled={reviewedRepairAppointments.has(tx.repair_appointment_id)} className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedRepairAppointments.has(tx.repair_appointment_id) ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100"}`}><Star size={18} fill="currentColor"/>{reviewedRepairAppointments.has(tx.repair_appointment_id) ? "Repair Shop Already Rated" : "Rate Repair Shop"}</button>
                                       ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
                                           {isSeller && (
                                             <button
                                               onClick={() => handleOpenMarketplaceRating(tx, "buyer")}
                                               disabled={reviewedMarketplaceTransactions.has(tx.id)}
-                                              className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedMarketplaceTransactions.has(tx.id)
+                                              className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                                                reviewedMarketplaceTransactions.has(tx.id)
                                                   ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                                                   : "bg-[#FF4D2D] hover:bg-[#e64528] text-white shadow-orange-200"
-                                                }`}
+                                              }`}
                                             >
                                               <Star size={18} fill="currentColor" />
                                               {reviewedMarketplaceTransactions.has(tx.id) ? "Buyer Already Rated" : "Rate Buyer"}
@@ -4168,10 +3568,11 @@ const SellerDashboard = ({ session }) => {
                                             <button
                                               onClick={() => handleOpenMarketplaceRating(tx, "seller")}
                                               disabled={reviewedMarketplaceTransactions.has(tx.id)}
-                                              className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedMarketplaceTransactions.has(tx.id)
+                                              className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                                                reviewedMarketplaceTransactions.has(tx.id)
                                                   ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                                                   : "bg-[#2d7a7f] hover:bg-[#246367] text-white shadow-blue-200"
-                                                }`}
+                                              }`}
                                             >
                                               <Star size={18} fill="currentColor" />
                                               {reviewedMarketplaceTransactions.has(tx.id) ? "Seller Already Rated" : "Rate Seller"}
@@ -4181,54 +3582,13 @@ const SellerDashboard = ({ session }) => {
                                       )}
                                     </div>
                                   ) : isRepair ? (
-                                    <div className="space-y-3">
-                                      <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
-                                        <p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p>
-                                        <p className="text-xs text-purple-600 mt-1">The repair shop will mark the repair service as completed after the device has been repaired.</p>
-                                      </div>
-                                      {isSeller && (
-                                        <button
-                                          onClick={() => { setSelectedTxId(tx.id); setCancelReason(""); setCancelDetails(""); setShowCancelModal(true); }}
-                                          disabled={Boolean(cancellingTransactionId)}
-                                          className="w-full bg-white text-amber-700 border border-amber-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors disabled:opacity-50"
-                                        >
-                                          <XCircle size={18} /> Cancel Transaction
-                                        </button>
-                                      )}
-                                    </div>
+                                    <div className="space-y-3"><div className="bg-purple-50 border border-purple-100 rounded-xl p-4"><p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p><p className="text-xs text-purple-600 mt-1">The repair shop will mark the repair service as completed after the device has been repaired.</p></div></div>
                                   ) : isBuyer && isMeetupScheduled ? (
-                                    <div className="space-y-3"><div className="bg-amber-50 border border-amber-100 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Handover Pending</p><p className="text-xs text-amber-600 mt-1">After you receive the item at the scheduled meetup, confirm the handover below.</p></div><button onClick={() => handleCompleteTransaction(tx.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"><CheckCheck size={18} /> Confirm Handover Complete</button></div>
+                                    <div className="space-y-3"><div className="bg-amber-50 border border-amber-100 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Handover Pending</p><p className="text-xs text-amber-600 mt-1">After you receive the item at the scheduled meetup, confirm the handover below.</p></div><button onClick={() => handleCompleteTransaction(tx.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"><CheckCheck size={18}/> Confirm Handover Complete</button></div>
                                   ) : isSeller && !isMeetupScheduled ? (
-                                    <div className="space-y-3"><button onClick={() => { setShowMessages(true); setActiveTab("listings"); }} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18} /> Schedule Meetup via Messages</button><button onClick={() => { setSelectedTxId(tx.id); setCancelReason(""); setCancelDetails(""); setShowCancelModal(true); }} className="w-full bg-white text-amber-700 border border-amber-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors"><XCircle size={18} /> Cancel Transaction</button></div>
+                                    <div className="space-y-3"><button onClick={() => {setShowMessages(true);setActiveTab("listings");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> Schedule Meetup via Messages</button><button onClick={() => setShowCancelModal(true)} className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"><XCircle size={18}/> Cancel Transaction</button></div>
                                   ) : isSeller && isMeetupScheduled ? (
-                                    <div className="space-y-3">
-                                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                                        <p className="text-sm font-bold text-blue-800">Meetup Scheduled</p>
-                                        <p className="text-xs text-blue-600 mt-1">The buyer can confirm the handover after the scheduled meetup.</p>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setSelectedTxId(tx.id);
-                                          setReportReason("");
-                                          setReportDetails("");
-                                          setShowReportModal(true);
-                                        }}
-                                        disabled={Boolean(reportingTransactionId) || reportedTransactionIds.has(tx.id)}
-                                        className="w-full bg-red-50 text-red-600 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                      >
-                                        <AlertCircle size={18} />
-                                        {reportedTransactionIds.has(tx.id) ? "Transaction Reported" : "Report Meetup Issue"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => { setSelectedTxId(tx.id); setCancelReason(""); setCancelDetails(""); setShowCancelModal(true); }}
-                                        disabled={Boolean(cancellingTransactionId)}
-                                        className="w-full bg-white text-amber-700 border border-amber-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors disabled:opacity-50"
-                                      >
-                                        <XCircle size={18} /> Cancel Transaction
-                                      </button>
-                                    </div>
+                                    <div className="space-y-3"><div className="bg-blue-50 border border-blue-100 rounded-xl p-4"><p className="text-sm font-bold text-blue-800">Meetup Scheduled</p><p className="text-xs text-blue-600 mt-1">The buyer can confirm the handover after the scheduled meetup.</p></div></div>
                                   ) : (
                                     <div className="bg-slate-50 border border-slate-100 rounded-xl p-4"><p className="text-sm font-bold text-slate-600">Waiting for seller to schedule the meetup.</p><p className="text-xs text-slate-400 mt-1">You will see the meetup details here once the seller schedules it.</p></div>
                                   )}
@@ -4268,20 +3628,20 @@ const SellerDashboard = ({ session }) => {
             <form onSubmit={handleSaveProfile} className="w-full max-w-lg bg-white rounded-3xl p-6 space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-black text-slate-800">Edit Profile</h2>
-                <button type="button" onClick={() => setShowEditProfile(false)} className="p-2 rounded-full hover:bg-slate-100" aria-label="Close"><X size={18} /></button>
+                <button type="button" onClick={() => setShowEditProfile(false)} className="p-2 rounded-full hover:bg-slate-100" aria-label="Close"><X size={18}/></button>
               </div>
               <label className="block text-sm font-bold text-slate-700">Full name
-                <input required maxLength={120} value={editProfile.full_name} onChange={(e) => setEditProfile(p => ({ ...p, full_name: e.target.value }))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" />
+                <input required maxLength={120} value={editProfile.full_name} onChange={(e) => setEditProfile(p => ({...p, full_name:e.target.value}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" />
               </label>
               <label className="block text-sm font-bold text-slate-700">Email
                 <input disabled value={session?.user?.email || ""} className="mt-1 w-full border rounded-xl px-3 py-2 bg-slate-100 font-normal" />
                 <span className="text-xs text-slate-500">Email changes require a separate authentication flow.</span>
               </label>
               <label className="block text-sm font-bold text-slate-700">Contact number
-                <input type="tel" maxLength={30} value={editProfile.contact_number} onChange={(e) => setEditProfile(p => ({ ...p, contact_number: e.target.value }))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" />
+                <input type="tel" maxLength={30} value={editProfile.contact_number} onChange={(e) => setEditProfile(p => ({...p, contact_number:e.target.value}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" />
               </label>
               <label className="block text-sm font-bold text-slate-700">Barangay
-                <select value={editProfile.barangay} onChange={(e) => setEditProfile(p => ({ ...p, barangay: e.target.value }))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">
+                <select value={editProfile.barangay} onChange={(e) => setEditProfile(p => ({...p, barangay:e.target.value}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">
                   <option value="">Select barangay</option>
                   {valenzuelaBarangays.map((b) => <option key={b} value={b}>{b}</option>)}
                 </select>
@@ -4290,14 +3650,14 @@ const SellerDashboard = ({ session }) => {
                 <button type="button" onClick={() => setShowEditProfile(false)} className="flex-1 border rounded-xl py-3 font-bold">Cancel</button>
                 <button disabled={profileSaving} type="submit" className="flex-1 bg-[#2d7a7f] text-white rounded-xl py-3 font-bold disabled:opacity-50">{profileSaving ? "Saving..." : "Save changes"}</button>
               </div>
-              <div className="border-t border-slate-200 pt-4 mt-2 space-y-2">
+              {/* <div className="border-t border-slate-200 pt-4 mt-2 space-y-2">
                 <h3 className="text-sm font-bold text-slate-700">Account actions</h3>
-                <p className="text-xs text-slate-500">Deactivated or deleted profiles are hidden from other users and show “This profile is no longer available.”</p>
+                <p className="text-xs text-slate-500">Deactivate to disable your account, or request permanent deletion.</p>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <button type="button" onClick={() => { setShowEditProfile(false); handleDeactivateAccount(); }} className="flex-1 border border-amber-300 text-amber-800 hover:bg-amber-50 rounded-xl py-2.5 text-sm font-bold">Deactivate account</button>
-                  <button type="button" onClick={() => { setShowEditProfile(false); handleDeleteAccount(); }} className="flex-1 border border-red-300 text-red-700 hover:bg-red-50 rounded-xl py-2.5 text-sm font-bold">Delete account</button>
+                  <button type="button" onClick={() => { if (window.confirm("Are you sure you want to deactivate your account? You will be signed out.")) { setShowEditProfile(false); handleDeactivateAccount(); } }} className="flex-1 border border-amber-300 text-amber-800 hover:bg-amber-50 rounded-xl py-2.5 text-sm font-bold">Deactivate account</button>
+                  <button type="button" onClick={() => alert("Permanent account deletion is not available here yet. It must be implemented securely using a Supabase Edge Function and the Admin API.")} className="flex-1 border border-red-300 text-red-700 hover:bg-red-50 rounded-xl py-2.5 text-sm font-bold">Delete account</button>
                 </div>
-              </div>
+              </div> */}
             </form>
           </div>
         )}
@@ -4311,600 +3671,602 @@ const SellerDashboard = ({ session }) => {
               className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-50 shadow-2xl animate-in fade-in zoom-in duration-200"
               onClick={(event) => event.stopPropagation()}
             >
-              {isUnavailableProfile(profileData) ? (
-                <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600">
-                    <ShieldAlert size={28} />
-                  </div>
-                  <h2 className="text-lg font-black text-slate-800">This profile is no longer available</h2>
-                  <p className="mt-2 text-sm text-slate-500">This account has been deactivated, suspended, or deleted.</p>
-                  <button type="button" onClick={() => setShowProfileModal(false)} className="mt-6 w-full rounded-xl bg-slate-800 py-3 text-sm font-bold text-white hover:bg-slate-700">Close</button>
-                </div>
-              ) : (
-                <>
-                  {/* Profile Modal Header */}
-                  <div className="bg-gradient-to-br from-[#448b78] to-[#6da43a] p-6 sm:p-8 text-white relative rounded-t-3xl">
-                    <button
-                      onClick={() => setShowProfileModal(false)}
-                      className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
-                    >
-                      <X size={20} />
+              {/* Profile Modal Header */}
+              <div className="bg-gradient-to-br from-[#448b78] to-[#6da43a] p-6 sm:p-8 text-white relative rounded-t-3xl">
+                <button
+                  onClick={() => setShowProfileModal(false)}
+                  className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
+                >
+                  <X size={20} />
+                </button>
+
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
+                      {currentProfileName.charAt(0).toUpperCase()}
+                    </div>
+                    <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
+                      <Camera size={12} />
                     </button>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      {currentProfileName}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${profileData?.verification_status === "approved"
+                          ? "bg-emerald-500/20 text-white"
+                          : profileData?.verification_status === "pending"
+                            ? "bg-amber-500/20 text-white"
+                            : profileData?.verification_status === "rejected"
+                              ? "bg-red-500/20 text-white"
+                              : "bg-slate-500/20 text-white"
+                          }`}
+                      >
+                        <CheckCircle size={10} />
 
-                    <div className="flex items-center gap-4">
-                      <div className="relative">
-                        <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
-                          {currentProfileName.charAt(0).toUpperCase()}
-                        </div>
-                        <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
-                          <Camera size={12} />
-                        </button>
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-bold">
-                          {currentProfileName}
-                        </h2>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${profileData?.verification_status === "approved"
-                              ? "bg-emerald-500/20 text-white"
-                              : profileData?.verification_status === "pending"
-                                ? "bg-amber-500/20 text-white"
-                                : profileData?.verification_status === "rejected"
-                                  ? "bg-red-500/20 text-white"
-                                  : "bg-slate-500/20 text-white"
-                              }`}
-                          >
-                            <CheckCircle size={10} />
-
-                            {profileData?.verification_status === "verified"
-                              ? "Verified Seller"
-                              : profileData?.verification_status === "pending"
-                                ? "Verification Pending"
-                                : profileData?.verification_status === "rejected"
-                                  ? "Verification Rejected"
-                                  : "Not Submitted"}
-                          </span>
-                          <span className="text-xs opacity-80">
-                            Active since{" "}
-                            {new Date(session.user.created_at).toLocaleDateString(
-                              "en-US",
-                              { month: "long", year: "numeric" },
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 mt-2 text-yellow-300">
-                          <Star size={12} fill="currentColor" />
-                          <span className="text-xs font-bold text-white">
-                            0.0{" "}
-                            <span className="opacity-70 font-normal">
-                              (0 reviews)
-                            </span>
-                          </span>
-                        </div>
-                      </div>
+                        {profileData?.verification_status === "verified"
+                          ? "Verified Seller"
+                          : profileData?.verification_status === "pending"
+                            ? "Verification Pending"
+                            : profileData?.verification_status === "rejected"
+                              ? "Verification Rejected"
+                              : "Not Submitted"}
+                      </span>
+                      <span className="text-xs opacity-80">
+                        Active since{" "}
+                        {new Date(session.user.created_at).toLocaleDateString(
+                          "en-US",
+                          { month: "long", year: "numeric" },
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 mt-2 text-yellow-300">
+                      <Star size={12} fill="currentColor" />
+                      <span className="text-xs font-bold text-white">
+                        0.0{" "}
+                        <span className="opacity-70 font-normal">
+                          (0 reviews)
+                        </span>
+                      </span>
                     </div>
                   </div>
+                </div>
+              </div>
 
-                  {/* Full-Screen Profile Content */}
-                  <div className="flex-1 p-6 md:p-10 space-y-6 bg-slate-50/50">
-                    <div className="flex justify-end">
-                      <button type="button" onClick={openEditProfile} className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-[#246367] transition shadow-sm">
-                        <Edit3 size={14} /> Edit Profile
-                      </button>
+              {/* Full-Screen Profile Content */}
+              <div className="flex-1 p-6 md:p-10 space-y-6 bg-slate-50/50">
+                <div className="flex justify-end">
+                  <button type="button" onClick={openEditProfile} className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-[#246367] transition shadow-sm">
+                    <Edit3 size={14} /> Edit Profile
+                  </button>
+                </div>
+                {/* Stats Grid */}
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    {
+                      label: "Total Listings",
+                      val: myListings.length,
+                      icon: <Package size={16} />,
+                      color: "text-blue-500",
+                      bg: "bg-blue-50",
+                    },
+                    {
+                      label: "Items Sold",
+                      val: myListings.filter((item) =>
+                        ["meetup scheduled", "sold", "completed"].includes(
+                          item.status?.toLowerCase(),
+                        ),
+                      ).length,
+                      icon: <TrendingUp size={16} />,
+                      color: "text-green-500",
+                      bg: "bg-green-50",
+                    },
+                    {
+                      label: "Rating",
+                      val: profileData?.average_rating?.toFixed(1) || "0.0", // Dynamic data
+                      icon: <Star size={16} />,
+                      color: "text-yellow-500",
+                      bg: "bg-yellow-50",
+                    },
+                    {
+                      label: "Reviews",
+                      val: profileData?.total_reviews || "0", // Dynamic data
+                      icon: <MessageSquare size={16} />,
+                      color: "text-purple-500",
+                      bg: "bg-purple-50",
+                    },
+                  ].map((stat, i) => (
+                    <div
+                      key={i}
+                      className={`${stat.bg} p-3 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center`}
+                    >
+                      <div className={`${stat.color} mb-1`}>{stat.icon}</div>
+                      <div className="text-sm font-black text-gray-800">
+                        {stat.val}
+                      </div>
+                      <div className="text-xs text-gray-500 font-medium leading-tight">
+                        {stat.label}
+                      </div>
                     </div>
-                    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <h3 className="mb-1 text-sm font-bold text-slate-800">Change Password</h3>
-                      <p className="mb-4 text-xs text-slate-500">Verify your current password before choosing a new one.</p>
-                      {passwordError && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{passwordError}</p>}
-                      {passwordSuccess && <p role="status" className="mb-3 rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-700">{passwordSuccess}</p>}
+                  ))}
+                </div>
+                {/* Dynamic Trust Tier Section - requirements come from Supabase trust_tiers */}
+                <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
+                  <Shield
+                    className="absolute right-4 top-4 opacity-20"
+                    size={60}
+                  />
+                  <div className="relative z-10">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] font-black text-white/70">
+                          Your Trust Tier
+                        </p>
+                        <h3 className="font-black text-2xl mt-1">
+                          {trustTierLoading ? "Loading..." : getTrustTierLabel(currentTrustTier.name)}
+                        </h3>
+                        <p className="text-xs opacity-80 mt-1">
+                          Based on completed transactions and your ratings
+                        </p>
+                      </div>
+                      <div className="bg-white/15 border border-white/20 rounded-2xl px-3 py-2 text-center min-w-[72px]">
+                        <Shield size={16} className="mx-auto mb-1 text-yellow-300" />
+                        <span className="text-xs font-black uppercase tracking-wider">Tier</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-4 mb-4">
+                      <span className="text-xs font-bold flex items-center gap-1 text-white">
+                        <span className="text-yellow-400">★</span>
+                        {userTrustStats.averageRating > 0
+                          ? userTrustStats.averageRating.toFixed(1)
+                          : "0.0"}
+                        <span className="opacity-70 font-normal ml-0.5">
+                          ({userTrustStats.totalReviews} reviews)
+                        </span>
+                      </span>
+                      {userTrustStats.averageRating >= 4.0 && (
+                        <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                          Recommended
+                        </span>
+                      )}
+                    </div>
+
+                    {trustTierError ? (
+                      <div className="bg-red-500/15 border border-red-300/20 rounded-xl p-3 text-xs text-red-100">
+                        Unable to load Trust Tier requirements: {trustTierError}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <div className="bg-white/10 rounded-xl p-3 border border-white/10">
+                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold">
+                              Completed
+                            </p>
+                            <p className="text-lg font-black mt-1">
+                              {userTrustStats.completedTransactions}
+                            </p>
+                            <p className="text-xs text-white/60">transactions</p>
+                          </div>
+                          <div className="bg-white/10 rounded-xl p-3 border border-white/10">
+                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold">
+                              Requirement
+                            </p>
+                            <p className="text-lg font-black mt-1">
+                              {currentTrustTier.min_transactions}+
+                            </p>
+                            <p className="text-xs text-white/60">transactions for tier</p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 bg-white/10 p-3 rounded-xl border border-white/10">
+                          <div className="flex justify-between text-xs font-bold">
+                            <span className="flex items-center gap-1 uppercase tracking-wider">
+                              <ArrowUpRight size={10} /> Next Tier:
+                              <span className="text-cyan-300 ml-1">
+                                {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "Max Tier"}
+                              </span>
+                            </span>
+                            <span>{progressPercent}% complete</span>
+                          </div>
+                          <div className="w-full bg-black/20 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              style={{ width: `${progressPercent}%` }}
+                              className="bg-gradient-to-r from-cyan-400 to-purple-400 h-full shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-500"
+                            />
+                          </div>
+                          {nextTrustTier ? (
+                            <div className="flex justify-between text-xs text-white/65">
+                              <span>
+                                Transactions: {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)}
+                              </span>
+                              <span>
+                                Rating: {userTrustStats.averageRating.toFixed(1)}/{Number(nextTrustTier.min_rating).toFixed(1)}
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-emerald-200 font-bold">
+                              You have reached the highest available trust tier.
+                            </p>
+                          )}
+                        </div>
+
+                        {currentTrustTier.privileges?.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold mb-2">
+                              Current Privileges
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {currentTrustTier.privileges.slice(0, 5).map((privilege, index) => (
+                                <span
+                                  key={`${privilege}-${index}`}
+                                  className="text-xs bg-white/10 border border-white/10 px-2 py-1 rounded-full text-white/85"
+                                >
+                                  {privilege}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                  <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
+                    Personal Information
+                  </h3>
+                  <div className="flex justify-end">
+                    <button type="button" onClick={() => { setPasswordForm({ current: "", next: "", confirm: "" }); setPasswordError(""); setPasswordSuccess(""); setShowChangePasswordModal(true); }} className="rounded-xl border border-[#2d7a7f] px-4 py-2 text-xs font-bold text-[#2d7a7f] hover:bg-teal-50">Change Password</button>
+                  </div>
+                  <div className="grid gap-4">
+                    <InfoRow
+                      label="Full Name"
+                      value={currentProfileName}
+                      icon={<User size={14} />}
+                    />
+                    <InfoRow
+                      label="Email Address"
+                      value={session.user.email}
+                      icon={<Mail size={14} />}
+                    />
+                    <InfoRow
+                      label="Phone Number"
+                      value={currentProfilePhone}
+                      icon={<Phone size={14} />}
+                    />
+                    <InfoRow
+                      label="Barangay"
+                      value={currentProfileBarangay}
+                      icon={<MapPin size={14} />}
+                    />
+                  </div>
+                </div>
+
+
+                {showChangePasswordModal && (
+                  <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4" onClick={() => setShowChangePasswordModal(false)}>
+                    <div role="dialog" aria-modal="true" aria-labelledby="change-password-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                      <div className="mb-5 flex items-center justify-between">
+                        <h3 id="change-password-title" className="text-lg font-bold text-slate-800">Change Password</h3>
+                        <button type="button" aria-label="Close change password" onClick={() => setShowChangePasswordModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
+                      </div>
+                      <p className="mb-4 text-sm text-slate-500">Enter your current password, then choose a new one.</p>
+                      {passwordError && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{passwordError}</p>}
+                      {passwordSuccess && <p role="status" className="mb-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">{passwordSuccess}</p>}
                       <form onSubmit={handleChangePassword} className="space-y-3">
                         <input type="password" autoComplete="current-password" aria-label="Current password" placeholder="Current password" value={passwordForm.current} onChange={(e) => { setPasswordForm(p => ({ ...p, current: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
                         <input type="password" autoComplete="new-password" aria-label="New password" placeholder="New password (at least 6 characters)" minLength={6} value={passwordForm.next} onChange={(e) => { setPasswordForm(p => ({ ...p, next: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
                         <input type="password" autoComplete="new-password" aria-label="Confirm new password" placeholder="Confirm new password" minLength={6} value={passwordForm.confirm} onChange={(e) => { setPasswordForm(p => ({ ...p, confirm: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
-                        <button type="submit" disabled={passwordSaving} className="w-full rounded-xl bg-[#2d7a7f] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#246367] disabled:cursor-not-allowed disabled:opacity-50">{passwordSaving ? "Updating Password..." : "Update Password"}</button>
+                        <div className="flex gap-3 pt-2">
+                          <button type="button" onClick={() => setShowChangePasswordModal(false)} className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600">Cancel</button>
+                          <button type="submit" disabled={passwordSaving} className="flex-1 rounded-xl bg-[#2d7a7f] px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{passwordSaving ? "Updating..." : "Update Password"}</button>
+                        </div>
                       </form>
-                    </section>
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-4 gap-3">
-                      {[
-                        {
-                          label: "Total Listings",
-                          val: myListings.length,
-                          icon: <Package size={16} />,
-                          color: "text-blue-500",
-                          bg: "bg-blue-50",
-                        },
-                        {
-                          label: "Items Sold",
-                          val: myListings.filter((item) =>
-                            ["meetup scheduled", "sold", "completed"].includes(
-                              item.status?.toLowerCase(),
-                            ),
-                          ).length,
-                          icon: <TrendingUp size={16} />,
-                          color: "text-green-500",
-                          bg: "bg-green-50",
-                        },
-                        {
-                          label: "Rating",
-                          val: profileData?.average_rating?.toFixed(1) || "0.0", // Dynamic data
-                          icon: <Star size={16} />,
-                          color: "text-yellow-500",
-                          bg: "bg-yellow-50",
-                        },
-                        {
-                          label: "Reviews",
-                          val: profileData?.total_reviews || "0", // Dynamic data
-                          icon: <MessageSquare size={16} />,
-                          color: "text-purple-500",
-                          bg: "bg-purple-50",
-                        },
-                      ].map((stat, i) => (
-                        <div
-                          key={i}
-                          className={`${stat.bg} p-3 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center`}
-                        >
-                          <div className={`${stat.color} mb-1`}>{stat.icon}</div>
-                          <div className="text-sm font-black text-gray-800">
-                            {stat.val}
-                          </div>
-                          <div className="text-xs text-gray-500 font-medium leading-tight">
-                            {stat.label}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Dynamic Trust Tier Section - requirements come from Supabase trust_tiers */}
-                    <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
-                      <Shield
-                        className="absolute right-4 top-4 opacity-20"
-                        size={60}
-                      />
-                      <div className="relative z-10">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.18em] font-black text-white/70">
-                              Your Trust Tier
-                            </p>
-                            <h3 className="font-black text-2xl mt-1">
-                              {trustTierLoading ? "Loading..." : getTrustTierLabel(currentTrustTier.name)}
-                            </h3>
-                            <p className="text-xs opacity-80 mt-1">
-                              Based on completed transactions and your ratings
-                            </p>
-                          </div>
-                          <div className="bg-white/15 border border-white/20 rounded-2xl px-3 py-2 text-center min-w-[72px]">
-                            <Shield size={16} className="mx-auto mb-1 text-yellow-300" />
-                            <span className="text-xs font-black uppercase tracking-wider">Tier</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 mt-4 mb-4">
-                          <span className="text-xs font-bold flex items-center gap-1 text-white">
-                            <span className="text-yellow-400">★</span>
-                            {userTrustStats.averageRating > 0
-                              ? userTrustStats.averageRating.toFixed(1)
-                              : "0.0"}
-                            <span className="opacity-70 font-normal ml-0.5">
-                              ({userTrustStats.totalReviews} reviews)
-                            </span>
-                          </span>
-                          {userTrustStats.averageRating >= 4.0 && (
-                            <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
-                              Recommended
-                            </span>
-                          )}
-                        </div>
-
-                        {trustTierError ? (
-                          <div className="bg-red-500/15 border border-red-300/20 rounded-xl p-3 text-xs text-red-100">
-                            Unable to load Trust Tier requirements: {trustTierError}
-                          </div>
-                        ) : (
-                          <>
-                            <div className="grid grid-cols-2 gap-2 mb-3">
-                              <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                                <p className="text-xs uppercase tracking-wider text-white/60 font-bold">
-                                  Completed
-                                </p>
-                                <p className="text-lg font-black mt-1">
-                                  {userTrustStats.completedTransactions}
-                                </p>
-                                <p className="text-xs text-white/60">transactions</p>
-                              </div>
-                              <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                                <p className="text-xs uppercase tracking-wider text-white/60 font-bold">
-                                  Requirement
-                                </p>
-                                <p className="text-lg font-black mt-1">
-                                  {currentTrustTier.min_transactions}+
-                                </p>
-                                <p className="text-xs text-white/60">transactions for tier</p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-2 bg-white/10 p-3 rounded-xl border border-white/10">
-                              <div className="flex justify-between text-xs font-bold">
-                                <span className="flex items-center gap-1 uppercase tracking-wider">
-                                  <ArrowUpRight size={10} /> Next Tier:
-                                  <span className="text-cyan-300 ml-1">
-                                    {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "Max Tier"}
-                                  </span>
-                                </span>
-                                <span>{progressPercent}% complete</span>
-                              </div>
-                              <div className="w-full bg-black/20 h-1.5 rounded-full overflow-hidden">
-                                <div
-                                  style={{ width: `${progressPercent}%` }}
-                                  className="bg-gradient-to-r from-cyan-400 to-purple-400 h-full shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-500"
-                                />
-                              </div>
-                              {nextTrustTier ? (
-                                <div className="flex justify-between text-xs text-white/65">
-                                  <span>
-                                    Transactions: {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)}
-                                  </span>
-                                  <span>
-                                    Rating: {userTrustStats.averageRating.toFixed(1)}/{Number(nextTrustTier.min_rating).toFixed(1)}
-                                  </span>
-                                </div>
-                              ) : (
-                                <p className="text-xs text-emerald-200 font-bold">
-                                  You have reached the highest available trust tier.
-                                </p>
-                              )}
-                            </div>
-
-                            {currentTrustTier.privileges?.length > 0 && (
-                              <div className="mt-3">
-                                <p className="text-xs uppercase tracking-wider text-white/60 font-bold mb-2">
-                                  Current Privileges
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {currentTrustTier.privileges.slice(0, 5).map((privilege, index) => (
-                                    <span
-                                      key={`${privilege}-${index}`}
-                                      className="text-xs bg-white/10 border border-white/10 px-2 py-1 rounded-full text-white/85"
-                                    >
-                                      {privilege}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                      <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
-                        Personal Information
-                      </h3>
-                      <div className="grid gap-4">
-                        <InfoRow
-                          label="Full Name"
-                          value={currentProfileName}
-                          icon={<User size={14} />}
-                        />
-                        <InfoRow
-                          label="Email Address"
-                          value={session.user.email}
-                          icon={<Mail size={14} />}
-                        />
-                        <InfoRow
-                          label="Phone Number"
-                          value={currentProfilePhone}
-                          icon={<Phone size={14} />}
-                        />
-                        <InfoRow
-                          label="Barangay"
-                          value={currentProfileBarangay}
-                          icon={<MapPin size={14} />}
-                        />
-                      </div>
-                    </div>
-
-                    {/* MY LISTINGS + BIDS */}
-                    <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                      <div className="flex items-center justify-between border-b pb-2">
-                        <h3 className="font-bold text-gray-800 text-sm">
-                          My Listings & Bids
-                        </h3>
-                        <span className="text-xs font-bold text-slate-400">
-                          {myListings.length} listings
-                        </span>
-                      </div>
-
-                      {myListings.length > 0 ? (
-                        <div className="space-y-5">
-                          {myListings.map((item) => {
-                            const activeBids = (item.bids || []).filter(
-                              (bid) => bid.status !== "declined",
-                            );
-
-                            const askingPrice = Number(item.asking_price || 0);
-
-                            return (
-                              <div
-                                key={item.id}
-                                className="bg-white border border-slate-200 rounded-[1.75rem] p-5 sm:p-6 shadow-sm"
-                              >
-                                <div className="flex flex-col lg:flex-row gap-6">
-
-                                  {/* =========================
-          LEFT — LISTING INFORMATION
-      ========================== */}
-                                  <div className="flex-1 min-w-0">
-
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div>
-                                        <p className="text-lg font-black text-slate-800">
-                                          {item.device_model}
-                                        </p>
-
-                                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                                          <span className="text-xs font-bold text-slate-500">
-                                            Asking Price:
-                                          </span>
-
-                                          <span className="text-xs font-black text-[#3285a1]">
-                                            ₱{askingPrice.toLocaleString()}
-                                          </span>
-
-                                          <span className="text-slate-300">•</span>
-
-                                          <span className="text-xs text-slate-400">
-                                            {item.status}
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <div className="bg-[#3285a1]/10 text-[#3285a1] px-3 py-2 rounded-full shrink-0">
-                                        <span className="text-xs font-black">
-                                          {activeBids.length}{" "}
-                                          {activeBids.length === 1 ? "BID" : "BIDS"}
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    {/* LISTING DETAILS */}
-                                    <div className="grid grid-cols-2 gap-3 mt-5">
-
-                                      <div className="bg-slate-50 rounded-xl p-3">
-                                        <p className="text-xs uppercase font-bold text-slate-400">
-                                          Condition
-                                        </p>
-
-                                        <p className="text-sm font-black text-slate-700 mt-1">
-                                          {item.condition || "Not specified"}
-                                        </p>
-                                      </div>
-
-                                      <div className="bg-slate-50 rounded-xl p-3">
-                                        <p className="text-xs uppercase font-bold text-slate-400">
-                                          Asking Price
-                                        </p>
-
-                                        <p className="text-sm font-black text-[#3285a1] mt-1">
-                                          ₱{askingPrice.toLocaleString()}
-                                        </p>
-                                      </div>
-
-                                    </div>
-
-                                  </div>
-
-
-                                  {/* =========================
-          RIGHT — BIDS RECEIVED
-      ========================== */}
-                                  <div className="w-full lg:w-[390px] lg:border-l lg:border-slate-100 lg:pl-6">
-
-                                    <div className="flex items-center justify-between mb-3">
-                                      <div>
-                                        <p className="text-xs uppercase tracking-wider font-black text-slate-400">
-                                          Bids Received
-                                        </p>
-
-                                        <p className="text-xs text-slate-500 mt-1">
-                                          Offers from harvesters
-                                        </p>
-                                      </div>
-
-                                      <div className="w-9 h-9 rounded-xl bg-[#3285a1]/10 flex items-center justify-center">
-                                        <Gavel
-                                          size={17}
-                                          className="text-[#3285a1]"
-                                        />
-                                      </div>
-                                    </div>
-
-
-                                    {/* BIDS */}
-                                    {activeBids.length > 0 ? (
-                                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-
-                                        {activeBids.map((bid) => {
-
-                                          const bidAmount = Number(bid.amount || 0);
-
-                                          const bidderName =
-                                            getBuyerDisplayName(bid.profiles);
-
-                                          const bidderRole =
-                                            getBuyerRoleLabel(
-                                              bid.profiles?.role
-                                            );
-
-                                          const initials =
-                                            bidderName
-                                              ?.split(" ")
-                                              .map((n) => n[0])
-                                              .join("")
-                                              .slice(0, 2)
-                                              .toUpperCase() || "TH";
-
-                                          return (
-                                            <div
-                                              key={bid.id}
-                                              className="border border-slate-200 rounded-2xl p-4 bg-slate-50"
-                                            >
-
-                                              {/* BIDDER */}
-                                              <div className="flex items-center justify-between gap-3">
-
-                                                <div className="flex items-center gap-3 min-w-0">
-
-                                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3285a1] to-[#6da43a] text-white flex items-center justify-center text-xs font-black shrink-0">
-                                                    {initials}
-                                                  </div>
-
-                                                  <div className="min-w-0">
-
-                                                    <button
-                                                      type="button"
-                                                      onClick={() =>
-                                                        setSelectedBidder({
-                                                          ...bid.profiles,
-                                                          id: bid.bidder_id,
-                                                        })
-                                                      }
-                                                      className="text-xs font-black text-slate-800 hover:text-[#3285a1] transition truncate block text-left"
-                                                    >
-                                                      {bidderName}
-                                                    </button>
-
-                                                    <span className="text-xs font-bold text-[#3285a1]">
-                                                      {bidderRole}
-                                                    </span>
-
-                                                  </div>
-
-                                                </div>
-
-
-                                                {/* OFFER AMOUNT */}
-                                                <div className="text-right shrink-0">
-
-                                                  <p className="text-xs uppercase font-bold text-slate-400">
-                                                    Offer
-                                                  </p>
-
-                                                  <p className="text-lg font-black text-[#3285a1]">
-                                                    ₱{bidAmount.toLocaleString()}
-                                                  </p>
-
-                                                </div>
-
-                                              </div>
-
-
-                                              {/* STATUS */}
-                                              <div className="flex items-center justify-between mt-3">
-
-                                                <span
-                                                  className={`px-2.5 py-1 rounded-full text-xs font-black ${bid.status === "accepted"
-                                                    ? "bg-emerald-100 text-emerald-700"
-                                                    : bid.status === "declined"
-                                                      ? "bg-red-100 text-red-600"
-                                                      : "bg-amber-100 text-amber-700"
-                                                    }`}
-                                                >
-                                                  {bid.status === "accepted"
-                                                    ? "Accepted"
-                                                    : bid.status === "declined"
-                                                      ? "Declined"
-                                                      : "Pending"}
-                                                </span>
-
-                                                {bid.created_at && (
-                                                  <span className="text-xs text-slate-400">
-                                                    {new Date(
-                                                      bid.created_at
-                                                    ).toLocaleDateString("en-US", {
-                                                      month: "short",
-                                                      day: "numeric",
-                                                      year: "numeric",
-                                                    })}
-                                                  </span>
-                                                )}
-
-                                              </div>
-
-
-                                              {/* ACTIONS */}
-                                              {bid.status === "pending" && (
-                                                <div className="flex gap-2 mt-3">
-
-                                                  <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                      handleAcceptBid(bid, item)
-                                                    }
-                                                    className="flex-1 bg-[#3285a1] text-white py-2.5 rounded-xl text-xs font-black hover:bg-[#2a7089] transition flex items-center justify-center gap-1.5"
-                                                  >
-                                                    <Check size={13} />
-                                                    Accept
-                                                  </button>
-
-                                                  <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                      handleDeclineBid(bid, item)
-                                                    }
-                                                    className="flex-1 bg-white border border-red-200 text-red-500 py-2.5 rounded-xl text-xs font-black hover:bg-red-50 transition flex items-center justify-center gap-1.5"
-                                                  >
-                                                    <X size={13} />
-                                                    Decline
-                                                  </button>
-
-                                                </div>
-                                              )}
-
-                                            </div>
-                                          );
-                                        })}
-
-                                      </div>
-
-                                    ) : (
-
-                                      /* NO BIDS */
-                                      <div className="border border-dashed border-slate-200 rounded-2xl p-6 text-center">
-
-                                        <Gavel
-                                          size={25}
-                                          className="mx-auto text-slate-300"
-                                        />
-
-                                        <p className="text-xs font-bold text-slate-500 mt-2">
-                                          No bids received yet
-                                        </p>
-
-                                        <p className="text-xs text-slate-400 mt-1">
-                                          Offers from verified harvesters will appear here.
-                                        </p>
-
-                                      </div>
-                                    )}
-
-                                  </div>
-
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-slate-400 text-center py-6">
-                          You have not created any listings yet.
-                        </p>
-                      )}
                     </div>
                   </div>
-                </>
-              )}
+                )}
+
+                {/* MY LISTINGS + BIDS */}
+                <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <h3 className="font-bold text-gray-800 text-sm">
+                      My Listings & Bids
+                    </h3>
+                    <span className="text-xs font-bold text-slate-400">
+                      {myListings.length} listings
+                    </span>
+                  </div>
+
+                  {myListings.length > 0 ? (
+                    <div className="space-y-5">
+                      {myListings.map((item) => {
+                        const activeBids = (item.bids || []).filter(
+                          (bid) => bid.status !== "declined",
+                        );
+
+                        const askingPrice = Number(item.asking_price || 0);
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="bg-white border border-slate-200 rounded-[1.75rem] p-5 sm:p-6 shadow-sm"
+                          >
+                            <div className="flex flex-col lg:flex-row gap-6">
+
+                              {/* =========================
+          LEFT — LISTING INFORMATION
+      ========================== */}
+                              <div className="flex-1 min-w-0">
+
+                                <div className="flex items-start justify-between gap-4">
+                                  <div>
+                                    <p className="text-lg font-black text-slate-800">
+                                      {item.device_model}
+                                    </p>
+
+                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                      <span className="text-xs font-bold text-slate-500">
+                                        Asking Price:
+                                      </span>
+
+                                      <span className="text-xs font-black text-[#3285a1]">
+                                        ₱{askingPrice.toLocaleString()}
+                                      </span>
+
+                                      <span className="text-slate-300">•</span>
+
+                                      <span className="text-xs text-slate-400">
+                                        {item.status}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-[#3285a1]/10 text-[#3285a1] px-3 py-2 rounded-full shrink-0">
+                                    <span className="text-xs font-black">
+                                      {activeBids.length}{" "}
+                                      {activeBids.length === 1 ? "BID" : "BIDS"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* LISTING DETAILS */}
+                                <div className="grid grid-cols-2 gap-3 mt-5">
+
+                                  <div className="bg-slate-50 rounded-xl p-3">
+                                    <p className="text-xs uppercase font-bold text-slate-400">
+                                      Condition
+                                    </p>
+
+                                    <p className="text-sm font-black text-slate-700 mt-1">
+                                      {item.condition || "Not specified"}
+                                    </p>
+                                  </div>
+
+                                  <div className="bg-slate-50 rounded-xl p-3">
+                                    <p className="text-xs uppercase font-bold text-slate-400">
+                                      Asking Price
+                                    </p>
+
+                                    <p className="text-sm font-black text-[#3285a1] mt-1">
+                                      ₱{askingPrice.toLocaleString()}
+                                    </p>
+                                  </div>
+
+                                </div>
+
+                              </div>
+
+
+                              {/* =========================
+          RIGHT — BIDS RECEIVED
+      ========================== */}
+                              <div className="w-full lg:w-[390px] lg:border-l lg:border-slate-100 lg:pl-6">
+
+                                <div className="flex items-center justify-between mb-3">
+                                  <div>
+                                    <p className="text-xs uppercase tracking-wider font-black text-slate-400">
+                                      Bids Received
+                                    </p>
+
+                                    <p className="text-xs text-slate-500 mt-1">
+                                      Offers from harvesters
+                                    </p>
+                                  </div>
+
+                                  <div className="w-9 h-9 rounded-xl bg-[#3285a1]/10 flex items-center justify-center">
+                                    <Gavel
+                                      size={17}
+                                      className="text-[#3285a1]"
+                                    />
+                                  </div>
+                                </div>
+
+
+                                {/* BIDS */}
+                                {activeBids.length > 0 ? (
+                                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+
+                                    {activeBids.map((bid) => {
+
+                                      const bidAmount = Number(bid.amount || 0);
+
+                                      const bidderName =
+                                        getBuyerDisplayName(bid.profiles);
+
+                                      const bidderRole =
+                                        getBuyerRoleLabel(
+                                          bid.profiles?.role
+                                        );
+
+                                      const initials =
+                                        bidderName
+                                          ?.split(" ")
+                                          .map((n) => n[0])
+                                          .join("")
+                                          .slice(0, 2)
+                                          .toUpperCase() || "TH";
+
+                                      return (
+                                        <div
+                                          key={bid.id}
+                                          className="border border-slate-200 rounded-2xl p-4 bg-slate-50"
+                                        >
+
+                                          {/* BIDDER */}
+                                          <div className="flex items-center justify-between gap-3">
+
+                                            <div className="flex items-center gap-3 min-w-0">
+
+                                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3285a1] to-[#6da43a] text-white flex items-center justify-center text-xs font-black shrink-0">
+                                                {initials}
+                                              </div>
+
+                                              <div className="min-w-0">
+
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setSelectedBidder({
+                                                      ...bid.profiles,
+                                                      id: bid.bidder_id,
+                                                    })
+                                                  }
+                                                  className="text-xs font-black text-slate-800 hover:text-[#3285a1] transition truncate block text-left"
+                                                >
+                                                  {bidderName}
+                                                </button>
+
+                                                <span className="text-xs font-bold text-[#3285a1]">
+                                                  {bidderRole}
+                                                </span>
+
+                                              </div>
+
+                                            </div>
+
+
+                                            {/* OFFER AMOUNT */}
+                                            <div className="text-right shrink-0">
+
+                                              <p className="text-xs uppercase font-bold text-slate-400">
+                                                Offer
+                                              </p>
+
+                                              <p className="text-lg font-black text-[#3285a1]">
+                                                ₱{bidAmount.toLocaleString()}
+                                              </p>
+
+                                            </div>
+
+                                          </div>
+
+
+                                          {/* STATUS */}
+                                          <div className="flex items-center justify-between mt-3">
+
+                                            <span
+                                              className={`px-2.5 py-1 rounded-full text-xs font-black ${bid.status === "accepted"
+                                                ? "bg-emerald-100 text-emerald-700"
+                                                : bid.status === "declined"
+                                                  ? "bg-red-100 text-red-600"
+                                                  : "bg-amber-100 text-amber-700"
+                                                }`}
+                                            >
+                                              {bid.status === "accepted"
+                                                ? "Accepted"
+                                                : bid.status === "declined"
+                                                  ? "Declined"
+                                                  : "Pending"}
+                                            </span>
+
+                                            {bid.created_at && (
+                                              <span className="text-xs text-slate-400">
+                                                {new Date(
+                                                  bid.created_at
+                                                ).toLocaleDateString("en-US", {
+                                                  month: "short",
+                                                  day: "numeric",
+                                                  year: "numeric",
+                                                })}
+                                              </span>
+                                            )}
+
+                                          </div>
+
+
+                                          {/* ACTIONS */}
+                                          {bid.status === "pending" && (
+                                            <div className="flex gap-2 mt-3">
+
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleAcceptBid(bid, item)
+                                                }
+                                                className="flex-1 bg-[#3285a1] text-white py-2.5 rounded-xl text-xs font-black hover:bg-[#2a7089] transition flex items-center justify-center gap-1.5"
+                                              >
+                                                <Check size={13} />
+                                                Accept
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleDeclineBid(bid, item)
+                                                }
+                                                className="flex-1 bg-white border border-red-200 text-red-500 py-2.5 rounded-xl text-xs font-black hover:bg-red-50 transition flex items-center justify-center gap-1.5"
+                                              >
+                                                <X size={13} />
+                                                Decline
+                                              </button>
+
+                                            </div>
+                                          )}
+
+                                        </div>
+                                      );
+                                    })}
+
+                                  </div>
+
+                                ) : (
+
+                                  /* NO BIDS */
+                                  <div className="border border-dashed border-slate-200 rounded-2xl p-6 text-center">
+
+                                    <Gavel
+                                      size={25}
+                                      className="mx-auto text-slate-300"
+                                    />
+
+                                    <p className="text-xs font-bold text-slate-500 mt-2">
+                                      No bids received yet
+                                    </p>
+
+                                    <p className="text-xs text-slate-400 mt-1">
+                                      Offers from verified harvesters will appear here.
+                                    </p>
+
+                                  </div>
+                                )}
+
+                              </div>
+
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 text-center py-6">
+                      You have not created any listings yet.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -4916,23 +4278,6 @@ const SellerDashboard = ({ session }) => {
           />
         )}
 
-        <TransactionReportModal
-          isOpen={showReportModal}
-          onClose={() => {
-            if (reportingTransactionId) return;
-            setShowReportModal(false);
-            setReportReason("");
-            setReportDetails("");
-          }}
-          onConfirm={handleReportTransaction}
-          transaction={transactions.find((t) => t.id === selectedTxId)}
-          reportReason={reportReason}
-          setReportReason={setReportReason}
-          reportDetails={reportDetails}
-          setReportDetails={setReportDetails}
-          isSubmitting={Boolean(reportingTransactionId)}
-        />
-
         <CancelTransactionModal
           isOpen={showCancelModal}
           onClose={() => setShowCancelModal(false)}
@@ -4940,9 +4285,6 @@ const SellerDashboard = ({ session }) => {
           transaction={transactions.find((t) => t.id === selectedTxId)}
           cancelReason={cancelReason}
           setCancelReason={setCancelReason}
-          cancelDetails={cancelDetails}
-          setCancelDetails={setCancelDetails}
-          isSubmitting={Boolean(cancellingTransactionId)}
         />
 
         <CreateListingModal
@@ -5499,247 +4841,127 @@ const SellerDashboard = ({ session }) => {
       </div>
       <SiteFooter />
       {/* Achievements modal */}
-      {showAchievementsModal && (
-        <div
-          className="fixed inset-0 z-[320] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="seller-achievements-title"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setShowAchievementsModal(false);
-          }}
-        >
-          <div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 bg-gradient-to-r from-emerald-600 to-teal-700 p-6 text-white">
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-white/80">
-                  <Award size={18} />
-                  <span className="text-xs font-bold uppercase tracking-[0.18em]">Your achievements</span>
-                </div>
-                <h2 id="seller-achievements-title" className="text-2xl font-black">
-                  {trustTierLoading ? "Loading your progress…" : getTrustTierLabel(currentTrustTier.name)}
-                </h2>
-                <p className="mt-1 text-xs text-white/80">
-                  Keep completing transactions and earning positive reviews to progress.
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label="Close achievements"
-                onClick={() => setShowAchievementsModal(false)}
-                className="rounded-full p-2 text-white/90 hover:bg-white/15"
+            {showAchievementsModal && (
+              <div
+                className="fixed inset-0 z-[320] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="seller-achievements-title"
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) setShowAchievementsModal(false);
+                }}
               >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="space-y-5 p-6">
-              {trustTierError ? (
-                <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
-                  Could not load achievements: {trustTierError}
-                </p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="rounded-xl bg-slate-50 p-3 text-center">
-                      <p className="text-xl font-black text-slate-800">{userTrustStats.completedTransactions}</p>
-                      <p className="text-xs text-slate-500">Completed</p>
-                    </div>
-                    <div className="rounded-xl bg-slate-50 p-3 text-center">
-                      <p className="text-xl font-black text-slate-800">{userTrustStats.averageRating.toFixed(1)} ★</p>
-                      <p className="text-xs text-slate-500">Average rating</p>
-                    </div>
-                    <div className="rounded-xl bg-slate-50 p-3 text-center">
-                      <p className="text-xl font-black text-slate-800">{userTrustStats.totalReviews}</p>
-                      <p className="text-xs text-slate-500">Reviews</p>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="font-bold text-emerald-900">
-                        Next: {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "Highest tier reached"}
-                      </span>
-                      <span className="font-bold text-emerald-800">{progressPercent}%</span>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
-                      <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${progressPercent}%` }} />
-                    </div>
-                    {nextTrustTier && (
-                      <p className="mt-2 text-xs text-emerald-800">
-                        {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)} transactions · Rating {userTrustStats.averageRating.toFixed(1)}/{Number(nextTrustTier.min_rating).toFixed(1)}
+                <div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl">
+                  <div className="flex items-start justify-between gap-4 bg-gradient-to-r from-emerald-600 to-teal-700 p-6 text-white">
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-white/80">
+                        <Award size={18} />
+                        <span className="text-xs font-bold uppercase tracking-[0.18em]">Your achievements</span>
+                      </div>
+                      <h2 id="seller-achievements-title" className="text-2xl font-black">
+                        {trustTierLoading ? "Loading your progress…" : getTrustTierLabel(currentTrustTier.name)}
+                      </h2>
+                      <p className="mt-1 text-xs text-white/80">
+                        Keep completing transactions and earning positive reviews to progress.
                       </p>
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="mb-2 text-sm font-bold text-slate-800">Current tier privileges</h3>
-                    {currentTrustTier.privileges?.length ? (
-                      <ul className="space-y-2">
-                        {currentTrustTier.privileges.map((privilege, index) => (
-                          <li key={`${privilege}-${index}`} className="flex items-start gap-2 text-sm text-slate-600">
-                            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
-                            <span>{privilege}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-slate-500">No privileges are configured for this tier yet.</p>
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="mb-2 text-sm font-bold text-slate-800">Trust tier milestones</h3>
-                    <div className="space-y-2">
-                      {sortedTrustTiers.map((tier) => {
-                        const achieved =
-                          userTrustStats.completedTransactions >= Number(tier.min_transactions) &&
-                          userTrustStats.averageRating >= Number(tier.min_rating);
-                        return (
-                          <div key={tier.id || tier.name} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-700">{getTrustTierLabel(tier.name)}</p>
-                              <p className="text-xs text-slate-500">
-                                {Number(tier.min_transactions)}+ transactions · {Number(tier.min_rating).toFixed(1)}+ rating
-                              </p>
-                            </div>
-                            <span className={`rounded-full px-2 py-1 text-xs font-bold ${achieved ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                              {achieved ? "Unlocked" : "Locked"}
-                            </span>
-                          </div>
-                        );
-                      })}
                     </div>
+                    <button
+                      type="button"
+                      aria-label="Close achievements"
+                      onClick={() => setShowAchievementsModal(false)}
+                      className="rounded-full p-2 text-white/90 hover:bg-white/15"
+                    >
+                      <X size={18} />
+                    </button>
                   </div>
-                </>
-              )}
-              <button
-                type="button"
-                onClick={() => setShowAchievementsModal(false)}
-                className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const TransactionReportModal = ({
-  isOpen,
-  onClose,
-  onConfirm,
-  transaction,
-  reportReason,
-  setReportReason,
-  reportDetails,
-  setReportDetails,
-  isSubmitting = false,
-}) => {
-  if (!isOpen || !transaction) return null;
-
-  const itemName = transaction.listing?.device_model || transaction.device_model || "Electronic Item";
-  const buyerName = transaction.harvester?.full_name || transaction.harvester?.business_name || "Buyer";
-
-  return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
-        <div className="p-6 border-b border-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-red-50 rounded-full text-red-600">
-              <AlertCircle size={20} />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-800">Report Meetup Issue</h2>
-              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mt-1">Seller Report</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-5">
-          <div className="bg-red-50 border border-red-100 p-4 rounded-2xl">
-            <p className="text-xs font-black text-red-800 uppercase tracking-widest">Report this transaction</p>
-            <p className="text-xs text-red-700 mt-2 leading-relaxed">
-              Use this when the buyer did not show up or there was another issue at the scheduled meetup.
-              The report will flag the transaction for Administrator review and prevent automatic completion while it remains open.
-            </p>
-          </div>
-
-          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2">
-            <p className="text-xs text-slate-400 font-bold uppercase">Transaction</p>
-            <p className="text-sm font-black text-slate-700">{itemName}</p>
-            <p className="text-xs text-slate-500">Buyer: {buyerName}</p>
-            {transaction.meetup_date && (
-              <p className="text-xs text-slate-500">
-                Meetup: {new Date(`${transaction.meetup_date}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                {transaction.meetup_time ? ` at ${transaction.meetup_time}` : ""}
-              </p>
+                  <div className="space-y-5 p-6">
+                    {trustTierError ? (
+                      <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                        Could not load achievements: {trustTierError}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="rounded-xl bg-slate-50 p-3 text-center">
+                            <p className="text-xl font-black text-slate-800">{userTrustStats.completedTransactions}</p>
+                            <p className="text-xs text-slate-500">Completed</p>
+                          </div>
+                          <div className="rounded-xl bg-slate-50 p-3 text-center">
+                            <p className="text-xl font-black text-slate-800">{userTrustStats.averageRating.toFixed(1)} ★</p>
+                            <p className="text-xs text-slate-500">Average rating</p>
+                          </div>
+                          <div className="rounded-xl bg-slate-50 p-3 text-center">
+                            <p className="text-xl font-black text-slate-800">{userTrustStats.totalReviews}</p>
+                            <p className="text-xs text-slate-500">Reviews</p>
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="font-bold text-emerald-900">
+                              Next: {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "Highest tier reached"}
+                            </span>
+                            <span className="font-bold text-emerald-800">{progressPercent}%</span>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
+                            <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${progressPercent}%` }} />
+                          </div>
+                          {nextTrustTier && (
+                            <p className="mt-2 text-xs text-emerald-800">
+                              {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)} transactions · Rating {userTrustStats.averageRating.toFixed(1)}/{Number(nextTrustTier.min_rating).toFixed(1)}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="mb-2 text-sm font-bold text-slate-800">Current tier privileges</h3>
+                          {currentTrustTier.privileges?.length ? (
+                            <ul className="space-y-2">
+                              {currentTrustTier.privileges.map((privilege, index) => (
+                                <li key={`${privilege}-${index}`} className="flex items-start gap-2 text-sm text-slate-600">
+                                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                                  <span>{privilege}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-slate-500">No privileges are configured for this tier yet.</p>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="mb-2 text-sm font-bold text-slate-800">Trust tier milestones</h3>
+                          <div className="space-y-2">
+                            {sortedTrustTiers.map((tier) => {
+                              const achieved =
+                                userTrustStats.completedTransactions >= Number(tier.min_transactions) &&
+                                userTrustStats.averageRating >= Number(tier.min_rating);
+                              return (
+                                <div key={tier.id || tier.name} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-700">{getTrustTierLabel(tier.name)}</p>
+                                    <p className="text-xs text-slate-500">
+                                      {Number(tier.min_transactions)}+ transactions · {Number(tier.min_rating).toFixed(1)}+ rating
+                                    </p>
+                                  </div>
+                                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${achieved ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                    {achieved ? "Unlocked" : "Locked"}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowAchievementsModal(false)}
+                      className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
-          </div>
-
-          <div>
-            <label className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2 block">
-              Report Reason <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={reportReason}
-              onChange={(e) => setReportReason(e.target.value)}
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400 transition-all appearance-none cursor-pointer"
-              disabled={isSubmitting}
-            >
-              <option value="" disabled>Select a reason...</option>
-              <option value="Buyer did not show up">Buyer did not show up</option>
-              <option value="Buyer arrived but refused the handover">Buyer arrived but refused the handover</option>
-              <option value="Buyer was unresponsive at meetup time">Buyer was unresponsive at meetup time</option>
-              <option value="Safety concern">Safety concern</option>
-              <option value="Other">Other (please specify)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2 block">
-              Additional Details {reportReason === "Other" ? <span className="text-red-500">*</span> : "(Optional)"}
-            </label>
-            <textarea
-              value={reportDetails}
-              onChange={(e) => setReportDetails(e.target.value)}
-              rows={4}
-              maxLength={1000}
-              placeholder="Describe what happened at the meetup..."
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400 transition-all resize-none"
-              disabled={isSubmitting}
-            />
-            <p className="text-[11px] text-slate-400 text-right mt-1">{reportDetails.length}/1000</p>
-          </div>
-        </div>
-
-        <div className="p-6 bg-slate-50 flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="flex-1 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-all disabled:opacity-50"
-          >
-            Keep Transaction
-          </button>
-          <button
-            type="button"
-            onClick={() => onConfirm(transaction.id)}
-            disabled={isSubmitting || !transaction?.id}
-            className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <AlertCircle size={14} />
-            {isSubmitting ? "Reporting..." : "Submit Report"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 };
@@ -5752,9 +4974,6 @@ const CancelTransactionModal = ({
   // Add these to the destructuring:
   cancelReason,
   setCancelReason,
-  cancelDetails,
-  setCancelDetails,
-  isSubmitting = false,
 }) => {
   if (!isOpen) return null;
 
@@ -5830,8 +5049,7 @@ const CancelTransactionModal = ({
               <textarea
                 placeholder="Please describe your reason for cancelling..."
                 className="w-full mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400 transition-all min-h-[80px]"
-                value={cancelDetails}
-                onChange={(e) => setCancelDetails(e.target.value)}
+                onChange={(e) => setCancelReason(`Other: ${e.target.value}`)}
               />
             )}
           </div>
@@ -5875,25 +5093,16 @@ const CancelTransactionModal = ({
           <button
             type="button" // Explicitly set type to button
             onClick={() => {
-              if (isSubmitting) return;
-              if (!transaction?.id) {
-                alert("No transaction is selected. Please close this window, select the transaction, and try again.");
-                return;
-              }
+              console.log("Cancel button clicked"); // Debugging line
               if (!cancelReason) {
                 alert("Please select a reason for cancellation.");
                 return;
               }
-              if (cancelReason === "Other" && !String(cancelDetails || "").trim()) {
-                alert("Please describe the cancellation reason.");
-                return;
-              }
               onConfirm(transaction.id);
             }}
-            disabled={isSubmitting || !transaction?.id}
-            className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-700 active:scale-95 transition-all shadow-lg cursor-pointer relative z-[10000] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-700 active:scale-95 transition-all shadow-lg cursor-pointer relative z-[10000]"
           >
-            <XCircle size={14} /> {isSubmitting ? "Cancelling..." : "Cancel Transaction"}
+            <XCircle size={14} /> Cancel Transaction
           </button>
         </div>
       </div>

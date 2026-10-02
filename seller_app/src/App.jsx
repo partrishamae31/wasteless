@@ -58,9 +58,30 @@ function App() {
     setIsSuspended(false);
     setRoleMismatch(null);
     setIsUnauthorized(false);
+    localStorage.removeItem("wasteless_signup_in_progress");
     setCurrentPage("login");
     setLoading(false);
     setIsChecked(true);
+  };
+
+  // ============================================================
+  // SIGNUP-IN-PROGRESS GUARD
+  // ============================================================
+  // Email OTP verification creates a Supabase session. That session is
+  // required by the signup flow, but it must NOT be treated as a normal
+  // logged-in application session until the user explicitly logs in.
+  const isSignupInProgress = () => {
+    if (localStorage.getItem("wasteless_signup_in_progress") === "true") {
+      return true;
+    }
+
+    const savedSignup = readSignupProgress();
+    return Boolean(
+      savedSignup?.step &&
+      savedSignup.step >= 1 &&
+      savedSignup.step <= 5 &&
+      savedSignup?.formData?.email
+    );
   };
 
   // ============================================================
@@ -72,6 +93,22 @@ function App() {
      * password recovery page is active.
      */
     if (isPasswordResetPath) {
+      return;
+    }
+
+    // During registration, Supabase may have a valid session because the
+    // email OTP was verified. Do not promote that temporary signup session
+    // into the normal dashboard session.
+    if (isSignupInProgress()) {
+      setSession(null);
+      setRole(null);
+      setIsAdminDemo(false);
+      setIsSuspended(false);
+      setRoleMismatch(null);
+      setIsUnauthorized(false);
+      setCurrentPage("signup");
+      setLoading(false);
+      setIsChecked(true);
       return;
     }
 
@@ -101,7 +138,11 @@ function App() {
      * Skip the old result so a transient session can never overwrite
      * the current authenticated user.
      */
-    if (runId !== loadUserRunId || isPasswordResetPath) {
+    if (
+      runId !== loadUserRunId ||
+      isPasswordResetPath ||
+      isSignupInProgress()
+    ) {
       return;
     }
 
@@ -167,6 +208,16 @@ function App() {
       return;
     }
 
+    // Clear temporary signup/login state once a real profile has
+    // successfully authenticated. Otherwise a stale signup-progress
+    // record can force App back to the Create Account screen after
+    // a browser refresh.
+    clearSignupProgress();
+
+    // The in-memory page is only navigation state. Once authentication
+    // has been restored, the authenticated role is the source of truth.
+    setCurrentPage("login");
+
     // Clear the saved role after a successful match.
     if (selectedRole) {
       localStorage.removeItem("wasteless_login_role");
@@ -208,6 +259,13 @@ function App() {
       setLoading(false);
       setIsChecked(true);
       return undefined;
+    }
+
+    // A signup session is intentionally kept by Supabase between OTP
+    // verification and final document/profile submission. The normal auth
+    // listener must not turn that session into a dashboard login.
+    if (isSignupInProgress()) {
+      setCurrentPage("signup");
     }
 
     const path = window.location.pathname.toLowerCase();
@@ -266,6 +324,21 @@ function App() {
       if (!mounted || isPasswordResetPath) return;
 
       if (event === "PASSWORD_RECOVERY") {
+        return;
+      }
+
+      // OTP verification and other signup operations can emit auth events.
+      // While signup progress exists, keep App on the signup flow.
+      if (isSignupInProgress()) {
+        setSession(null);
+        setRole(null);
+        setIsAdminDemo(false);
+        setIsSuspended(false);
+        setRoleMismatch(null);
+        setIsUnauthorized(false);
+        setCurrentPage("signup");
+        setLoading(false);
+        setIsChecked(true);
         return;
       }
 
@@ -405,6 +478,7 @@ function App() {
         <button
           onClick={() => {
             clearSignupProgress();
+            localStorage.setItem("wasteless_signup_in_progress", "true");
             setIsUnauthorized(false);
             setCurrentPage("signup");
           }}
@@ -419,10 +493,20 @@ function App() {
   // ============================================================
   // SIGNUP
   // ============================================================
-  if (currentPage === "signup") {
+  // A stale signup-progress record may set currentPage to "signup"
+  // during the first render while Supabase is restoring an existing
+  // authenticated session. Do not let that screen override a valid
+  // logged-in session.
+  if (currentPage === "signup" && (!session?.user || !role)) {
     return (
       <SignUp
-        onLoginClick={() => setCurrentPage("login")}
+        onLoginClick={() => {
+          clearSignupProgress();
+          localStorage.removeItem("wasteless_signup_in_progress");
+          setSession(null);
+          setRole(null);
+          setCurrentPage("login");
+        }}
       />
     );
   }
@@ -486,6 +570,7 @@ function App() {
         <Login
           onSignUpClick={() => {
             clearSignupProgress();
+            localStorage.setItem("wasteless_signup_in_progress", "true");
             setCurrentPage("signup");
           }}
           onEnvClick={() => setCurrentPage("env_login")}
@@ -494,7 +579,13 @@ function App() {
 
       {currentPage === "signup" && (
         <SignUp
-          onLoginClick={() => setCurrentPage("login")}
+          onLoginClick={() => {
+            clearSignupProgress();
+            localStorage.removeItem("wasteless_signup_in_progress");
+            setSession(null);
+            setRole(null);
+            setCurrentPage("login");
+          }}
         />
       )}
 
@@ -505,12 +596,6 @@ function App() {
         <AdminLogin
           onBackToUserLogin={() => setCurrentPage("login")}
           onLoginSuccess={() => {
-            /*
-             * AdminLogin performs the Supabase authentication.
-             * The auth listener/loadUser flow will verify the actual
-             * profile role. This flag also preserves the existing
-             * direct AdminLogin success behavior.
-             */
             localStorage.setItem(
               "adminAuthenticated",
               "true"
@@ -539,11 +624,6 @@ function App() {
         <EnvOfficerLogin
           onBackToUserLogin={() => setCurrentPage("login")}
           onLoginSuccess={() => {
-            /*
-             * EnvOfficerLogin has already authenticated the user.
-             * The normal Supabase auth listener will call loadUser()
-             * and route the verified env_officer to EnvOfficerPanel.
-             */
             setCurrentPage("env_login");
           }}
         />
