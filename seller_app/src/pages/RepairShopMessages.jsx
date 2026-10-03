@@ -25,6 +25,65 @@ const RepairShopMessages = ({ userId, onClose }) => {
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showNewMessage, setShowNewMessage] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [recipientResults, setRecipientResults] = useState([]);
+  const [recipientLoading, setRecipientLoading] = useState(false);
+
+  // REQ-2: Pending Verification accounts are view-only (read, no reply).
+  const [ownProfile, setOwnProfile] = useState(null);
+  const [ownProfileLoaded, setOwnProfileLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOwnProfile = async () => {
+      if (!userId) return;
+
+      const { data, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, role, verification_status, status")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (profileError) {
+        console.error("Error loading own profile:", profileError.message);
+      }
+
+      setOwnProfile(data || null);
+      setOwnProfileLoaded(true);
+    };
+
+    loadOwnProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // Mirrors the enforce_verified_message_sender database trigger.
+  const ownRole = String(ownProfile?.role || "").toLowerCase();
+  const ownVerification = String(
+    ownProfile?.verification_status || ""
+  ).toLowerCase();
+  const ownStatus = String(ownProfile?.status || "").toLowerCase();
+
+  const isOwnAccountRestricted = [
+    "blocked",
+    "suspended",
+    "inactive",
+    "banned",
+  ].includes(ownStatus);
+
+  const canSendMessages =
+    ownProfileLoaded &&
+    !isOwnAccountRestricted &&
+    (["admin", "administrator"].includes(ownRole) ||
+      ["verified", "approved"].includes(ownVerification));
+
+  const isViewOnly = ownProfileLoaded && !canSendMessages;
 
   /*
    * ============================================================
@@ -503,6 +562,18 @@ const RepairShopMessages = ({ userId, onClose }) => {
       )
       .on(
         "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages" },
+        (payload) => {
+          const updated = payload.new;
+          const belongsToChat =
+            (updated.sender_id === userId && updated.receiver_id === activeChat.other_party_id) ||
+            (updated.sender_id === activeChat.other_party_id && updated.receiver_id === userId);
+          if (!belongsToChat || updated.listing_id) return;
+          setMessages((prev) => prev.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+        }
+      )
+      .on(
+        "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
@@ -594,7 +665,21 @@ const RepairShopMessages = ({ userId, onClose }) => {
         );
         setMessages([]);
       } else {
-        setMessages(messageData || []);
+        const loadedMessages = messageData || [];
+      const incomingUndelivered = loadedMessages.filter(
+        (message) => message.receiver_id === userId && !message.delivered_at
+      );
+      if (incomingUndelivered.length > 0) {
+        await Promise.all(
+          incomingUndelivered.map((message) =>
+            supabase.rpc("mark_message_delivered", { p_message_id: message.id })
+          )
+        );
+        incomingUndelivered.forEach((message) => {
+          message.delivered_at = new Date().toISOString();
+        });
+      }
+      setMessages(loadedMessages);
       }
 
       /*
@@ -747,6 +832,57 @@ const RepairShopMessages = ({ userId, onClose }) => {
 
   /*
    * ============================================================
+   * NEW MESSAGE / RECIPIENT SEARCH
+   * ============================================================
+   */
+
+  const searchRecipients = async () => {
+    if (!canSendMessages || !userId) return;
+    const term = recipientSearch.trim();
+    if (term.length < 2) { setRecipientResults([]); return; }
+    setRecipientLoading(true);
+    try {
+      const { data, error: searchError } = await supabase
+        .from("profiles")
+        .select("id, full_name, business_name, role, verification_status, status, average_rating, total_reviews")
+        .neq("id", userId)
+        .not("status", "in", "(blocked,suspended,inactive,banned)")
+        .or(`full_name.ilike.%${term}%,business_name.ilike.%${term}%`)
+        .limit(20);
+      if (searchError) throw searchError;
+      setRecipientResults(data || []);
+    } catch (searchError) {
+      console.error("Recipient search error:", searchError);
+      setError("Unable to search for users right now.");
+      setRecipientResults([]);
+    } finally { setRecipientLoading(false); }
+  };
+
+  const startNewConversation = (profile) => {
+    setActiveChat({
+      conversation_key: `harvester-${profile.id}`,
+      other_party_id: profile.id,
+      other_party_name: profile.full_name || profile.business_name || "Tech Harvester",
+      other_party_role: "Tech Harvester",
+      other_party_role_type: "harvester",
+      other_party_rating: Number(profile.average_rating) || 0,
+      other_party_review_count: Number(profile.total_reviews) || 0,
+      listing_id: null,
+      content: "",
+      created_at: new Date().toISOString(),
+      isNewConversation: true,
+    });
+    setMessages([]);
+    setRepairAppointments([]);
+    setError("");
+    setNewMessage("");
+    setShowNewMessage(false);
+    setRecipientSearch("");
+    setRecipientResults([]);
+  };
+
+  /*
+   * ============================================================
    * SEND MESSAGE
    * ============================================================
    */
@@ -755,6 +891,16 @@ const RepairShopMessages = ({ userId, onClose }) => {
     e.preventDefault();
 
     if (!newMessage.trim() || !activeChat || !userId) {
+      return;
+    }
+
+    // REQ-2: Pending Verification accounts are view-only.
+    if (!canSendMessages) {
+      setError(
+        isOwnAccountRestricted
+          ? "Message blocked: Your account is not allowed to send messages."
+          : "Pending Verification accounts are view-only and cannot send messages."
+      );
       return;
     }
 
@@ -769,7 +915,9 @@ const RepairShopMessages = ({ userId, onClose }) => {
       return;
     }
 
-    // TC_MSG_04: do not allow communication with an unverified/blocked account.
+    // TC_MSG_04: do not allow communication with a missing or blocked account.
+    // REQ-1: Pending Verification recipients are allowed, so the recipient's
+    // verification status is intentionally not checked.
     const { data: recipientProfile, error: recipientError } =
       await supabase
         .from("profiles")
@@ -789,26 +937,12 @@ const RepairShopMessages = ({ userId, onClose }) => {
       recipientProfile?.status || ""
     ).toLowerCase();
 
-    const recipientVerificationStatus = String(
-      recipientProfile?.verification_status || ""
-    ).toLowerCase();
-
     const recipientBlocked =
       ["blocked", "suspended", "inactive", "banned"].includes(
         recipientStatus
       );
 
-    const recipientUnverified =
-      recipientProfile &&
-      (recipientProfile.is_verified !== true ||
-        (recipientVerificationStatus &&
-          recipientVerificationStatus !== "verified"));
-
-    if (
-      !recipientProfile ||
-      recipientBlocked ||
-      recipientUnverified
-    ) {
+    if (!recipientProfile || recipientBlocked) {
       setError(
         "Message blocked: This account is not currently eligible to receive messages."
       );
@@ -847,6 +981,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
 
     // Show the sent message immediately; realtime will ignore the duplicate.
     if (insertedMessage) {
+      setActiveChat((previous) => previous ? { ...previous, isNewConversation: false } : previous);
       setMessages((previous) => {
         if (previous.some((item) => item.id === insertedMessage.id)) {
           return previous;
@@ -915,6 +1050,31 @@ const RepairShopMessages = ({ userId, onClose }) => {
    */
 
   return (
+    <>
+      {showNewMessage && (
+        <div className="fixed inset-0 z-[500] bg-slate-900/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div><h3 className="font-black text-slate-800">New Message</h3><p className="text-xs text-slate-400 mt-1">Search for a Verified or Pending Verification user.</p></div>
+              <button type="button" onClick={() => setShowNewMessage(false)} className="p-2 rounded-lg bg-slate-50 text-slate-500"><X size={16} /></button>
+            </div>
+            <div className="flex gap-2">
+              <input value={recipientSearch} onChange={(e) => setRecipientSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") searchRecipients(); }} placeholder="Search name or business" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none" autoFocus />
+              <button type="button" onClick={searchRecipients} disabled={recipientLoading} className="rounded-xl bg-violet-600 text-white px-4 text-xs font-bold disabled:opacity-50">{recipientLoading ? "..." : "Search"}</button>
+            </div>
+            <div className="mt-4 max-h-64 overflow-y-auto space-y-2">
+              {recipientResults.map((profile) => (
+                <button key={profile.id} type="button" onClick={() => startNewConversation(profile)} className="w-full text-left p-3 rounded-xl border border-slate-100 hover:bg-slate-50">
+                  <div className="flex items-center justify-between gap-2"><span className="font-bold text-sm text-slate-700">{profile.full_name || profile.business_name || "User"}</span><span className="text-[10px] font-bold uppercase rounded-full px-2 py-1 bg-slate-100 text-slate-600">{String(profile.verification_status || "pending").replaceAll("_", " ")}</span></div>
+                  <span className="text-xs text-slate-400">{String(profile.role || "user").replaceAll("_", " ")}</span>
+                </button>
+              ))}
+              {!recipientLoading && recipientSearch.trim().length >= 2 && recipientResults.length === 0 && <p className="text-xs text-slate-400 text-center py-6">No eligible users found.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
     <div className="flex h-[600px] bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden font-sans">
 
       {/* ======================================================
@@ -924,6 +1084,12 @@ const RepairShopMessages = ({ userId, onClose }) => {
       <div className="w-80 border-r border-slate-50 flex flex-col">
 
         <div className="p-6 border-b border-slate-50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-slate-400">Message any eligible user</span>
+            {canSendMessages && (
+              <button type="button" onClick={() => { setShowNewMessage(true); setError(""); }} className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-bold hover:bg-violet-700">+ New Message</button>
+            )}
+          </div>
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-slate-800">
               Messages
@@ -1380,7 +1546,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                               }
                             )
                           : ""}
-                        {isMe && (
+                        {isMe && message.delivered_at && (
                           <span className="text-emerald-500">
                             · Delivered
                           </span>
@@ -1403,6 +1569,15 @@ const RepairShopMessages = ({ userId, onClose }) => {
               className="p-6 border-t border-slate-50"
             >
 
+              {isViewOnly && (
+                <div className="mb-2 text-amber-600 text-xs font-bold flex items-center gap-1">
+                  <ShieldAlert size={12} />
+                  {isOwnAccountRestricted
+                    ? "Your account is not allowed to send messages."
+                    : "Your account is pending verification. You can read messages but cannot reply until you are verified."}
+                </div>
+              )}
+
               {error && (
                 <div className="mb-2 text-red-500 text-xs font-bold flex items-center gap-1">
                   <ShieldAlert size={12} />
@@ -1419,13 +1594,19 @@ const RepairShopMessages = ({ userId, onClose }) => {
                     setError("");
                   }}
                   type="text"
-                  placeholder="Type a message..."
-                  className="flex-1 bg-transparent border-none px-4 text-xs outline-none"
+                  disabled={!canSendMessages}
+                  placeholder={
+                    isViewOnly
+                      ? "View-only: replies are disabled"
+                      : "Type a message..."
+                  }
+                  className="flex-1 bg-transparent border-none px-4 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 />
 
                 <button
                   type="submit"
-                  className="p-3 bg-[#3285a1] text-white rounded-xl hover:opacity-90 transition"
+                  disabled={!canSendMessages}
+                  className="p-3 bg-[#3285a1] text-white rounded-xl hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send size={18} />
                 </button>
@@ -1437,6 +1618,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
         )}
       </div>
     </div>
+    </>
   );
 };
 

@@ -19,6 +19,21 @@ const PlaceBidModal = ({
   onSubmit,
 }) => {
   const [seller, setSeller] = useState(null);
+  const [listingExpired, setListingExpired] = useState(false);
+  const [biddingLocked, setBiddingLocked] = useState(false);
+
+  useEffect(() => {
+    const refreshExpiry = () => {
+      const expiryTime = listing?.expires_at ? new Date(listing.expires_at).getTime() : null;
+      const expired = Boolean(expiryTime && expiryTime <= Date.now());
+      const inactive = String(listing?.status || "active").toLowerCase() !== "active";
+      setListingExpired(expired);
+      setBiddingLocked(expired || inactive);
+    };
+    refreshExpiry();
+    const timer = window.setInterval(refreshExpiry, 1000);
+    return () => window.clearInterval(timer);
+  }, [listing?.expires_at, listing?.status]);
 
   useEffect(() => {
     const fetchSeller = async () => {
@@ -41,33 +56,41 @@ const PlaceBidModal = ({
   if (!listing) return null;
 
   const askingPrice = Number(listing.asking_price || 0);
+  const currentBiddingPrice = Number(
+    listing.current_displayed_price ||
+      listing.lowest_active_bid ||
+      askingPrice,
+  );
 
+  // The marketplace is descending-price: every new offer must be strictly
+  // lower than the current bidding price. Quick offers therefore use the
+  // current bidding price as their reference, not the original asking price.
   const quickOffers = [
-    {
-      label: "Full Price",
-      percentage: 100,
-      amount: askingPrice,
-    },
     {
       label: "90%",
       percentage: 90,
-      amount: Math.round(askingPrice * 0.9),
+      amount: Math.max(1, Math.floor(currentBiddingPrice * 0.9)),
     },
     {
       label: "80%",
       percentage: 80,
-      amount: Math.round(askingPrice * 0.8),
+      amount: Math.max(1, Math.floor(currentBiddingPrice * 0.8)),
     },
     {
       label: "70%",
       percentage: 70,
-      amount: Math.round(askingPrice * 0.7),
+      amount: Math.max(1, Math.floor(currentBiddingPrice * 0.7)),
+    },
+    {
+      label: "60%",
+      percentage: 60,
+      amount: Math.max(1, Math.floor(currentBiddingPrice * 0.6)),
     },
   ];
 
   const selectedPercentage =
-    askingPrice > 0 && bidAmount
-      ? Math.round((Number(bidAmount) / askingPrice) * 100)
+    currentBiddingPrice > 0 && bidAmount
+      ? Math.round((Number(bidAmount) / currentBiddingPrice) * 100)
       : null;
 
   /*
@@ -209,7 +232,7 @@ const PlaceBidModal = ({
             {/* =================================================
                 MAXIMUM PRICE
             ================================================= */}
-            <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-6">
+            <div className={`rounded-3xl border p-6 ${biddingLocked ? "border-red-200 bg-red-50" : "border-slate-200 bg-slate-50/70"}`}>
 
               <div className="flex justify-between items-start">
 
@@ -220,6 +243,13 @@ const PlaceBidModal = ({
 
                   <p className="text-4xl font-medium text-slate-900 mt-1">
                     ₱{askingPrice.toLocaleString()}
+                  </p>
+
+                  <p className="text-sm uppercase tracking-wide text-slate-500 mt-5">
+                    Current Bidding Price
+                  </p>
+                  <p className="text-2xl font-semibold text-[#5b9e29] mt-1">
+                    ₱{currentBiddingPrice.toLocaleString()}
                   </p>
                 </div>
 
@@ -235,11 +265,11 @@ const PlaceBidModal = ({
 
               </div>
 
-              <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-center gap-3 text-amber-700">
+              <div className={`mt-5 rounded-2xl border px-4 py-3 flex items-center gap-3 ${biddingLocked ? "border-red-300 bg-red-50 text-red-700" : "border-amber-300 bg-amber-50 text-amber-700"}`}>
                 <ArrowUpRight size={20} />
 
                 <span>
-                  Offer at or below this price.
+                  {biddingLocked ? (listingExpired ? "This listing has expired and can no longer receive bids." : "This listing is no longer accepting bids.") : "Every new bid must be strictly lower than this price."}
                 </span>
               </div>
             </div>
@@ -261,16 +291,19 @@ const PlaceBidModal = ({
                 <input
                   type="number"
                   min="1"
-                  max={askingPrice || undefined}
+                  max={currentBiddingPrice > 0 ? currentBiddingPrice - 0.01 : undefined}
                   value={bidAmount}
                   onChange={(e) => {
                     const value = e.target.value;
 
-                    if (
-                      askingPrice > 0 &&
-                      Number(value) > askingPrice
-                    ) {
-                      setBidAmount(String(askingPrice));
+                    if (!value) {
+                      setBidAmount("");
+                      return;
+                    }
+
+                    const numericValue = Number(value);
+                    if (currentBiddingPrice > 0 && numericValue >= currentBiddingPrice) {
+                      setBidAmount(String(Math.max(1, Math.ceil(currentBiddingPrice - 1))));
                       return;
                     }
 
@@ -284,7 +317,7 @@ const PlaceBidModal = ({
               {/* Offer percentage */}
               {selectedPercentage && (
                 <div className="inline-block mt-3 bg-blue-50 text-blue-600 px-5 py-2 rounded-full text-sm">
-                  {selectedPercentage}% of asking price
+                  {selectedPercentage}% of current bidding price
                   {selectedPercentage >= 80 && " · Good offer"}
                 </div>
               )}
@@ -378,13 +411,14 @@ const PlaceBidModal = ({
             onClick={onSubmit}
             disabled={
               placingBid ||
+              biddingLocked ||
               !bidAmount ||
               Number(bidAmount) <= 0 ||
-              Number(bidAmount) > askingPrice
+              Number(bidAmount) >= currentBiddingPrice
             }
             className="flex-1 py-4 bg-[#5b9e29] text-white rounded-2xl text-lg font-medium hover:bg-[#4e8924] disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {placingBid ? "Sending..." : "Place Bid"}
+            {biddingLocked ? (listingExpired ? "Bidding Expired" : "Bidding Locked") : placingBid ? "Sending..." : "Place Bid"}
           </button>
 
         </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import jsPDF from "jspdf";
+import { recordTransactionStatusHistory } from "../utils/transactionHistory";
 import {
   MessageSquare,
   Flag,
@@ -36,6 +37,16 @@ const TransactionsView = ({
   const [reportingTransactionId, setReportingTransactionId] = useState(null);
   const [reportReason, setReportReason] = useState("");
   const [reportDetails, setReportDetails] = useState("");
+
+  // Requirement 7: keep this view synchronized with transaction changes
+  // without removing the transaction data/functionality supplied by the parent.
+  const [liveTransactions, setLiveTransactions] = useState(transactions || []);
+  const [transactionStatusHistory, setTransactionStatusHistory] = useState([]);
+  const [isLoadingTransactionHistory, setIsLoadingTransactionHistory] = useState(false);
+
+  useEffect(() => {
+    setLiveTransactions(transactions || []);
+  }, [transactions]);
 
   useEffect(() => {
     const loadSubmittedReviews = async () => {
@@ -78,8 +89,11 @@ const TransactionsView = ({
     loadSubmittedReviews();
   }, [transactions, session?.user?.id]);
 
+  const normalizeTransactionStatus = (status) =>
+    String(status || "pending").trim().toLowerCase();
+
   const getStatusConfig = (status) => {
-    switch (status) {
+    switch (normalizeTransactionStatus(status)) {
       case "completed":
         return {
           label: "Completed",
@@ -92,10 +106,22 @@ const TransactionsView = ({
           color: "bg-red-100 text-red-500",
           theme: "#ef4444",
         };
+      case "pending_review":
+        return {
+          label: "Pending Review",
+          color: "bg-amber-100 text-amber-700",
+          theme: "#f59e0b",
+        };
       case "meetup_scheduled":
         return {
           label: "Scheduled Meetup",
           color: "bg-purple-100 text-purple-600",
+          theme: "#3285a1",
+        };
+      case "matched":
+        return {
+          label: "Matched",
+          color: "bg-blue-100 text-blue-600",
           theme: "#3285a1",
         };
       case "pending":
@@ -108,9 +134,108 @@ const TransactionsView = ({
     }
   };
 
-  const isRepairTransaction = (transaction) => {
-    return Boolean(transaction?.repair_appointment_id);
+  // Requirement 7.2 / REQ-2: synchronize transaction status changes in real time.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return undefined;
+
+    const channel = supabase
+      .channel(`transactions-view-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "transactions" },
+        (payload) => {
+          const changed = payload?.new || payload?.old;
+          if (!changed?.id) return;
+
+          const belongsToUser =
+            changed.seller_id === userId || changed.harvester_id === userId;
+          if (!belongsToUser) return;
+
+          if (payload.eventType === "DELETE") {
+            setLiveTransactions((prev) => prev.filter((tx) => tx.id !== changed.id));
+            if (selectedTransaction?.id === changed.id) {
+              onSelect?.(null);
+            }
+            return;
+          }
+
+          setLiveTransactions((prev) => {
+            const exists = prev.some((tx) => tx.id === changed.id);
+            if (!exists) return [...prev, changed];
+            return prev.map((tx) =>
+              tx.id === changed.id ? { ...tx, ...changed } : tx
+            );
+          });
+
+          if (selectedTransaction?.id === changed.id) {
+            setSelectedTransactionSafe(changed.id, changed);
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.warn("TransactionsView realtime subscription failed.");
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, selectedTransaction?.id]);
+
+  // Requirement 7.3 / REQ-3: load the complete status history for the selected transaction.
+  useEffect(() => {
+    const loadTransactionStatusHistory = async () => {
+      const transactionId = selectedTransaction?.id;
+      if (!transactionId) {
+        setTransactionStatusHistory([]);
+        return;
+      }
+
+      setIsLoadingTransactionHistory(true);
+      try {
+        const { data, error } = await supabase
+          .from("transaction_status_history")
+          .select(
+            "id, old_status, new_status, changed_at, meetup_date, meetup_time, meeting_location, notes"
+          )
+          .eq("transaction_id", transactionId)
+          .order("changed_at", { ascending: true });
+
+        if (error) {
+          console.warn(
+            "Transaction status history is unavailable. Apply the Requirement 7 migration if this table has not been created:",
+            error
+          );
+          setTransactionStatusHistory([]);
+          return;
+        }
+
+        setTransactionStatusHistory(data || []);
+      } catch (error) {
+        console.warn("Unable to load transaction status history:", error);
+        setTransactionStatusHistory([]);
+      } finally {
+        setIsLoadingTransactionHistory(false);
+      }
+    };
+
+    loadTransactionStatusHistory();
+  }, [selectedTransaction?.id, selectedTransaction?.status]);
+
+  const getTransactionType = (transaction) => {
+    const persisted = String(transaction?.transaction_type || "").trim().toLowerCase();
+    if (persisted === "repair" || persisted === "purchase") return persisted;
+    return transaction?.repair_appointment_id ? "repair" : "purchase";
   };
+
+  const isRepairTransaction = (transaction) => {
+    return getTransactionType(transaction) === "repair";
+  };
+
+  const isPendingReviewTransaction = (transaction) =>
+    String(transaction?.status || "").trim().toLowerCase() === "pending_review";
 
   const getRepairDevice = (transaction) => {
     if (!isRepairTransaction(transaction)) return null;
@@ -236,7 +361,11 @@ const TransactionsView = ({
         const { data, error } = await supabase
           .from("transactions")
           .update({
-            status: "completed",
+            status: "pending_review",
+            transaction_type: "purchase",
+            pending_review_at: now.toISOString(),
+            flag_reason: "Automatic timeout: scheduled meetup passed without handover confirmation.",
+            review_status: "under_review",
             updated_at: now.toISOString(),
           })
           .eq("id", transaction.id)
@@ -250,7 +379,36 @@ const TransactionsView = ({
         }
 
         if (data) {
+          await recordTransactionStatusHistory({
+            transactionId: transaction.id,
+            oldStatus: "meetup_scheduled",
+            newStatus: "pending_review",
+            transaction: data,
+            notes:
+              "Automatically moved to Pending Review after the allowed confirmation period expired without an open report.",
+          });
           setSelectedTransactionSafe(transaction.id, data);
+
+          try {
+            const { data: admins } = await supabase
+              .from("profiles")
+              .select("id")
+              .in("role", ["admin", "administrator"]);
+            if (admins?.length) {
+              await supabase.from("notifications").insert(
+                admins.map((admin) => ({
+                  user_id: admin.id,
+                  type: "transaction_pending_review",
+                  title: "Transaction Pending Review",
+                  description: `Transaction ${String(transaction.id).replace(/-/g, "").slice(0, 8).toUpperCase()} exceeded the handover confirmation period and requires review.`,
+                  content: "A scheduled meetup passed without handover confirmation.",
+                  is_read: false,
+                }))
+              );
+            }
+          } catch (notificationError) {
+            console.warn("Pending Review admin notification failed:", notificationError);
+          }
         }
       } catch (error) {
         console.error("Automatic transaction completion error:", error);
@@ -365,6 +523,21 @@ const TransactionsView = ({
         .select("id, role")
         .in("role", ["admin", "administrator"]);
 
+      const reportFlag = `User report: ${reason}${details ? ` — ${details}` : ""}`;
+      const { error: flagError } = await supabase
+        .from("transactions")
+        .update({
+          review_status: "under_review",
+          flag_reason: reportFlag,
+          pending_review_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", transactionId);
+
+      if (flagError) {
+        console.warn("Could not flag transaction for admin review:", flagError);
+      }
+
       if (adminLookupError) {
         console.warn("Could not find administrator accounts:", adminLookupError);
       } else if (admins?.length) {
@@ -423,6 +596,24 @@ const TransactionsView = ({
       return;
     }
 
+    if (currentStatus === "pending_review") {
+      alert("This transaction is under administrator review and cannot be cancelled.");
+      return;
+    }
+
+    // 7.2.2.1: a cancellation without a reason is rejected and the user is
+    // prompted to supply the missing information.
+    const cancelReasonInput = window.prompt(
+      "Please enter the reason for cancelling this transaction (required):"
+    );
+    if (cancelReasonInput === null) return;
+
+    const cancelReason = cancelReasonInput.trim();
+    if (!cancelReason) {
+      alert("A cancellation reason is required. The transaction was not changed.");
+      return;
+    }
+
     if (
       !window.confirm(
         "Cancel this transaction? This action will mark the transaction as Cancelled."
@@ -470,11 +661,15 @@ const TransactionsView = ({
         .from("transactions")
         .update({
           status: "cancelled",
+          transaction_type: currentTransaction.repair_appointment_id ? "repair" : "purchase",
+          cancel_reason: cancelReason,
+          cancelled_at: cancelledAt,
+          pending_review_at: null,
           updated_at: cancelledAt,
         })
         .eq("id", transactionId)
         .eq("harvester_id", userId)
-        .in("status", ["pending", "meetup_scheduled"])
+        .in("status", ["pending", "matched", "Matched", "meetup_scheduled"])
         .select("*");
 
       if (updateError) throw updateError;
@@ -486,6 +681,15 @@ const TransactionsView = ({
       }
 
       const updatedTransaction = updatedTransactions[0];
+
+      // REQ-3: record the status change in the transaction history.
+      await recordTransactionStatusHistory({
+        transactionId,
+        oldStatus: verifiedStatus,
+        newStatus: "cancelled",
+        transaction: updatedTransaction,
+        notes: `Transaction cancelled by buyer. Reason: ${cancelReason}`,
+      });
 
       // Keep a repair appointment synchronized with its transaction.
       if (updatedTransaction.repair_appointment_id) {
@@ -723,8 +927,8 @@ const TransactionsView = ({
                 Rate Your Experience
               </h2>
               <p className="text-white/80 text-xs font-bold uppercase mt-1">
-                How was your transaction with{" "}
-                {transaction.seller?.full_name || "the seller"}?
+                How was your {isRepairTransaction(transaction) ? "repair service" : "transaction"} with{" "}
+                {transaction.seller?.full_name || (isRepairTransaction(transaction) ? "the repair shop" : "the seller")} ?
               </p>
             </div>
 
@@ -740,8 +944,8 @@ const TransactionsView = ({
                 category="punctuality"
               />
               <StarRow
-                label="Item Condition"
-                sublabel="Item matched description"
+                label={isRepairTransaction(transaction) ? "Service Quality" : "Item Condition"}
+                sublabel={isRepairTransaction(transaction) ? "Quality of the repair service" : "Item matched description"}
                 category="condition"
               />
               <StarRow
@@ -1136,7 +1340,7 @@ const TransactionsView = ({
         <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
           Active Transactions
         </h2>
-        {transactions.map((tx) => {
+        {liveTransactions.map((tx) => {
           const repair = isRepairTransaction(tx);
           const effectiveStatus = cancelledTransactionIds.includes(tx.id)
             ? "cancelled"
@@ -1258,15 +1462,15 @@ const TransactionsView = ({
 
                 <div
                   className={`absolute top-4 left-10 h-[2px] transition-all duration-500 ${
-                    selectedTransaction.status === "cancelled" ? "bg-red-500" : "bg-[#769c2d]"
+                    normalizeTransactionStatus(selectedTransaction.status) === "cancelled" ? "bg-red-500" : "bg-[#769c2d]"
                   }`}
                   style={{
                     width:
-                      selectedTransaction.status === "completed"
+                      normalizeTransactionStatus(selectedTransaction.status) === "completed"
                         ? "100%"
-                        : selectedTransaction.status === "meetup_scheduled"
+                        : normalizeTransactionStatus(selectedTransaction.status) === "meetup_scheduled"
                           ? "50%"
-                          : selectedTransaction.status === "cancelled"
+                          : normalizeTransactionStatus(selectedTransaction.status) === "cancelled"
                             ? "0%"
                             : "25%",
                   }}
@@ -1279,11 +1483,11 @@ const TransactionsView = ({
                     "Repair Completed",
                   ].map((step, i) => {
                     const isPast =
-                      selectedTransaction.status === "cancelled"
+                      normalizeTransactionStatus(selectedTransaction.status) === "cancelled"
                         ? false
-                        : selectedTransaction.status === "completed"
+                        : normalizeTransactionStatus(selectedTransaction.status) === "completed"
                           ? true
-                          : selectedTransaction.status === "meetup_scheduled"
+                          : normalizeTransactionStatus(selectedTransaction.status) === "meetup_scheduled"
                             ? i <= 1
                             : i === 0;
 
@@ -1294,7 +1498,7 @@ const TransactionsView = ({
                       >
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center border-2 bg-white ${
-                            selectedTransaction.status === "cancelled"
+                            normalizeTransactionStatus(selectedTransaction.status) === "cancelled"
                               ? "border-red-400 text-red-500"
                               : isPast
                                 ? "border-[#769c2d] text-[#769c2d]"
@@ -1327,11 +1531,13 @@ const TransactionsView = ({
                   className="absolute top-4 left-10 h-[2px] bg-[#769c2d] transition-all duration-500"
                   style={{
                     width:
-                      selectedTransaction.status === "completed"
+                      normalizeTransactionStatus(selectedTransaction.status) === "completed"
                         ? "100%"
-                        : selectedTransaction.status === "meetup_scheduled"
+                        : normalizeTransactionStatus(selectedTransaction.status) === "meetup_scheduled"
                           ? "50%"
-                          : "0%",
+                          : normalizeTransactionStatus(selectedTransaction.status) === "matched"
+                            ? "0%"
+                            : "0%",
                   }}
                 />
 
@@ -1342,11 +1548,11 @@ const TransactionsView = ({
                     "Completed",
                   ].map((step, i) => {
                     const isPast =
-                      selectedTransaction.status === "completed"
+                      normalizeTransactionStatus(selectedTransaction.status) === "completed"
                         ? true
-                        : selectedTransaction.status === "cancelled"
+                        : normalizeTransactionStatus(selectedTransaction.status) === "cancelled"
                           ? false
-                          : selectedTransaction.status === "meetup_scheduled"
+                          : normalizeTransactionStatus(selectedTransaction.status) === "meetup_scheduled"
                             ? i <= 1
                             : i === 0;
 
@@ -1412,7 +1618,26 @@ const TransactionsView = ({
 
             {/* Status Specific Cards */}
             {!isRepairTransaction(selectedTransaction) &&
-              selectedTransaction.status === "meetup_scheduled" && (
+              normalizeTransactionStatus(selectedTransaction.status) === "matched" && (
+                <div className="bg-blue-50 border border-blue-100 rounded-[2rem] p-8 space-y-4">
+                  <div className="flex items-center gap-2 text-blue-600 font-black text-xs uppercase">
+                    <CheckCircle size={16} /> Transaction Matched
+                  </div>
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                    Your bid has been accepted. The transaction is now active and the parties can coordinate the meetup before completion.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onOpenMessages?.()}
+                    className="w-full bg-[#3285a1] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#286f88] transition flex items-center justify-center gap-2"
+                  >
+                    <MessageSquare size={15} /> Coordinate Transaction
+                  </button>
+                </div>
+              )}
+
+            {!isRepairTransaction(selectedTransaction) &&
+              normalizeTransactionStatus(selectedTransaction.status) === "meetup_scheduled" && (
                 <div className="bg-[#f3e8ff] border border-purple-100 rounded-[2rem] p-8 space-y-6">
                   <div className="flex items-center gap-2 text-purple-600 font-black text-xs uppercase">
                     <Calendar size={16} /> Meetup Scheduled
@@ -1425,8 +1650,9 @@ const TransactionsView = ({
                           Location
                         </p>
                         <p className="text-xs font-bold text-slate-700">
-                          {selectedTransaction.barangay ||
-                            "Barangay Veinte Reales Hall"}
+                          {selectedTransaction.meeting_location ||
+                            selectedTransaction.barangay ||
+                            "Location not specified"}
                         </p>
                       </div>
                     </div>
@@ -1439,7 +1665,7 @@ const TransactionsView = ({
                         <p className="text-xs font-bold text-slate-700">
                           {selectedTransaction.meetup_date
                             ? `${new Date(selectedTransaction.meetup_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} at ${selectedTransaction.meetup_time}`
-                            : "Thursday, April 30, 2026 at 14:00"}
+                            : "Not scheduled"}
                         </p>
                       </div>
                     </div>
@@ -1449,7 +1675,7 @@ const TransactionsView = ({
                       Notes
                     </p>
                     <p className="text-xs text-slate-600">
-                      Meet near the entrance
+                      {selectedTransaction.notes || "No additional notes."}
                     </p>
                   </div>
                   <div className="flex gap-3 pt-4">
@@ -1546,7 +1772,7 @@ const TransactionsView = ({
               )}
 
             {!isRepairTransaction(selectedTransaction) &&
-              selectedTransaction.status === "meetup_scheduled" && (
+              normalizeTransactionStatus(selectedTransaction.status) === "meetup_scheduled" && (
                 <div className="bg-amber-50 border border-amber-100 rounded-[2rem] p-6 space-y-4">
                   <div className="flex items-center gap-2 text-amber-700 font-black text-xs uppercase">
                     <Flag size={16} /> Report a Meetup No-Show
@@ -1599,9 +1825,32 @@ const TransactionsView = ({
                 </div>
               )}
 
+            {/* Pending Review: automatic timeout or reported transaction */}
+            {isPendingReviewTransaction(selectedTransaction) && (
+              <div className="bg-amber-50 border-2 border-amber-200 rounded-[2rem] p-8 space-y-4">
+                <div className="flex items-center gap-3 text-amber-700 font-black text-xs uppercase">
+                  <Clock size={18} /> Transaction Pending Review
+                </div>
+                <p className="text-sm font-bold text-slate-700">
+                  The allowed handover confirmation period has expired, or this transaction was flagged for review. An administrator must review it before it can be finalized.
+                </p>
+                {selectedTransaction.pending_review_at && (
+                  <p className="text-xs font-semibold text-amber-700">
+                    Review started: {new Date(selectedTransaction.pending_review_at).toLocaleString()}
+                  </p>
+                )}
+                {selectedTransaction.flag_reason && (
+                  <div className="bg-white rounded-2xl p-4 border border-amber-200">
+                    <p className="text-xs font-black text-amber-700 uppercase">Reason / Flag</p>
+                    <p className="text-xs text-slate-600 mt-1 whitespace-pre-line">{selectedTransaction.flag_reason}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Cancelled: closed, nothing left to do */}
             {!isRepairTransaction(selectedTransaction) &&
-              selectedTransaction.status === "cancelled" && (
+              normalizeTransactionStatus(selectedTransaction.status) === "cancelled" && (
                 <div className="bg-red-50 border border-red-100 rounded-[2rem] p-8">
                   <div className="flex items-center gap-2 text-red-500 font-black text-xs uppercase">
                     <XCircle size={16} /> Transaction Cancelled
@@ -1752,7 +2001,7 @@ const TransactionsView = ({
               </div>
             )}
 
-            {selectedTransaction.status === "completed" && (
+            {normalizeTransactionStatus(selectedTransaction.status) === "completed" && (
               <div className="space-y-5">
                 {/* Completed Status */}
                 <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 flex items-start gap-4">
@@ -1884,6 +2133,68 @@ const TransactionsView = ({
                 )}
               </div>
             )}
+
+            {/* Requirement 7.3: Complete transaction status history */}
+            <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                    Transaction History
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Status changes recorded for tracking and reference
+                  </p>
+                </div>
+                <FileText size={18} className="text-slate-300" />
+              </div>
+
+              {isLoadingTransactionHistory ? (
+                <p className="text-xs font-semibold text-slate-400">Loading transaction history...</p>
+              ) : transactionStatusHistory.length ? (
+                <div className="space-y-3">
+                  {transactionStatusHistory.map((entry) => {
+                    const oldStatus = normalizeTransactionStatus(entry.old_status);
+                    const newStatus = normalizeTransactionStatus(entry.new_status);
+                    const newLabel = getStatusConfig(newStatus).label;
+                    const oldLabel = oldStatus ? getStatusConfig(oldStatus).label : "Created";
+
+                    return (
+                      <div key={entry.id} className="bg-white rounded-2xl border border-slate-100 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-black text-slate-700">
+                              {oldStatus ? `${oldLabel} → ${newLabel}` : newLabel}
+                            </p>
+                            {entry.notes && (
+                              <p className="text-[11px] text-slate-500 mt-1">{entry.notes}</p>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                            {entry.changed_at
+                              ? new Date(entry.changed_at).toLocaleString()
+                              : "—"}
+                          </span>
+                        </div>
+
+                        {(entry.meetup_date || entry.meetup_time || entry.meeting_location) && (
+                          <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-2 text-[10px] text-slate-500">
+                            {entry.meetup_date && <span>Date: {entry.meetup_date}</span>}
+                            {entry.meetup_time && <span>Time: {entry.meetup_time}</span>}
+                            {entry.meeting_location && <span>Location: {entry.meeting_location}</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-4">
+                  <p className="text-xs font-semibold text-slate-400">
+                    No recorded status changes are available yet.
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* <div className="pt-6">
               <h4 className="text-xs font-black text-slate-300 uppercase tracking-widest mb-6">

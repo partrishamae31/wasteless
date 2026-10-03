@@ -11,6 +11,10 @@ import DonationTab from "./DonationTab";
 import SellerProfileModal from "./SellerProfileModal";
 import RepairShopMessages from "./RepairShopMessages";
 import SiteFooter from "./SiteFooter";
+import {
+  recordTransactionStatusHistory,
+  getMissingHandoverFields,
+} from "../utils/transactionHistory";
 
 import {
   Search,
@@ -163,47 +167,89 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [selectedTransaction, setSelectedTransaction] = useState(null);
 
   const [showRatingModal, setShowRatingModal] = useState(false);
+  // REQ-1 / 7.2.2.1: complete the handover only when the transaction is in the
+  // correct state and all required coordination data exists. Otherwise the
+  // update is prevented and the user is told exactly what to correct.
   const handleCompleteHandover = async (transactionId) => {
+    const currentTx =
+      transactions.find((tx) => tx.id === transactionId) ||
+      (selectedTransaction?.id === transactionId ? selectedTransaction : null);
+
+    if (!currentTx) {
+      alert("Transaction not found. Please refresh and try again.");
+      return;
+    }
+
+    const oldStatus = String(currentTx.status || "").trim().toLowerCase();
+
+    if (oldStatus === "completed" || oldStatus === "cancelled") {
+      alert(`This transaction is already ${oldStatus} and cannot be updated.`);
+      return;
+    }
+
+    if (oldStatus !== "meetup_scheduled") {
+      alert("The meetup must be scheduled before the handover can be completed.");
+      return;
+    }
+
+    const missingFields = getMissingHandoverFields(currentTx);
+    if (missingFields.length > 0) {
+      alert(
+        `The transaction cannot be completed because the following required details are missing: ${missingFields.join(", ")}.\n\nPlease coordinate with the seller through Messages so the meetup details can be corrected.`,
+      );
+      return;
+    }
+
     try {
       const updatedTime = new Date().toISOString();
 
-      // Use { count: 'exact' } to verify if the database actually changed
-      const { data, error, count } = await supabase
+      // Scoped to this harvester and to the expected status so a stale screen
+      // can never overwrite a change the other participant already made.
+      const { data, error } = await supabase
         .from("transactions")
         .update({
           status: "completed",
+          completed_at: updatedTime,
           updated_at: updatedTime,
         })
         .eq("id", transactionId)
-        .select(); // Re-select to confirm update[cite: 7]
+        .eq("harvester_id", session.user.id)
+        .eq("status", "meetup_scheduled")
+        .select();
 
       if (error) throw error;
 
-      // If count is 0, the transactionId didn't match anything in the DB[cite: 7]
       if (!data || data.length === 0) {
-        alert("Database match failed: No transaction found with that ID.");
+        alert(
+          "The transaction could not be completed because its status has just changed. The latest status has been loaded.",
+        );
+        fetchTransactions();
         return;
       }
 
-      // 2. Update the Sidebar List (Local State)
+      // REQ-3: keep the complete status history.
+      await recordTransactionStatusHistory({
+        transactionId,
+        oldStatus,
+        newStatus: "completed",
+        transaction: { ...currentTx, ...data[0] },
+        notes: "Buyer confirmed handover completion.",
+      });
+
       setTransactions((prev) =>
         prev.map((tx) =>
           tx.id === transactionId
-            ? { ...tx, status: "completed", updated_at: updatedTime }
+            ? { ...tx, status: "completed", completed_at: updatedTime, updated_at: updatedTime }
             : tx,
         ),
       );
 
-      // 3. Update the Detailed View (Local State)
-      // Combined your two calls into one clean update
-      setSelectedTransaction((prev) => {
-        if (prev?.id === transactionId) {
-          return { ...prev, status: "completed", updated_at: updatedTime };
-        }
-        return prev;
-      });
+      setSelectedTransaction((prev) =>
+        prev?.id === transactionId
+          ? { ...prev, status: "completed", completed_at: updatedTime, updated_at: updatedTime }
+          : prev,
+      );
 
-      // 4. Trigger the Feedback UI
       setShowRatingModal(true);
     } catch (err) {
       console.error("Update failed:", err.message);
@@ -488,7 +534,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       )
     `,
       )
-      .eq("harvester_id", session.user.id) // Filter by current Harvester
+      // Same scope as the realtime refresh below: every transaction in which
+      // this account is a participant, so the list never changes shape.
+      .or(`harvester_id.eq.${session.user.id},seller_id.eq.${session.user.id}`)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -607,6 +655,81 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       fetchTransactions();
     }
   }, [activeTab, session?.user?.id]);
+
+  // Requirement 7 / REQ-2: synchronize transaction changes in real time.
+  // Keep the original transaction loader above intact; this listener only
+  // refreshes that same data when either participant changes a transaction.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return undefined;
+
+    const refreshTransactionsRealtime = async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(
+          `
+        *,
+        listing:listing_id (
+          device_model,
+          asking_price
+        ),
+        seller:seller_id (
+          full_name
+        )
+      `,
+        )
+        .or(`harvester_id.eq.${userId},seller_id.eq.${userId}`)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Realtime transaction refresh error:", error.message);
+        return;
+      }
+
+      const nextTransactions = data || [];
+      setTransactions(nextTransactions);
+
+      setSelectedTransaction((current) => {
+        if (!current) return nextTransactions[0] || null;
+        const refreshed = nextTransactions.find((tx) => tx.id === current.id);
+        return refreshed || current;
+      });
+    };
+
+    const transactionsChannel = supabase
+      .channel(`harvester-transactions-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+          filter: `harvester_id=eq.${userId}`,
+        },
+        () => {
+          refreshTransactionsRealtime();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+          filter: `seller_id=eq.${userId}`,
+        },
+        () => {
+          refreshTransactionsRealtime();
+        },
+      )
+      .subscribe((status) => {
+        console.log("Harvester transaction realtime:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(transactionsChannel);
+    };
+  }, [session?.user?.id]);
 
   const handleReverify = () => {
     setShowProfileDropdown(false);
@@ -1057,9 +1180,51 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     fetchActiveListings();
   }, [isRepairShop, accountRole]);
 
+  useEffect(() => {
+    if (!accountRole) return;
+
+    const timer = setInterval(async () => {
+      await expireListingsIfNeeded();
+      await fetchActiveListings();
+    }, 30000);
+
+    return () => clearInterval(timer);
+  }, [accountRole, isRepairShop]);
+
+  const expireListingsIfNeeded = async () => {
+    const nowIso = new Date().toISOString();
+
+    const { data: expiredListings, error } = await supabase
+      .from("listings")
+      .select("id")
+      .eq("status", "active")
+      .not("expires_at", "is", null)
+      .lte("expires_at", nowIso);
+
+    if (error) {
+      console.error("Error checking listing expiry:", error.message);
+      return;
+    }
+
+    if (!expiredListings?.length) return;
+
+    const ids = expiredListings.map((item) => item.id);
+    const { error: updateError } = await supabase
+      .from("listings")
+      .update({ status: "expired" })
+      .in("id", ids)
+      .eq("status", "active");
+
+    if (updateError) {
+      console.error("Error marking listings expired:", updateError.message);
+    }
+  };
+
   const fetchActiveListings = async () => {
     try {
       setLoading(true);
+
+      await expireListingsIfNeeded();
 
       const { data, error } = await supabase
         .from("listings")
@@ -1084,6 +1249,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   `
         )
         .eq("status", "active")
+        // Hide listings whose expiry timestamp has passed even before the
+        // database expiry worker runs its next minute cycle.
+        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
         // Do not filter condition here by exact capitalization.
         // Normalize legacy/current condition values below instead.
         // Barangay is intentionally NOT used as a dashboard visibility filter.
@@ -1107,20 +1275,36 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         }))
         .filter((listing) => {
           const condition = String(listing.condition || "").trim().toLowerCase();
+          const notExpired =
+            !listing.expires_at ||
+            new Date(listing.expires_at).getTime() > Date.now();
 
-          // Display both Working and Not Working active listings.
-          return ["working", "not working"].includes(condition);
+          // Display only sellable, non-expired listings.
+          return ["working", "not working"].includes(condition) && notExpired;
         });
 
       const formattedData = sellableListings.map((listing) => {
         const bids = Array.isArray(listing.bids) ? listing.bids : [];
 
-        const highestBid =
-          bids.length > 0
-            ? bids.reduce((max, bid) =>
-              Number(bid.amount || 0) > Number(max.amount || 0) ? bid : max,
+        // REQ-2: this is a descending-price marketplace.
+        // Only pending bids are active bidding prices. The current displayed
+        // price is the lowest active bid; when there are no active bids it is
+        // the seller's maximum asking price.
+        const activeBids = bids.filter(
+          (bid) => String(bid?.status || "").trim().toLowerCase() === "pending",
+        );
+
+        const lowestActiveBid =
+          activeBids.length > 0
+            ? activeBids.reduce((lowest, bid) =>
+              Number(bid.amount || 0) < Number(lowest.amount || 0) ? bid : lowest,
             )
             : null;
+
+        const askingPrice = Number(listing.asking_price || 0);
+        const currentDisplayedPrice = lowestActiveBid
+          ? Number(lowestActiveBid.amount)
+          : askingPrice;
 
         /*
          * IMPORTANT:
@@ -1137,11 +1321,17 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
           seller_rating: Number(listing.profiles?.average_rating || 0),
 
-          highest_bid: highestBid ? Number(highestBid.amount) : null,
+          // Kept for compatibility with existing UI/sorting.
+          highest_bid: lowestActiveBid ? Number(lowestActiveBid.amount) : null,
 
-          highest_bidder: highestBid?.profiles?.full_name || null,
+          highest_bidder: lowestActiveBid?.profiles?.full_name || null,
+
+          // REQ-2 fields.
+          lowest_active_bid: lowestActiveBid ? Number(lowestActiveBid.amount) : null,
+          current_displayed_price: currentDisplayedPrice,
 
           bid_count: bids.length,
+          active_bid_count: activeBids.length,
         };
       });
 
@@ -1168,31 +1358,60 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     }
 
     try {
-      // 1. Fetch current status & listing info in one go to save a database call
+      // 1. Re-fetch the listing and its active bids immediately before
+      // accepting the offer. This prevents a stale UI price from bypassing
+      // REQ-2 when another bidder has already submitted a lower bid.
       const { data: currentListing, error: statusError } = await supabase
         .from("listings")
-        .select("status, condition, description, seller_id, device_model")
+        .select(
+          `
+          status,
+          condition,
+          description,
+          seller_id,
+          device_model,
+          asking_price,
+          expires_at,
+          bids (
+            amount,
+            status,
+            created_at
+          )
+        `,
+        )
         .eq("id", listingId)
         .single();
 
-      // Check if the listing is locked, unsupported, or hazardous.
+      const listingCondition = String(currentListing?.condition || "")
+        .trim()
+        .toLowerCase();
+      const isExpired = Boolean(
+        currentListing?.expires_at &&
+        new Date(currentListing.expires_at).getTime() <= Date.now(),
+      );
+
+      if (isExpired && currentListing?.status === "active") {
+        await supabase
+          .from("listings")
+          .update({ status: "expired" })
+          .eq("id", listingId)
+          .eq("status", "active");
+      }
+
+      // Check if the listing is locked, unsupported, hazardous, or expired.
       if (
         statusError ||
+        !currentListing ||
         currentListing.status !== "active" ||
-        (!["working", "not working"].includes(
-          String(currentListing.condition || "").trim().toLowerCase(),
-        ) ||
-          (String(currentListing.condition || "").trim().toLowerCase() ===
-            "not working" &&
-            !isRepairShop)) ||
+        isExpired ||
+        (!["working", "not working"].includes(listingCondition) ||
+          (listingCondition === "not working" && !isRepairShop)) ||
         isHazardousListing(currentListing)
       ) {
         alert(
           isHazardousListing(currentListing)
             ? "This item is hazardous and is not available for sale."
-            : String(currentListing?.condition || "").trim().toLowerCase() ===
-                "not working" &&
-              !isRepairShop
+            : listingCondition === "not working" && !isRepairShop
             ? "Not Working items are available exclusively to Repair Shops."
             : "This listing is no longer accepting bids (Closed or Expired).",
         );
@@ -1201,31 +1420,64 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         return;
       }
 
+      // REQ-2: seller's maximum asking price is the starting displayed price.
+      // After a bid is placed, the lowest pending bid becomes the current
+      // displayed price. Every new bid must be strictly lower than it.
+      const activeBids = Array.isArray(currentListing.bids)
+        ? currentListing.bids.filter(
+            (bid) =>
+              String(bid?.status || "").trim().toLowerCase() === "pending",
+          )
+        : [];
+
+      const lowestActiveBid =
+        activeBids.length > 0
+          ? activeBids.reduce((lowest, bid) =>
+              Number(bid.amount || 0) < Number(lowest.amount || 0)
+                ? bid
+                : lowest,
+            )
+          : null;
+
+      const maximumAskingPrice = Number(currentListing.asking_price || 0);
+      const currentDisplayedPrice = lowestActiveBid
+        ? Number(lowestActiveBid.amount)
+        : maximumAskingPrice;
+      const numericAmount = Number(amount);
+
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        alert("Please enter a valid bid amount.");
+        return;
+      }
+
+      if (
+        !Number.isFinite(currentDisplayedPrice) ||
+        currentDisplayedPrice <= 0
+      ) {
+        alert("This listing does not have a valid current displayed price.");
+        return;
+      }
+
+      if (numericAmount >= currentDisplayedPrice) {
+        alert(
+          `Your bid must be lower than the current displayed price of ₱${currentDisplayedPrice.toLocaleString()}.`,
+        );
+        return;
+      }
+
       // 2. Insert the bid
       const { error: bidError } = await supabase.from("bids").insert([
         {
           listing_id: listingId,
           bidder_id: session.user.id,
-          amount: amount,
+          amount: numericAmount,
         },
       ]);
 
       if (bidError) throw bidError;
 
-      // 3. Insert notification for seller (using info from step 1)
-      const { error: notifError } = await supabase
-        .from("notifications")
-        .insert([
-          {
-            user_id: currentListing.seller_id,
-            type: "bid",
-            title: "New Bid Received",
-            description: `Someone placed ₱${amount.toLocaleString()} on your ${currentListing.device_model}`,
-            is_read: false,
-          },
-        ]);
-
-      if (notifError) throw notifError;
+      // 3. The database bid trigger creates the seller notification atomically
+      // with the bid, so direct/API bids cannot bypass REQ-4.
 
       // 4. Handle optional message
       if (message.trim()) {
@@ -1265,8 +1517,34 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     setActiveTab("messages");
   };
 
+  // REQ-1: coordinate the selected transaction through Messages.
+  const handleOpenTransactionMessages = () => {
+    const tx = selectedTransaction;
+    if (!tx) return;
+
+    const otherPartyId =
+      tx.seller_id === session?.user?.id ? tx.harvester_id : tx.seller_id;
+
+    if (!otherPartyId) {
+      alert("The other participant of this transaction is unavailable.");
+      return;
+    }
+
+    setContactSellerChat({
+      other_party_id: otherPartyId,
+      name: tx.seller?.full_name || "Seller",
+    });
+    setActiveTab("messages");
+  };
+
   const handleSendMessageOnly = async (listingId, message) => {
     if (!message.trim()) return;
+
+    // REQ-2: Pending Verification accounts are view-only.
+    if (!isVerified) {
+      alert("Pending Verification accounts are view-only and cannot send messages.");
+      return;
+    }
 
     // TC_MSG_03: block restricted content before transmitting.
     const messageViolation = containsRestrictedContent(message);
@@ -1297,6 +1575,13 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       ]);
 
       if (messageError) throw messageError;
+
+      // REQ-3: notify the seller of the new message.
+      await notifyNewMessage({
+        receiverId: listing.seller_id,
+        listingId,
+        senderLabel: "A Tech Harvester",
+      });
 
       alert("Message sent to seller!");
       setSelectedListing(null);
@@ -1357,7 +1642,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       }
 
       if (sortOption === "Highest Bid") {
-        return Number(b.highest_bid || 0) - Number(a.highest_bid || 0);
+        return (
+          Number(b.current_displayed_price || b.asking_price || 0) -
+          Number(a.current_displayed_price || a.asking_price || 0)
+        );
       }
 
       // Newest
@@ -2790,6 +3078,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             selectedTransaction={selectedTransaction}
             onSelect={setSelectedTransaction}
             handleCompleteHandover={handleCompleteHandover}
+            onOpenMessages={handleOpenTransactionMessages}
             session={session} // Add this prop
           />
         ) : activeTab === "inventory" ? ( // ADD THIS
@@ -3113,6 +3402,32 @@ const AlertsView = ({ notifications }) => {
   );
 };
 
+// REQ-3: notify the recipient of a new in-app message. A failure here must
+// not undo a message that was already sent.
+const notifyNewMessage = async ({
+  receiverId,
+  listingId = null,
+  senderLabel = "A user",
+}) => {
+  if (!receiverId) return;
+
+  const { error } = await supabase.from("notifications").insert([
+    {
+      user_id: receiverId,
+      type: "message",
+      title: "New Message",
+      content: `${senderLabel} sent you a new message.`,
+      related_listing_id: listingId || null,
+      is_read: false,
+      description: "You received a new in-app message.",
+    },
+  ]);
+
+  if (error) {
+    console.warn("Message notification could not be created:", error.message);
+  }
+};
+
 // --- MESSAGES VIEW COMPONENT ---
 
 const MessagesView = ({
@@ -3132,6 +3447,61 @@ const MessagesView = ({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [updatingAppointmentId, setUpdatingAppointmentId] = useState(null);
+
+  // REQ-2: Pending Verification accounts are view-only (read, no reply).
+  const [senderProfile, setSenderProfile] = useState(null);
+  const [senderProfileLoaded, setSenderProfileLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSenderProfile = async () => {
+      if (!userId) return;
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, role, verification_status, status")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Error loading sender profile:", error.message);
+      }
+
+      setSenderProfile(data || null);
+      setSenderProfileLoaded(true);
+    };
+
+    loadSenderProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // Mirrors the enforce_verified_message_sender database trigger.
+  const senderRole = String(senderProfile?.role || "").toLowerCase();
+  const senderVerification = String(
+    senderProfile?.verification_status || ""
+  ).toLowerCase();
+  const senderStatus = String(senderProfile?.status || "").toLowerCase();
+
+  const isSenderRestricted = [
+    "blocked",
+    "suspended",
+    "inactive",
+    "banned",
+  ].includes(senderStatus);
+
+  const canSendMessages =
+    senderProfileLoaded &&
+    !isSenderRestricted &&
+    (["admin", "administrator"].includes(senderRole) ||
+      ["verified", "approved"].includes(senderVerification));
+
+  const isViewOnly = senderProfileLoaded && !canSendMessages;
 
   const normalizeAppointmentStatus = (status) =>
     String(status || "pending").trim().toLowerCase();
@@ -3576,6 +3946,14 @@ const MessagesView = ({
           if (transactionError) throw transactionError;
 
           console.log("REPAIR TRANSACTION CREATED:", newTransaction);
+
+          await recordTransactionStatusHistory({
+            transactionId: newTransaction.id,
+            oldStatus: null,
+            newStatus: "meetup_scheduled",
+            transaction: newTransaction,
+            notes: "Repair appointment confirmed by the repair shop.",
+          });
         }
       }
 
@@ -3628,6 +4006,16 @@ const MessagesView = ({
             "REPAIR TRANSACTION COMPLETED:",
             completedTransactions
           );
+
+          for (const completedTx of completedTransactions || []) {
+            await recordTransactionStatusHistory({
+              transactionId: completedTx.id,
+              oldStatus: "meetup_scheduled",
+              newStatus: "completed",
+              transaction: completedTx,
+              notes: "Repair service marked as completed by the repair shop.",
+            });
+          }
         }
       }
 
@@ -3681,6 +4069,16 @@ const MessagesView = ({
 
     if (!userId || !selectedChat || !content) return;
 
+    // REQ-2: Pending Verification accounts are view-only.
+    if (!canSendMessages) {
+      setSendMessageError(
+        isSenderRestricted
+          ? "Message blocked: Your account is not allowed to send messages."
+          : "Pending Verification accounts are view-only and cannot send messages."
+      );
+      return;
+    }
+
     // TC_MSG_03: block restricted content and surface the violation
     // warning instead of transmitting the message.
     const contentViolation = containsRestrictedContent(content);
@@ -3713,6 +4111,12 @@ const MessagesView = ({
             : [...previous, data]
         );
       }
+
+      // REQ-3: notify the recipient of the new message.
+      await notifyNewMessage({
+        receiverId: selectedChat.other_party_id,
+        senderLabel: "Repair Shop",
+      });
 
       setMessageText("");
       await loadConversations();
@@ -3982,6 +4386,14 @@ const MessagesView = ({
                 </div>
 
                 <div className="p-6 bg-white border-t border-slate-50">
+                  {isViewOnly && (
+                    <div className="mb-2 flex items-center gap-2 text-amber-600 text-xs font-bold">
+                      <Shield size={14} />
+                      {isSenderRestricted
+                        ? "Your account is not allowed to send messages."
+                        : "Your account is pending verification. You can read messages but cannot reply until you are verified."}
+                    </div>
+                  )}
                   {sendMessageError && (
                     <div className="mb-2 flex items-center gap-2 text-red-500 text-xs font-bold">
                       <Shield size={14} />
@@ -3998,13 +4410,19 @@ const MessagesView = ({
                       onKeyDown={(e) => {
                         if (e.key === "Enter") sendMessage();
                       }}
-                      placeholder="Type a message..."
-                      className="flex-1 bg-slate-50 rounded-2xl py-4 px-6 text-xs outline-none"
+                      disabled={!canSendMessages}
+                      placeholder={
+                        isViewOnly
+                          ? "View-only: replies are disabled"
+                          : "Type a message..."
+                      }
+                      className="flex-1 bg-slate-50 rounded-2xl py-4 px-6 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-60"
                     />
 
                     <button
                       onClick={sendMessage}
-                      className="bg-[#769c2d] text-white p-4 rounded-2xl"
+                      disabled={!canSendMessages}
+                      className="bg-[#769c2d] text-white p-4 rounded-2xl disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Send size={18} />
                     </button>
@@ -4504,13 +4922,11 @@ const ListingCard = ({ item, onBid, onSellerClick, isVerified }) => {
             {/* HIGHEST BID */}
             <div>
               <p className="text-xs font-black text-slate-400 uppercase tracking-wider">
-                Current Highest Bid
+                Current Displayed Price
               </p>
 
               <p className="text-base font-black text-[#769c2d] mt-0.5">
-                {highestBid > 0
-                  ? `₱${highestBid.toLocaleString()}`
-                  : "No bids yet"}
+                ₱{Number(item.current_displayed_price || item.asking_price || 0).toLocaleString()}
               </p>
             </div>
           </div>
@@ -4599,9 +5015,14 @@ const PlaceBidModal = ({
   session,
 }) => {
   const [activeTab, setActiveTab] = useState("bid");
-  const [bidAmount, setBidAmount] = useState(
-    Number(listing.asking_price || 0),
-  );
+  const [bidAmount, setBidAmount] = useState(() => {
+    const asking = Number(listing.asking_price || 0);
+    const lowestActiveBid = Number(listing.lowest_active_bid || 0);
+
+    return lowestActiveBid > 0
+      ? Math.max(1, lowestActiveBid - 1)
+      : Math.max(1, asking - 1);
+  });
   const [message, setMessage] = useState("");
   const [question, setQuestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -4617,30 +5038,45 @@ const PlaceBidModal = ({
       : [];
 
   const askingPrice = Number(listing.asking_price || 0);
+  const currentDisplayedPrice =
+    Number(listing.current_displayed_price || 0) > 0
+      ? Number(listing.current_displayed_price)
+      : askingPrice;
+
+  const listingStatus = String(listing.status || "active").trim().toLowerCase();
+  const listingExpired = Boolean(
+    listing.expires_at &&
+    new Date(listing.expires_at).getTime() <= Date.now(),
+  );
+  const biddingLocked = listingStatus !== "active" || listingExpired;
 
   // ==============================
   // QUICK OFFER
   // ==============================
+  // Every quick offer is strictly below the current displayed price.
   const quickOffers = [
     {
-      label: "Full Price",
-      percentage: 100,
-      amount: askingPrice,
+      label: "Just Below",
+      percentage:
+        currentDisplayedPrice > 0
+          ? Math.round(((Math.max(1, currentDisplayedPrice - 1)) / currentDisplayedPrice) * 100)
+          : 0,
+      amount: Math.max(1, currentDisplayedPrice - 1),
     },
     {
       label: "90%",
       percentage: 90,
-      amount: Math.round(askingPrice * 0.9),
+      amount: Math.max(1, Math.floor(currentDisplayedPrice * 0.9)),
     },
     {
       label: "80%",
       percentage: 80,
-      amount: Math.round(askingPrice * 0.8),
+      amount: Math.max(1, Math.floor(currentDisplayedPrice * 0.8)),
     },
     {
       label: "70%",
       percentage: 70,
-      amount: Math.round(askingPrice * 0.7),
+      amount: Math.max(1, Math.floor(currentDisplayedPrice * 0.7)),
     },
   ];
 
@@ -4660,8 +5096,19 @@ const PlaceBidModal = ({
         return;
       }
 
-      if (amount > askingPrice) {
-        alert("Your offer cannot exceed the maximum price.");
+      if (biddingLocked) {
+        alert(
+          listingExpired
+            ? "This listing has expired and is no longer accepting bids."
+            : "This listing is locked and is no longer accepting bids.",
+        );
+        return;
+      }
+
+      if (amount >= currentDisplayedPrice) {
+        alert(
+          `Your bid must be lower than the current displayed price of ₱${currentDisplayedPrice.toLocaleString()}.`,
+        );
         return;
       }
     }
@@ -4861,6 +5308,20 @@ const PlaceBidModal = ({
                     <p className="text-3xl sm:text-4xl font-medium text-slate-800 mt-1">
                       ₱{askingPrice.toLocaleString()}
                     </p>
+                    <p className="text-xs sm:text-sm font-semibold text-slate-500 mt-2">
+                      Seller maximum asking price
+                    </p>
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <p className="text-xs sm:text-sm uppercase tracking-wide text-slate-400">
+                        Current Displayed Price
+                      </p>
+                      <p className="text-xl sm:text-2xl font-black text-[#5d9f26] mt-1">
+                        ₱{currentDisplayedPrice.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Your bid must be strictly lower than this amount.
+                      </p>
+                    </div>
                   </div>
 
                   <div className="text-right">
@@ -4886,7 +5347,8 @@ const PlaceBidModal = ({
                 {/* INFO */}
                 <div className="mt-5 bg-[#fffbea] border border-yellow-300 rounded-xl px-4 py-3">
                   <p className="text-sm sm:text-base text-[#a95d16]">
-                    ↘ Offer at or below this price.
+                    ↘ The seller's maximum asking price is always shown above.
+                    Your bid must be strictly lower than the current displayed price.
                   </p>
                 </div>
 
@@ -4907,7 +5369,7 @@ const PlaceBidModal = ({
                   <input
                     type="number"
                     min="1"
-                    max={askingPrice}
+                    max={Math.max(1, currentDisplayedPrice - 1)}
                     value={bidAmount}
                     onChange={(e) =>
                       setBidAmount(e.target.value)
@@ -5070,14 +5532,18 @@ const PlaceBidModal = ({
           <button
             type="button"
             onClick={handleFormSubmit}
-            disabled={submitting}
-            className="flex-1 py-4 bg-[#5d9f26] text-white rounded-2xl text-lg font-medium hover:bg-[#518b21] transition disabled:opacity-50"
+            disabled={submitting || (activeTab === "bid" && biddingLocked)}
+            className="flex-1 py-4 bg-[#5d9f26] text-white rounded-2xl text-lg font-medium hover:bg-[#518b21] transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting
               ? "Sending..."
-              : activeTab === "bid"
-                ? "Place Bid"
-                : "Send Question"}
+              : activeTab === "bid" && biddingLocked
+                ? listingExpired
+                  ? "Bidding Expired"
+                  : "Bidding Locked"
+                : activeTab === "bid"
+                  ? "Place Bid"
+                  : "Send Question"}
           </button>
 
         </div>

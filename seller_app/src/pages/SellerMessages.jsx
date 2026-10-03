@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { containsRestrictedContent } from "../utils/restrictedContentFilter";
+import { recordTransactionStatusHistory } from "../utils/transactionHistory";
 import {
   Search,
   Send,
@@ -36,7 +37,77 @@ const SellerMessages = ({ userId, onTabChange }) => {
 
   const [dropOffPoints, setDropOffPoints] = useState([]);
   const [activeTransaction, setActiveTransaction] = useState(null);
+  const [transactionHistory, setTransactionHistory] = useState([]);
   const [error, setError] = useState("");
+  const [showNewMessage, setShowNewMessage] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [recipientResults, setRecipientResults] = useState([]);
+  const [recipientLoading, setRecipientLoading] = useState(false);
+
+  // REQ-2: the signed-in user's own verification state. Pending
+  // Verification accounts are view-only (receive and read, no reply).
+  const [senderProfile, setSenderProfile] = useState(null);
+  const [senderProfileLoaded, setSenderProfileLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSenderProfile = async () => {
+      if (!userId) {
+        return;
+      }
+
+      const { data, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, role, verification_status, status")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (profileError) {
+        console.error(
+          "Error loading sender profile:",
+          profileError.message
+        );
+      }
+
+      setSenderProfile(data || null);
+      setSenderProfileLoaded(true);
+    };
+
+    loadSenderProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // Mirrors the enforce_verified_message_sender database trigger.
+  const senderRole = String(senderProfile?.role || "").toLowerCase();
+  const senderVerification = String(
+    senderProfile?.verification_status || ""
+  ).toLowerCase();
+  const senderStatus = String(senderProfile?.status || "").toLowerCase();
+
+  const isSenderRestricted = [
+    "blocked",
+    "suspended",
+    "inactive",
+    "banned",
+  ].includes(senderStatus);
+
+  const isSenderAdmin = ["admin", "administrator"].includes(senderRole);
+
+  const canSendMessages =
+    senderProfileLoaded &&
+    !isSenderRestricted &&
+    (isSenderAdmin ||
+      ["verified", "approved"].includes(senderVerification));
+
+  const isViewOnly = senderProfileLoaded && !canSendMessages;
 
   // ============================================================
   // HELPERS
@@ -81,6 +152,30 @@ const SellerMessages = ({ userId, onTabChange }) => {
       month: "short",
       day: "numeric",
     });
+  };
+
+  const normalizeTransactionStatus = (status) =>
+    String(status || "").trim().toLowerCase();
+
+  const formatTransactionStatus = (status) => {
+    const normalized = normalizeTransactionStatus(status);
+    const labels = { pending: "Pending", matched: "Matched", meetup_scheduled: "Meetup Scheduled", completed: "Completed", cancelled: "Cancelled" };
+    return labels[normalized] || status || "Unknown";
+  };
+
+  const fetchTransactionHistory = async (transactionId) => {
+    if (!transactionId) { setTransactionHistory([]); return; }
+    const { data, error: historyError } = await supabase
+      .from("transaction_status_history")
+      .select("id, old_status, new_status, changed_at, meetup_date, meetup_time, meeting_location, notes")
+      .eq("transaction_id", transactionId)
+      .order("changed_at", { ascending: false });
+    if (historyError) {
+      console.warn("Transaction history could not be loaded:", historyError.message);
+      setTransactionHistory([]);
+      return;
+    }
+    setTransactionHistory(data || []);
   };
 
   const formatMeetupTime = (timeValue) => {
@@ -501,50 +596,27 @@ const SellerMessages = ({ userId, onTabChange }) => {
   // Initial conversation fetch + realtime updates
   useEffect(() => {
     if (!userId) return;
-
     fetchConversations();
-
     const channel = supabase
       .channel(`messages-sidebar-${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-        },
-        () => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => fetchConversations())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "repair_appointments" }, () => fetchConversations())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "repair_appointments" }, () => fetchConversations())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "transactions" }, (payload) => {
+        const row = payload?.new || {};
+        if (row.seller_id === userId || row.harvester_id === userId) { fetchConversations(); fetchActiveTransaction(); }
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transactions" }, (payload) => {
+        const row = payload?.new || {};
+        if (row.seller_id === userId || row.harvester_id === userId) {
           fetchConversations();
+          fetchActiveTransaction();
+          if (activeTransaction?.id === row.id) fetchTransactionHistory(row.id);
         }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "repair_appointments",
-        },
-        () => {
-          fetchConversations();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "repair_appointments",
-        },
-        () => {
-          fetchConversations();
-        }
-      )
+      })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [userId]);
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, activeChat?.listing_id, activeTransaction?.id]);
 
   // ============================================================
   // FETCH DROP-OFF POINTS
@@ -608,6 +680,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
       .in("status", [
         "pending",
         "matched",
+        "Matched",
         "meetup_scheduled",
       ])
       .order("created_at", {
@@ -632,6 +705,9 @@ const SellerMessages = ({ userId, onTabChange }) => {
       setAcceptedBidAmount(
         Number(data.amount || 0)
       );
+      await fetchTransactionHistory(data.id);
+    } else {
+      setTransactionHistory([]);
     }
 
     return data || null;
@@ -650,6 +726,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
   useEffect(() => {
     if (!activeChat) {
       setActiveTransaction(null);
+      setTransactionHistory([]);
       return;
     }
 
@@ -716,7 +793,32 @@ const SellerMessages = ({ userId, onTabChange }) => {
 
         setMessages([]);
       } else {
-        setMessages(messageData || []);
+        const loadedMessages = messageData || [];
+
+        // REQ-1/REQ-2: once the recipient actually loads the thread, mark
+        // incoming messages as delivered. This is persisted in messages.delivered_at
+        // through a secured RPC so clients cannot mark another user's messages.
+        const incomingUndelivered = loadedMessages.filter(
+          (message) =>
+            message.receiver_id === userId &&
+            !message.delivered_at
+        );
+
+        if (incomingUndelivered.length > 0) {
+          await Promise.all(
+            incomingUndelivered.map((message) =>
+              supabase.rpc("mark_message_delivered", {
+                p_message_id: message.id,
+              })
+            )
+          );
+
+          incomingUndelivered.forEach((message) => {
+            message.delivered_at = new Date().toISOString();
+          });
+        }
+
+        setMessages(loadedMessages);
       }
 
       // --------------------------------------------------------
@@ -838,6 +940,26 @@ const SellerMessages = ({ userId, onTabChange }) => {
       )
 
       // --------------------------------------------------------
+      // REALTIME DELIVERY UPDATES
+      // --------------------------------------------------------
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages" },
+        (payload) => {
+          const updated = payload.new;
+          const belongsToChat =
+            (updated.sender_id === userId && updated.receiver_id === activeChat.other_party_id) ||
+            (updated.sender_id === activeChat.other_party_id && updated.receiver_id === userId);
+          if (!belongsToChat) return;
+          if (!isRepairShop && updated.listing_id !== activeChat.listing_id) return;
+          if (isRepairShop && updated.listing_id) return;
+          setMessages((prev) =>
+            prev.map((item) => item.id === updated.id ? { ...item, ...updated } : item)
+          );
+        }
+      )
+
+      // --------------------------------------------------------
       // REALTIME REPAIR APPOINTMENTS
       // --------------------------------------------------------
 
@@ -949,6 +1071,64 @@ const SellerMessages = ({ userId, onTabChange }) => {
   }, [activeChat, userId]);
 
   // ============================================================
+  // NEW MESSAGE / RECIPIENT SEARCH
+  // ============================================================
+
+  const searchRecipients = async () => {
+    if (!canSendMessages || !userId) return;
+    const term = recipientSearch.trim();
+    if (term.length < 2) {
+      setRecipientResults([]);
+      return;
+    }
+
+    setRecipientLoading(true);
+    try {
+      const { data, error: searchError } = await supabase
+        .from("profiles")
+        .select("id, full_name, business_name, role, verification_status, status, average_rating, total_reviews")
+        .neq("id", userId)
+        .not("status", "in", "(blocked,suspended,inactive,banned)")
+        .or(`full_name.ilike.%${term}%,business_name.ilike.%${term}%`)
+        .limit(20);
+
+      if (searchError) throw searchError;
+      setRecipientResults(data || []);
+    } catch (searchError) {
+      console.error("Recipient search error:", searchError);
+      setError("Unable to search for users right now.");
+      setRecipientResults([]);
+    } finally {
+      setRecipientLoading(false);
+    }
+  };
+
+  const startNewConversation = (profile) => {
+    const role = String(profile.role || "").toLowerCase().replace(/[\s-]+/g, "_");
+    const isRepairShop = role === "repair_shop";
+    setActiveChat({
+      conversation_key: `user-${profile.id}`,
+      other_party_id: profile.id,
+      other_party_name: profile.business_name || profile.full_name || "User",
+      other_party_role: isRepairShop ? "Repair Shop" : "Tech Harvester",
+      other_party_role_type: isRepairShop ? "repair_shop" : "harvester",
+      other_party_rating: Number(profile.average_rating) || 0,
+      other_party_review_count: Number(profile.total_reviews) || 0,
+      listing_id: null,
+      content: "",
+      created_at: new Date().toISOString(),
+      isNewConversation: true,
+    });
+    setMessages([]);
+    setRepairAppointments([]);
+    setError("");
+    setNewMessage("");
+    setShowNewMessage(false);
+    setRecipientSearch("");
+    setRecipientResults([]);
+  };
+
+  // ============================================================
   // SEND MESSAGE
   // ============================================================
 
@@ -959,6 +1139,16 @@ const SellerMessages = ({ userId, onTabChange }) => {
       !newMessage.trim() ||
       !activeChat
     ) {
+      return;
+    }
+
+    // REQ-2: Pending Verification accounts are view-only.
+    if (!canSendMessages) {
+      setError(
+        isSenderRestricted
+          ? "Message blocked: Your account is not allowed to send messages."
+          : "Pending Verification accounts are view-only and cannot send messages."
+      );
       return;
     }
 
@@ -997,23 +1187,17 @@ const SellerMessages = ({ userId, onTabChange }) => {
 
     const recipientStatus =
       String(recipientProfile?.status || "").toLowerCase();
-    const recipientVerification =
-      String(
-        recipientProfile?.verification_status || ""
-      ).toLowerCase();
 
     const isBlocked =
       ["blocked", "suspended", "inactive", "banned"].includes(
         recipientStatus
       );
 
-    const isUnverified =
-      recipientProfile &&
-      (recipientProfile.is_verified !== true ||
-        (recipientVerification &&
-          recipientVerification !== "verified"));
-
-    if (!recipientProfile || isBlocked || isUnverified) {
+    // REQ-1: a Verified sender may message Verified OR Pending
+    // Verification users, so the recipient's verification status is
+    // intentionally not checked here. Only missing or blocked
+    // accounts are rejected.
+    if (!recipientProfile || isBlocked) {
       setError(
         "Message blocked: This account is not currently eligible to receive messages."
       );
@@ -1096,6 +1280,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
     // Add the inserted row immediately so the sender sees the
     // message without waiting for the realtime event.
     if (insertedMessage) {
+      setActiveChat((prev) => prev ? { ...prev, isNewConversation: false } : prev);
       setMessages((prev) => {
         if (
           prev.some(
@@ -1142,6 +1327,21 @@ const SellerMessages = ({ userId, onTabChange }) => {
       return;
     }
 
+    // 7.2.2.1: reject an invalid or past schedule instead of saving it.
+    const scheduledAt = new Date(
+      `${meetupData.date}T${String(meetupData.time).slice(0, 5)}:00`
+    );
+
+    if (Number.isNaN(scheduledAt.getTime())) {
+      alert("The meetup date or time is invalid. Please correct it.");
+      return;
+    }
+
+    if (scheduledAt.getTime() <= Date.now()) {
+      alert("The meetup must be scheduled for a future date and time.");
+      return;
+    }
+
     try {
       // Only the listing owner may schedule.
       const {
@@ -1165,6 +1365,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
         .in("status", [
           "pending",
           "matched",
+          "Matched",
         ])
         .order("created_at", {
           ascending: false,
@@ -1181,6 +1382,15 @@ const SellerMessages = ({ userId, onTabChange }) => {
         );
       }
 
+      if (existingTx.seller_id !== userId) {
+        throw new Error("Only the listing owner can schedule the meetup.");
+      }
+
+      const currentStatus = normalizeTransactionStatus(existingTx.status);
+      if (!["pending", "matched"].includes(currentStatus)) {
+        throw new Error("This transaction is no longer available for meetup scheduling.");
+      }
+
       // --------------------------------------------------------
       // UPDATE TRANSACTION
       // --------------------------------------------------------
@@ -1195,12 +1405,22 @@ const SellerMessages = ({ userId, onTabChange }) => {
       );
 
       const {
+        data: scheduledTx,
         error: scheduleError,
       } = await supabase
         .from("transactions")
         .update({
           drop_off_point_id:
             meetupData.drop_off_point_id,
+
+          // Required by the buyer-side completion check; also shown in the
+          // buyer's Transactions view and stored in the status history.
+          meeting_location:
+            selectedPoint?.name ||
+            meetupData.location,
+
+          updated_at:
+            new Date().toISOString(),
 
           barangay:
             selectedPoint?.barangay ||
@@ -1221,11 +1441,35 @@ const SellerMessages = ({ userId, onTabChange }) => {
         .eq(
           "id",
           existingTx.id
-        );
+        )
+        .in("status", [
+          "pending",
+          "matched",
+          "Matched",
+        ])
+        .select("*")
+        .maybeSingle();
 
       if (scheduleError) {
         throw scheduleError;
       }
+
+      if (!scheduledTx) {
+        throw new Error(
+          "The transaction status changed before the meetup could be saved. Please refresh and try again."
+        );
+      }
+
+      // REQ-3: record the status change in the transaction history.
+      await recordTransactionStatusHistory({
+        transactionId: existingTx.id,
+        oldStatus: currentStatus,
+        newStatus: "meetup_scheduled",
+        transaction: scheduledTx,
+        notes: meetupData.notes || "Meetup scheduled by the seller.",
+      });
+
+      await fetchTransactionHistory(existingTx.id);
 
       const finalPrice =
         Number(existingTx.amount || 0);
@@ -1348,7 +1592,38 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
   // ============================================================
 
   return (
-    <div className="flex h-[600px] bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden font-sans">
+    <>
+      {showNewMessage && (
+        <div className="fixed inset-0 z-[500] bg-slate-900/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-black text-slate-800">New Message</h3>
+                <p className="text-xs text-slate-400 mt-1">Search for a Verified or Pending Verification user.</p>
+              </div>
+              <button type="button" onClick={() => setShowNewMessage(false)} className="p-2 rounded-lg bg-slate-50 text-slate-500"><X size={16} /></button>
+            </div>
+            <div className="flex gap-2">
+              <input value={recipientSearch} onChange={(e) => setRecipientSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") searchRecipients(); }} placeholder="Search name or business" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none" autoFocus />
+              <button type="button" onClick={searchRecipients} disabled={recipientLoading} className="rounded-xl bg-teal-600 text-white px-4 text-xs font-bold disabled:opacity-50">{recipientLoading ? "..." : "Search"}</button>
+            </div>
+            <div className="mt-4 max-h-64 overflow-y-auto space-y-2">
+              {recipientResults.map((profile) => (
+                <button key={profile.id} type="button" onClick={() => startNewConversation(profile)} className="w-full text-left p-3 rounded-xl border border-slate-100 hover:bg-slate-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-sm text-slate-700">{profile.business_name || profile.full_name || "User"}</span>
+                    <span className="text-[10px] font-bold uppercase rounded-full px-2 py-1 bg-slate-100 text-slate-600">{String(profile.verification_status || "pending").replaceAll("_", " ")}</span>
+                  </div>
+                  <span className="text-xs text-slate-400">{String(profile.role || "user").replaceAll("_", " ")}</span>
+                </button>
+              ))}
+              {!recipientLoading && recipientSearch.trim().length >= 2 && recipientResults.length === 0 && <p className="text-xs text-slate-400 text-center py-6">No eligible users found.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex h-[600px] bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden font-sans">
 
       {/* ======================================================
           SIDEBAR
@@ -1360,6 +1635,19 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
           <h3 className="font-bold text-slate-800 mb-4">
             Messages
           </h3>
+
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-slate-400">Message any eligible user</span>
+            {canSendMessages && (
+              <button
+                type="button"
+                onClick={() => { setShowNewMessage(true); setError(""); }}
+                className="px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold hover:bg-teal-700"
+              >
+                + New Message
+              </button>
+            )}
+          </div>
 
           <div className="relative">
             <Search
@@ -1570,7 +1858,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
               {activeTransaction?.seller_id ===
                   userId &&
                 ["pending", "matched"].includes(
-                  activeTransaction?.status
+                  normalizeTransactionStatus(activeTransaction?.status)
                 ) && (
                   <button
                     onClick={async () => {
@@ -1586,7 +1874,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
               {activeTransaction?.harvester_id ===
                   userId &&
-                activeTransaction?.status ===
+                normalizeTransactionStatus(activeTransaction?.status) ===
                   "meetup_scheduled" && (
                   <span className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl text-xs font-bold border border-emerald-100">
                     <CheckCheck size={14} />
@@ -1621,6 +1909,33 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     </p>
                   </div>
                 )}
+
+              {/* ------------------------------------------------
+                  MARKETPLACE TRANSACTION COORDINATION
+              ------------------------------------------------- */}
+
+              {activeChat.listing_id && activeTransaction && (
+                <div className={`bg-white rounded-2xl p-5 shadow-sm border ${
+                  normalizeTransactionStatus(activeTransaction.status) === "cancelled"
+                    ? "border-red-200 bg-red-50/40"
+                    : normalizeTransactionStatus(activeTransaction.status) === "completed"
+                    ? "border-emerald-200 bg-emerald-50/30"
+                    : "border-teal-100"
+                }`}>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-2"><Calendar size={16} className="text-[#2d7a7f]" /><span className="text-xs font-bold text-slate-700">Transaction Coordination</span></div>
+                    <span className={`text-xs px-2 py-1 rounded-full font-bold ${normalizeTransactionStatus(activeTransaction.status) === "cancelled" ? "bg-red-100 text-red-700" : normalizeTransactionStatus(activeTransaction.status) === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-teal-50 text-teal-700"}`}>{formatTransactionStatus(activeTransaction.status)}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
+                    <p><span className="font-bold">Amount:</span> ₱{Number(activeTransaction.amount || 0).toLocaleString()}</p>
+                    {activeTransaction.meetup_date && <p className="flex items-center gap-2"><Calendar size={13} />{formatDate(activeTransaction.meetup_date)}</p>}
+                    {activeTransaction.meetup_time && <p className="flex items-center gap-2"><Clock size={13} />{formatMeetupTime(activeTransaction.meetup_time)}</p>}
+                    {activeTransaction.barangay && <p className="flex items-center gap-2"><MapPin size={13} />{activeTransaction.barangay}</p>}
+                  </div>
+                  {activeTransaction.cancel_reason && <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-100 text-xs text-red-700"><span className="font-bold">Cancellation reason:</span> {activeTransaction.cancel_reason}</div>}
+                  {transactionHistory.length > 0 && <div className="mt-4 pt-4 border-t border-slate-100"><p className="text-xs font-bold text-slate-600 mb-3">Transaction History</p><div className="space-y-2 max-h-48 overflow-y-auto">{transactionHistory.map((entry) => <div key={entry.id} className="flex items-start justify-between gap-3 text-xs"><div><p className="font-semibold text-slate-600">{entry.old_status ? `${formatTransactionStatus(entry.old_status)} → ` : ""}{formatTransactionStatus(entry.new_status)}</p>{(entry.meetup_date || entry.meetup_time || entry.meeting_location) && <p className="text-slate-400 mt-1">{[entry.meetup_date ? formatDate(entry.meetup_date) : null, entry.meetup_time ? formatMeetupTime(entry.meetup_time) : null, entry.meeting_location || null].filter(Boolean).join(" • ")}</p>}</div><span className="text-slate-400 whitespace-nowrap">{formatDate(entry.changed_at)}</span></div>)}</div></div>}
+                </div>
+              )}
 
               {/* ------------------------------------------------
                   REPAIR APPOINTMENTS
@@ -1782,7 +2097,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                           msg.created_at
                         )}
                       </span>
-                      {isMe && (
+                      {isMe && msg.delivered_at && (
                         <span className="text-xs font-semibold text-emerald-500">
                           Delivered
                         </span>
@@ -1805,6 +2120,18 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
               }
               className="p-6 border-t border-slate-50"
             >
+
+              {isViewOnly && (
+                <div className="mb-2 text-amber-600 text-xs font-bold flex items-center gap-1">
+                  <ShieldAlert
+                    size={12}
+                  />
+
+                  {isSenderRestricted
+                    ? "Your account is not allowed to send messages."
+                    : "Your account is pending verification. You can read messages but cannot reply until you are verified."}
+                </div>
+              )}
 
               {error && (
                 <div className="mb-2 text-red-500 text-xs font-bold flex items-center gap-1">
@@ -1830,13 +2157,19 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     }
                   }}
                   type="text"
-                  placeholder="Type a message..."
-                  className="flex-1 bg-transparent border-none px-4 text-xs outline-none"
+                  disabled={!canSendMessages}
+                  placeholder={
+                    isViewOnly
+                      ? "View-only: replies are disabled"
+                      : "Type a message..."
+                  }
+                  className="flex-1 bg-transparent border-none px-4 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 />
 
                 <button
                   type="submit"
-                  className="p-3 bg-[#2d7a7f] text-white rounded-xl"
+                  disabled={!canSendMessages}
+                  className="p-3 bg-[#2d7a7f] text-white rounded-xl disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send size={18} />
                 </button>
@@ -2198,7 +2531,8 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
           </div>
         )}
 
-    </div>
+      </div>
+    </>
   );
 };
 

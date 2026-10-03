@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import {
   MapContainer,
   TileLayer,
@@ -306,6 +307,14 @@ const SellerRepairShopsTab = ({
   const [profileRole, setProfileRole] = useState("");
   const [loadingProfileRole, setLoadingProfileRole] = useState(false);
 
+  // REQ-2: Pending Verification accounts are view-only (read, no sending).
+  const [ownAccess, setOwnAccess] = useState({
+    loaded: false,
+    role: "",
+    verification: "",
+    status: "",
+  });
+
   const authRole =
     session?.user?.user_metadata?.role ||
     session?.user?.user_metadata?.buyer_type ||
@@ -328,7 +337,7 @@ const SellerRepairShopsTab = ({
       try {
         const { data, error } = await supabase
           .from("profiles")
-          .select("role, buyer_type")
+          .select("role, buyer_type, verification_status, status")
           .eq("id", userId)
           .maybeSingle();
 
@@ -348,6 +357,13 @@ const SellerRepairShopsTab = ({
               .trim()
               .toLowerCase()
           );
+
+          setOwnAccess({
+            loaded: true,
+            role: String(data?.role || "").toLowerCase(),
+            verification: String(data?.verification_status || "").toLowerCase(),
+            status: String(data?.status || "").toLowerCase(),
+          });
         }
       } catch (error) {
         console.warn("Error loading current user role:", error);
@@ -372,6 +388,52 @@ const SellerRepairShopsTab = ({
   // Only Tech Harvester accounts can request repair appointments.
   // Seller accounts remain sell-only.
   const canRequestRepair = userRole === "harvester";
+
+  // Mirrors the enforce_verified_message_sender database trigger.
+  const isOwnAccountRestricted = [
+    "blocked",
+    "suspended",
+    "inactive",
+    "banned",
+  ].includes(ownAccess.status);
+
+  const canSendMessages =
+    ownAccess.loaded &&
+    !isOwnAccountRestricted &&
+    (["admin", "administrator"].includes(ownAccess.role) ||
+      ["verified", "approved"].includes(ownAccess.verification));
+
+  const isViewOnly = ownAccess.loaded && !canSendMessages;
+
+  const viewOnlyMessage = isOwnAccountRestricted
+    ? "Your account is not allowed to send messages."
+    : "Pending Verification accounts are view-only and cannot send messages.";
+
+  // REQ-3: notify the recipient of a new in-app message. A failure here must
+  // not undo a message that was already sent.
+  const notifyNewMessage = async (receiverId, content) => {
+    if (!receiverId) return;
+
+    const { error } = await supabase.from("notifications").insert([
+      {
+        user_id: receiverId,
+        type: "message",
+        title: "New Message",
+        content:
+          content ||
+          `${
+            userRole === "harvester" ? "A Tech Harvester" : "A Tech Owner/Dealer"
+          } sent you a new message.`,
+        related_listing_id: null,
+        is_read: false,
+        description: "You received a new in-app message.",
+      },
+    ]);
+
+    if (error) {
+      console.warn("Message notification could not be created:", error.message);
+    }
+  };
 
   const [shops, setShops] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1081,6 +1143,13 @@ const SellerRepairShopsTab = ({
   const submitRepairAppointment = async () => {
     if (!userId || !appointmentShop) return;
 
+    // REQ-2: the request also sends a message, so Pending Verification
+    // accounts (view-only) cannot submit it.
+    if (!canSendMessages) {
+      alert(viewOnlyMessage);
+      return;
+    }
+
     if (!appointmentForm.deviceModel.trim()) {
       alert("Please enter the device model.");
       return;
@@ -1104,6 +1173,24 @@ const SellerRepairShopsTab = ({
     if (!appointmentForm.preferredTime) {
       alert("Please select your preferred time.");
       return;
+    }
+
+    // REQ-4: these free-text fields are copied into a message, so they must
+    // pass the restricted-content filter. Device terms like "phone" are
+    // allowed here; phone numbers, emails and links are still blocked.
+    for (const fieldValue of [
+      appointmentForm.deviceModel,
+      appointmentForm.issueDescription,
+      appointmentForm.notes,
+    ]) {
+      const violation = containsRestrictedContent(fieldValue, {
+        allowDeviceTerms: true,
+      });
+
+      if (violation.blocked) {
+        alert(violation.message);
+        return;
+      }
     }
 
     setAppointmentLoading(true);
@@ -1149,7 +1236,7 @@ const SellerRepairShopsTab = ({
         Also create a normal message so the request is visible
         in the existing Wasteless messaging system.
       */
-      await supabase.from("messages").insert({
+      const { error: requestMessageError } = await supabase.from("messages").insert({
         sender_id: userId,
         receiver_id: appointmentShop.id,
         listing_id: null,
@@ -1163,6 +1250,19 @@ const SellerRepairShopsTab = ({
             ? `\nNotes: ${appointmentForm.notes.trim()}`
             : ""),
       });
+
+      if (requestMessageError) {
+        console.warn(
+          "Appointment saved, but the request message failed:",
+          requestMessageError.message
+        );
+      } else {
+        // REQ-3: tell the repair shop a new request message arrived.
+        await notifyNewMessage(
+          appointmentShop.id,
+          "A Tech Harvester sent you a repair appointment request."
+        );
+      }
 
       setShopAppointments((previous) => [
         appointment,
@@ -1401,6 +1501,20 @@ const SellerRepairShopsTab = ({
 
     if (!content || !userId || !messageShop?.id) return;
 
+    // REQ-2: Pending Verification accounts are view-only.
+    if (!canSendMessages) {
+      alert(viewOnlyMessage);
+      return;
+    }
+
+    // REQ-4 / TC_MSG_03: block restricted content instead of sending it.
+    const contentViolation = containsRestrictedContent(content);
+
+    if (contentViolation.blocked) {
+      alert(contentViolation.message);
+      return;
+    }
+
     setSendingMessage(true);
 
     try {
@@ -1419,6 +1533,9 @@ const SellerRepairShopsTab = ({
 
       setMessages((previous) => [...previous, data]);
       setMessageText("");
+
+      // REQ-3: notify the recipient of the new message.
+      await notifyNewMessage(messageShop.id);
     } catch (error) {
       console.error("Error sending message:", error);
       alert("Unable to send message. Please try again.");
@@ -2833,8 +2950,17 @@ const SellerRepairShopsTab = ({
             </div>
 
             <div className="border-t border-slate-100 bg-white p-3">
+              {isViewOnly && (
+                <p className="mb-2 px-1 text-xs font-bold text-amber-600">
+                  {isOwnAccountRestricted
+                    ? "Your account is not allowed to send messages."
+                    : "Your account is pending verification. You can read messages but cannot reply until you are verified."}
+                </p>
+              )}
+
               <div className="flex items-end gap-2">
                 <textarea
+                  disabled={!canSendMessages}
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
                   onKeyDown={(e) => {
@@ -2844,14 +2970,20 @@ const SellerRepairShopsTab = ({
                     }
                   }}
                   rows={2}
-                  placeholder="Write a message..."
-                  className="flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-[#3285a1]"
+                  placeholder={
+                    isViewOnly
+                      ? "View-only: replies are disabled"
+                      : "Write a message..."
+                  }
+                  className="flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-[#3285a1] disabled:cursor-not-allowed disabled:opacity-60"
                 />
 
                 <button
                   type="button"
                   onClick={sendMessage}
-                  disabled={sendingMessage || !messageText.trim()}
+                  disabled={
+                    sendingMessage || !messageText.trim() || !canSendMessages
+                  }
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#3285a1] text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {sendingMessage ? (

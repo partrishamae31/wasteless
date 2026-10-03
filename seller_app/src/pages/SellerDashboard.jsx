@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
+import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import CreateListingModal from "./CreateListingModal"; // Adjust path as needed
 import SellerMessages from "./SellerMessages"; // Ensure the filename matches
 import DonationModal from "./DonationModal";
@@ -48,7 +49,10 @@ import {
   Gavel,
   Download,
 } from "lucide-react";
-const isRepairTransaction = (transaction) => Boolean(transaction?.repair_appointment_id);
+const isRepairTransaction = (transaction) => {
+  const type = String(transaction?.transaction_type || "").trim().toLowerCase();
+  return type === "repair" || (!type && Boolean(transaction?.repair_appointment_id));
+};
 
 const getRepairField = (transaction, field, fallback = "") => {
   if (!isRepairTransaction(transaction)) return fallback;
@@ -1060,6 +1064,24 @@ const SellerDashboard = ({ session }) => {
   };
 
 
+  const handleListingCreated = (newListing) => {
+    if (!newListing) return;
+
+    // Keep the newly-created listing visible immediately without requiring
+    // a full page refresh. The database remains the source of truth.
+    setMyListings((prev) => [
+      newListing,
+      ...prev.filter((item) => item.id !== newListing.id),
+    ]);
+
+    if (String(newListing.status || "").toLowerCase() === "active") {
+      setListings((prev) => [
+        newListing,
+        ...prev.filter((item) => item.id !== newListing.id),
+      ]);
+    }
+  };
+
   const handleOpenDonation = (listing) => {
     setListingToDonate(listing);
     setIsDonationModalOpen(true);
@@ -1210,6 +1232,15 @@ const SellerDashboard = ({ session }) => {
         return;
       }
 
+      // REQ-4: the optional offer message is sent as an in-app message, so it
+      // must pass the restricted-content filter before the offer is placed.
+      const bidMessageViolation = containsRestrictedContent(bidMessage);
+
+      if (bidMessageViolation.blocked) {
+        alert(bidMessageViolation.message);
+        return;
+      }
+
       if (
         selectedListing.status?.toLowerCase() !== "active"
       ) {
@@ -1220,31 +1251,13 @@ const SellerDashboard = ({ session }) => {
       setPlacingBid(true);
 
       // ==========================================
-      // CHECK EXISTING BID
-      // ==========================================
-
-      const {
-        data: existingBid,
-        error: existingBidError,
-      } = await supabase
-        .from("bids")
-        .select("id, status")
-        .eq("listing_id", selectedListing.id)
-        .eq("bidder_id", session.user.id)
-        .maybeSingle();
-
-      if (existingBidError) {
-        throw existingBidError;
-      }
-
-      if (existingBid) {
-        alert("You already placed an offer on this listing.");
-        return;
-      }
-
-      // ==========================================
       // INSERT BID
       // ==========================================
+      //
+      // A bidder may place multiple offers on the same listing.
+      // Each new offer must simply be lower than the current
+      // lowest active bid.
+      //
 
       const {
         data: newBid,
@@ -1331,9 +1344,7 @@ const SellerDashboard = ({ session }) => {
             ? {
               ...listing,
               bids: [
-                ...(listing.bids || []).filter(
-                  (bid) => bid.bidder_id !== session.user.id
-                ),
+                ...(listing.bids || []),
                 newBid,
               ],
             }
@@ -1485,32 +1496,131 @@ const SellerDashboard = ({ session }) => {
     return labels[name] || name || "Newcomer";
   };
 
+  // Requirement 7 / REQ-3:
+  // Record every status change made from this dashboard. The helper is
+  // idempotent for the same transaction/status transition so it will not
+  // create duplicate rows if a database trigger has already recorded it.
+  const recordTransactionStatusHistory = async ({
+    transactionId,
+    oldStatus,
+    newStatus,
+    transaction,
+    notes = null,
+  }) => {
+    if (!transactionId || !newStatus) return;
+
+    const changedAt = new Date().toISOString();
+
+    try {
+      const { data: existing, error: lookupError } = await supabase
+        .from("transaction_status_history")
+        .select("id")
+        .eq("transaction_id", transactionId)
+        .eq("old_status", oldStatus || "")
+        .eq("new_status", newStatus)
+        .gte("changed_at", new Date(Date.now() - 15_000).toISOString())
+        .limit(1);
+
+      // A missing history table/migration should not make an otherwise valid
+      // transaction update fail. The transaction itself remains authoritative.
+      if (lookupError) {
+        console.warn(
+          "Transaction status history could not be checked:",
+          lookupError.message
+        );
+        return;
+      }
+
+      if (existing?.length) return;
+
+      const { error: historyError } = await supabase
+        .from("transaction_status_history")
+        .insert({
+          transaction_id: transactionId,
+          old_status: oldStatus || null,
+          new_status: newStatus,
+          changed_at: changedAt,
+          meetup_date: transaction?.meetup_date || null,
+          meetup_time: transaction?.meetup_time || null,
+          meeting_location: transaction?.meeting_location || null,
+          notes: notes || transaction?.notes || null,
+        });
+
+      if (historyError) {
+        console.warn(
+          "Transaction was updated, but status history could not be recorded:",
+          historyError.message
+        );
+      }
+    } catch (historyError) {
+      console.warn("Unexpected transaction history error:", historyError);
+    }
+  };
+
   const handleCompleteTransaction = async (txId) => {
     try {
       const txToComplete = transactions.find((t) => t.id === txId);
 
-      if (!txToComplete) throw new Error("Transaction not found.");
-
-      // Repair transactions are completed by the repair shop, not by the customer.
-      if (txToComplete.repair_appointment_id) {
-        alert("This is a repair service. The repair shop will mark the service as completed.");
+      if (!txToComplete) {
+        alert("Transaction not found.");
         return;
       }
 
-      // Only the buyer/harvester may confirm that the handover is complete.
+      if (txToComplete.repair_appointment_id) {
+        alert(
+          "This is a repair service. The repair shop will mark the service as completed."
+        );
+        return;
+      }
+
       if (txToComplete.harvester_id !== session.user.id) {
         alert("Only the buyer can confirm the handover.");
         return;
       }
 
       if (txToComplete.status !== "meetup_scheduled") {
-        alert("The meetup must be scheduled before the handover can be completed.");
+        alert(
+          "The meetup must be scheduled before the handover can be completed."
+        );
         return;
       }
 
+      // Required transaction-coordination data must exist before completion.
+      if (!String(txToComplete.meetup_date || "").trim()) {
+        alert("This transaction has no meetup date. Please ask the seller to schedule it.");
+        return;
+      }
+
+      if (!String(txToComplete.meetup_time || "").trim()) {
+        alert("This transaction has no meetup time. Please ask the seller to schedule it.");
+        return;
+      }
+
+      // Older rows stored the location in barangay; accept either.
+      if (
+        !String(
+          txToComplete.meeting_location || txToComplete.barangay || ""
+        ).trim()
+      ) {
+        alert(
+          "This transaction has no meeting location. Please ask the seller to schedule it."
+        );
+        return;
+      }
+
+      const oldStatus = txToComplete.status;
+      const completedAt = new Date().toISOString();
+
       const { data: updatedTx, error } = await supabase
         .from("transactions")
-        .update({ status: "completed" })
+        .update({
+          status: "completed",
+          transaction_type: "purchase",
+          completed_at: completedAt,
+          cancelled_at: null,
+          pending_review_at: null,
+          updated_at: completedAt,
+        })
         .eq("id", txId)
         .eq("harvester_id", session.user.id)
         .eq("status", "meetup_scheduled")
@@ -1524,9 +1634,35 @@ const SellerDashboard = ({ session }) => {
 
       if (error) throw error;
 
+      await recordTransactionStatusHistory({
+        transactionId: txId,
+        oldStatus,
+        newStatus: "completed",
+        transaction: updatedTx || txToComplete,
+        notes: "Buyer confirmed handover completion.",
+      });
+
       setTransactions((prev) =>
-        prev.map((t) => (t.id === txId ? { ...t, ...updatedTx } : t)),
+        prev.map((t) => (t.id === txId ? { ...t, ...updatedTx } : t))
       );
+
+      if (selectedTxId === txId) {
+        setTransactionStatusHistory((prev) => [
+          ...prev,
+          {
+            id: `local-${txId}-${Date.now()}`,
+            old_status: oldStatus,
+            new_status: "completed",
+            changed_at: completedAt,
+            meetup_date: updatedTx?.meetup_date || txToComplete.meetup_date,
+            meetup_time: updatedTx?.meetup_time || txToComplete.meetup_time,
+            meeting_location:
+              updatedTx?.meeting_location || txToComplete.meeting_location,
+            notes: "Buyer confirmed handover completion.",
+          },
+        ]);
+      }
+
       alert("Handover confirmed. Transaction completed!");
     } catch (err) {
       console.error("Error completing transaction:", err);
@@ -1538,24 +1674,51 @@ const SellerDashboard = ({ session }) => {
     try {
       const txToCancel = transactions.find((t) => t.id === txId);
 
-      if (!txToCancel) throw new Error("Transaction not found.");
+      if (!txToCancel) {
+        alert("Transaction not found.");
+        return;
+      }
+
       if (txToCancel.seller_id !== session.user.id) {
         alert("Only the seller can cancel this transaction.");
         return;
       }
-      if (txToCancel.status === "completed") {
-        alert("A completed transaction cannot be cancelled.");
+
+      if (
+        ["completed", "cancelled"].includes(
+          String(txToCancel.status || "").toLowerCase()
+        )
+      ) {
+        alert("This transaction is already closed and cannot be cancelled.");
         return;
       }
 
-      const { error: txError } = await supabase
+      const reason = String(cancelReason || "").trim();
+      if (!reason) {
+        alert(
+          "Please select a cancellation reason before updating the transaction."
+        );
+        return;
+      }
+
+      const oldStatus = txToCancel.status;
+      const changedAt = new Date().toISOString();
+
+      const { data: updatedTx, error: txError } = await supabase
         .from("transactions")
         .update({
           status: "cancelled",
-          cancel_reason: cancelReason,
+          transaction_type: txToCancel.repair_appointment_id ? "repair" : "purchase",
+          cancel_reason: reason,
+          cancelled_at: changedAt,
+          pending_review_at: null,
+          updated_at: changedAt,
         })
         .eq("id", txId)
-        .eq("seller_id", session.user.id);
+        .eq("seller_id", session.user.id)
+        .not("status", "in", "(completed,cancelled)")
+        .select("*")
+        .single();
 
       if (txError) throw txError;
 
@@ -1568,15 +1731,45 @@ const SellerDashboard = ({ session }) => {
         if (listingError) throw listingError;
       }
 
+      await recordTransactionStatusHistory({
+        transactionId: txId,
+        oldStatus,
+        newStatus: "cancelled",
+        transaction: updatedTx || txToCancel,
+        notes: `Transaction cancelled by seller. Reason: ${reason}`,
+      });
+
       setTransactions((prev) =>
-        prev.map((t) => (t.id === txId ? { ...t, status: "cancelled" } : t)),
+        prev.map((t) =>
+          t.id === txId
+            ? { ...t, ...(updatedTx || {}), status: "cancelled" }
+            : t
+        )
       );
 
+      if (selectedTxId === txId) {
+        setTransactionStatusHistory((prev) => [
+          ...prev,
+          {
+            id: `local-${txId}-${Date.now()}`,
+            old_status: oldStatus,
+            new_status: "cancelled",
+            changed_at: changedAt,
+            meetup_date: updatedTx?.meetup_date || txToCancel.meetup_date,
+            meetup_time: updatedTx?.meetup_time || txToCancel.meetup_time,
+            meeting_location:
+              updatedTx?.meeting_location || txToCancel.meeting_location,
+            notes: `Transaction cancelled by seller. Reason: ${reason}`,
+          },
+        ]);
+      }
+
       setShowCancelModal(false);
+      setCancelReason("");
       alert("Transaction cancelled successfully.");
     } catch (err) {
-      console.error("Error cancelling:", err.message);
-      alert("Failed to cancel: Check your database permissions.");
+      console.error("Error cancelling:", err);
+      alert(`Failed to cancel: ${err.message}`);
     }
   };
 
@@ -1588,6 +1781,8 @@ const SellerDashboard = ({ session }) => {
   const [chatMessages, setChatMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [selectedTxId, setSelectedTxId] = useState(null);
+  const [transactionStatusHistory, setTransactionStatusHistory] = useState([]);
+  const [loadingTransactionStatusHistory, setLoadingTransactionStatusHistory] = useState(false);
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
@@ -1631,28 +1826,96 @@ const SellerDashboard = ({ session }) => {
     fetchMessageUserCount();
   }, [session]);
   const deleteNotification = async (id) => {
-    console.log("Deleting ID:", id);
+    if (!id) return;
 
-    const { data, error } = await supabase
-      .from("notifications")
-      .delete()
-      .eq("id", id)
-      .select(); // 👈 THIS IS KEY
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", session.user.id);
 
-    console.log("Delete response:", { data, error });
+      if (error) throw error;
 
-    if (error) {
-      console.error(error);
-      alert("Delete failed: " + error.message);
-      return;
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } catch (error) {
+      console.error("Delete notification error:", error);
+      alert(`Failed to delete notification: ${error.message}`);
     }
+  };
 
-    if (!data || data.length === 0) {
-      console.warn("⚠️ No rows deleted — likely RLS issue");
-      return;
+  const handleMarkAllRead = async () => {
+    const unreadIds = notifications
+      .filter((notification) => !notification.is_read)
+      .map((notification) => notification.id);
+
+    if (unreadIds.length === 0) return;
+
+    // Update the UI immediately so the badge and unread styling disappear
+    // without waiting for another fetch.
+    setNotifications((prev) =>
+      prev.map((notification) => ({ ...notification, is_read: true })),
+    );
+
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("user_id", session.user.id)
+        .in("id", unreadIds);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error("Mark all notifications read error:", error);
+
+      // Re-fetch if the database update failed so the UI matches the DB.
+      const { data } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false });
+
+      if (data) {
+        setNotifications(
+          data.map((notification) => ({
+            ...notification,
+            description:
+              notification.description ||
+              notification.content ||
+              "New Wasteless notification.",
+          })),
+        );
+      }
+
+      alert(`Failed to mark notifications as read: ${error.message}`);
     }
+  };
 
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  const handleClearAllNotifications = async () => {
+    if (!session?.user?.id) return;
+
+    const previousNotifications = notifications;
+    const previousDonationReminder = donationReminder;
+
+    // Clear immediately for a responsive UI.
+    setNotifications([]);
+    setDonationReminder(null);
+
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("user_id", session.user.id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error("Clear all notifications error:", error);
+
+      // Restore the previous state if the database operation failed.
+      setNotifications(previousNotifications);
+      setDonationReminder(previousDonationReminder);
+      alert(`Failed to clear notifications: ${error.message}`);
+    }
   };
   {
     /* Helper component for consistent info rows */
@@ -1683,35 +1946,97 @@ const SellerDashboard = ({ session }) => {
         throw new Error("Missing bid or listing information.");
       }
 
-      // Accept/Decline is ONLY for the logged-in user's own listing.
+      // Accept is ONLY for the logged-in user's own listing.
       if (listing.seller_id !== session.user.id) {
         throw new Error("You can only accept bids on your own listings.");
       }
 
+      if (profileData?.verification_status !== "verified") {
+        throw new Error("Your account is not verified. Marketplace actions are disabled.");
+      }
+
+      // Re-read the listing before matching so we do not match a stale card.
+      const { data: currentListing, error: currentListingError } = await supabase
+        .from("listings")
+        .select("id, seller_id, device_model, status, expires_at")
+        .eq("id", listing.id)
+        .single();
+      if (currentListingError) throw currentListingError;
+
+      if (currentListing.seller_id !== session.user.id) {
+        throw new Error("You can only accept bids on your own listing.");
+      }
+
+      if (String(currentListing.status || "").toLowerCase() !== "active") {
+        throw new Error("This listing is no longer active and cannot be matched.");
+      }
+
+      if (currentListing.expires_at && new Date(currentListing.expires_at).getTime() <= Date.now()) {
+        await supabase
+          .from("listings")
+          .update({ status: "expired" })
+          .eq("id", listing.id)
+          .eq("status", "active");
+        throw new Error("This listing has expired and can no longer be matched.");
+      }
+
+      // Accept the winning bid.
       const { error: bidError } = await supabase
         .from("bids")
         .update({ status: "accepted" })
         .eq("id", bid.id)
-        .eq("listing_id", listing.id);
+        .eq("listing_id", listing.id)
+        .eq("status", "pending");
       if (bidError) throw bidError;
 
+      // All other pending bids are no longer active after a match.
+      const { error: otherBidsError } = await supabase
+        .from("bids")
+        .update({ status: "declined" })
+        .eq("listing_id", listing.id)
+        .eq("status", "pending")
+        .neq("id", bid.id);
+      if (otherBidsError) throw otherBidsError;
+
+      // IMPORTANT: the listing MUST become Matched, not merely inactive.
+      // This keeps the marketplace and transaction state consistent.
       const { error: listingError } = await supabase
         .from("listings")
-        .update({ status: "inactive" })
+        .update({ status: "matched" })
         .eq("id", listing.id)
         .eq("seller_id", session.user.id);
       if (listingError) throw listingError;
 
+      // Create or synchronize the transaction as Matched.
+      // `harvester_id` is the legacy column name for the winning bidder;
+      // it can be another seller in a seller-to-seller transaction.
       const { data: existingTx, error: txLookupError } = await supabase
         .from("transactions")
-        .select("id")
+        .select("id, status, transaction_type")
         .eq("listing_id", listing.id)
         .eq("harvester_id", bid.bidder_id)
         .maybeSingle();
       if (txLookupError) throw txLookupError;
 
-      if (!existingTx) {
-        const { error: transactionError } = await supabase
+      let transactionId = existingTx?.id || null;
+
+      if (existingTx) {
+        const { error: transactionUpdateError } = await supabase
+          .from("transactions")
+          .update({
+            seller_id: session.user.id,
+            harvester_id: bid.bidder_id,
+            amount: bid.amount,
+            status: "Matched",
+            transaction_type: "purchase",
+            matched_at: new Date().toISOString(),
+            cancelled_at: null,
+            pending_review_at: null,
+          })
+          .eq("id", existingTx.id);
+        if (transactionUpdateError) throw transactionUpdateError;
+      } else {
+        const { data: createdTx, error: transactionError } = await supabase
           .from("transactions")
           .insert([
             {
@@ -1719,19 +2044,84 @@ const SellerDashboard = ({ session }) => {
               seller_id: session.user.id,
               harvester_id: bid.bidder_id,
               amount: bid.amount,
-              status: "pending",
+              status: "Matched",
+              transaction_type: "purchase",
+              matched_at: new Date().toISOString(),
+              cancelled_at: null,
+              pending_review_at: null,
               barangay: "Pending Discussion",
             },
-          ]);
+          ])
+          .select("id")
+          .single();
         if (transactionError) throw transactionError;
+        transactionId = createdTx?.id || null;
       }
 
+      // The database trigger should create both Phase 9 notifications.
+      // The explicit checks below make this workflow reliable even if the
+      // trigger was not installed in the current Supabase project.
+      const listingModel = currentListing.device_model || listing.device_model || "Electronic Device";
+      const matchNotificationTime = new Date().toISOString();
+
+      const ensureMatchNotification = async ({ userId, title, content, description }) => {
+        if (!userId) return;
+
+        const { data: existingNotification, error: notificationLookupError } = await supabase
+          .from("notifications")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("related_listing_id", listing.id)
+          .eq("type", "transaction_update")
+          .eq("title", title)
+          .limit(1)
+          .maybeSingle();
+
+        if (notificationLookupError) throw notificationLookupError;
+
+        if (!existingNotification) {
+          const { error: notificationInsertError } = await supabase
+            .from("notifications")
+            .insert([
+              {
+                user_id: userId,
+                type: "transaction_update",
+                title,
+                content,
+                description,
+                related_listing_id: listing.id,
+                is_read: false,
+                created_at: matchNotificationTime,
+              },
+            ]);
+
+          if (notificationInsertError) throw notificationInsertError;
+        }
+      };
+
+      // Seller/listing owner MUST receive a match notification.
+      await ensureMatchNotification({
+        userId: session.user.id,
+        title: "Listing Matched",
+        content: `${listingModel} is now Matched with the accepted bidder.`,
+        description: `Your listing has been matched at ₱${Number(bid.amount).toLocaleString()}.`,
+      });
+
+      // Winning bidder MUST receive an acceptance notification.
+      await ensureMatchNotification({
+        userId: bid.bidder_id,
+        title: "Bid Accepted",
+        content: `Your bid of ₱${Number(bid.amount).toLocaleString()} for ${listingModel} was accepted by the seller.`,
+        description: `Your bid was accepted. The ${listingModel} listing is now Matched with you.`,
+      });
+
+      // Send the normal coordination message after the match succeeds.
       const { error: messageError } = await supabase.from("messages").insert([
         {
           listing_id: listing.id,
           sender_id: session.user.id,
           receiver_id: bid.bidder_id,
-          content: `Hello! I've accepted your bid of ₱${Number(bid.amount).toLocaleString()} for the ${listing.device_model}. Let's coordinate the meetup!`,
+          content: `Hello! I've accepted your bid of ₱${Number(bid.amount).toLocaleString()} for the ${listingModel}. Let's coordinate the meetup!`,
           is_read: false,
         },
       ]);
@@ -1741,18 +2131,27 @@ const SellerDashboard = ({ session }) => {
         prev.map((item) =>
           item.id === listing.id
             ? {
-              ...item,
-              status: "inactive",
-              bids: (item.bids || []).map((b) =>
-                b.id === bid.id ? { ...b, status: "accepted" } : b,
-              ),
-            }
+                ...item,
+                status: "matched",
+                bids: (item.bids || []).map((b) =>
+                  b.id === bid.id
+                    ? { ...b, status: "accepted" }
+                    : String(b.status || "").toLowerCase() === "pending"
+                      ? { ...b, status: "declined" }
+                      : b,
+                ),
+              }
             : item,
         ),
       );
 
-      alert("Bid accepted! The listing is now closed.");
-      // await fetchActiveListings();
+      // Refresh notifications immediately so the seller's own notification
+      // appears without requiring a page reload.
+      if (typeof fetchNotifications === "function") {
+        await fetchNotifications();
+      }
+
+      alert("Bid accepted! Both parties have been notified and the listing is now Matched.");
     } catch (error) {
       console.error("Error in bid acceptance:", error);
       alert(`Error: ${error.message}`);
@@ -1794,44 +2193,175 @@ const SellerDashboard = ({ session }) => {
   };
 
   useEffect(() => {
-    const fetchTransactions = async () => {
-      if (!isAuthorized) return;
+    const loadTransactionStatusHistory = async () => {
+      if (!selectedTxId) {
+        setTransactionStatusHistory([]);
+        return;
+      }
+
+      setLoadingTransactionStatusHistory(true);
       try {
         const { data, error } = await supabase
-          .from("transactions")
-          .select(
-            `
-          *,
-          seller:seller_id (
-            full_name,
-            business_name,
-            role
-          ),
-          harvester:harvester_id (
-            full_name,
-            business_name,
-            role
-          ),
-          listing:listing_id (device_model, asking_price)
-        `,
-          )
-          .or(`seller_id.eq.${session.user.id},harvester_id.eq.${session.user.id}`)
-          .order("created_at", { ascending: false });
+          .from("transaction_status_history")
+          .select("id,old_status,new_status,changed_at,meetup_date,meetup_time,meeting_location,notes")
+          .eq("transaction_id", selectedTxId)
+          .order("changed_at", { ascending: true });
 
-        if (error) throw error;
-
-        // FIX: Ensure you are setting the fresh data,
-        // not appending to an existing array.
-        setTransactions(data || []);
-      } catch (err) {
-        console.error("Error fetching transactions:", err.message);
+        if (error) {
+          console.warn("Transaction history unavailable until Phase 7 migration is applied:", error.message);
+          setTransactionStatusHistory([]);
+          return;
+        }
+        setTransactionStatusHistory(data || []);
+      } finally {
+        setLoadingTransactionStatusHistory(false);
       }
     };
 
+    loadTransactionStatusHistory();
+  }, [selectedTxId, transactions.find((tx) => tx.id === selectedTxId)?.status]);
+
+  // Requirement 7 / REQ-1:
+  // One authoritative transaction loader is reused after realtime changes.
+  const fetchUserTransactions = async () => {
+    if (!isAuthorized || !session?.user?.id) return [];
+
+    const { data, error } = await supabase
+      .from("transactions")
+      .select(`
+        *,
+        seller:seller_id (
+          full_name,
+          business_name,
+          role
+        ),
+        harvester:harvester_id (
+          full_name,
+          business_name,
+          role
+        ),
+        listing:listing_id (device_model, asking_price)
+      `)
+      .or(`seller_id.eq.${session.user.id},harvester_id.eq.${session.user.id}`)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    setTransactions(data || []);
+    return data || [];
+  };
+
+  useEffect(() => {
+    if (!isAuthorized || !session?.user?.id) return;
+
     if (activeTab === "transactions") {
-      fetchTransactions();
+      fetchUserTransactions().catch((err) => {
+        console.error("Error fetching transactions:", err);
+      });
     }
-  }, [session.user.id, activeTab, isAuthorized]);
+  }, [session?.user?.id, activeTab, isAuthorized]);
+
+  // Requirement 7 / REQ-2:
+  // Keep both transaction participants synchronized in real time.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId || !isAuthorized) return;
+
+    let disposed = false;
+
+    const refreshTransactions = async () => {
+      try {
+        const fresh = await fetchUserTransactions();
+
+        if (disposed) return;
+
+        // If the selected transaction disappeared, fall back to the first one.
+        setSelectedTxId((currentId) =>
+          currentId && fresh.some((tx) => tx.id === currentId)
+            ? currentId
+            : fresh[0]?.id || null
+        );
+      } catch (error) {
+        console.error("Realtime transaction refresh failed:", error);
+      }
+    };
+
+    const channel = supabase
+      .channel(`seller-dashboard-transactions-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+        },
+        (payload) => {
+          const row = payload.new || payload.old;
+          if (!row) return;
+
+          const belongsToUser =
+            row.seller_id === userId || row.harvester_id === userId;
+
+          if (belongsToUser) {
+            refreshTransactions();
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("Transaction realtime subscription failed.");
+        }
+      });
+
+    return () => {
+      disposed = true;
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, isAuthorized, selectedTxId]);
+
+  // Requirement 7 / REQ-3:
+  // Refresh the selected transaction's complete status history whenever
+  // the database history table changes.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId || !selectedTxId || !isAuthorized) return;
+
+    const historyChannel = supabase
+      .channel(`seller-dashboard-history-${selectedTxId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transaction_status_history",
+          filter: `transaction_id=eq.${selectedTxId}`,
+        },
+        async () => {
+          try {
+            const { data, error } = await supabase
+              .from("transaction_status_history")
+              .select(
+                "id,old_status,new_status,changed_at,meetup_date,meetup_time,meeting_location,notes"
+              )
+              .eq("transaction_id", selectedTxId)
+              .order("changed_at", { ascending: true });
+
+            if (error) throw error;
+            setTransactionStatusHistory(data || []);
+          } catch (error) {
+            console.warn(
+              "Unable to refresh transaction status history:",
+              error.message
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(historyChannel);
+    };
+  }, [session?.user?.id, selectedTxId, isAuthorized]);
   useEffect(() => {
     const verifyRole = async () => {
       if (!session?.user) return;
@@ -1864,32 +2394,49 @@ const SellerDashboard = ({ session }) => {
     verifyRole();
   }, [session]);
   useEffect(() => {
-    let isMounted = true; // 1. Flag to track mounting
+    let isMounted = true;
 
     const fetchNotifications = async () => {
+      if (!session?.user?.id) return;
+
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
-        // Filter out the "empty" duplicates until the database is cleaned up
-        const validNotifications = data.filter(
-          (n) => n.description !== null && n.description !== "",
-        );
-        setNotifications(validNotifications);
+      if (error) {
+        console.error("Error fetching notifications:", error);
+        return;
       }
+
+      if (!isMounted) return;
+
+      // Support both description and content so notifications created by
+      // different parts of the app (including bid notifications) render.
+      const normalizedNotifications = (data || []).map((notification) => ({
+        ...notification,
+        description:
+          notification.description ||
+          notification.content ||
+          "New Wasteless notification.",
+      }));
+
+      setNotifications(normalizedNotifications);
     };
 
-    if (session?.user?.id) {
-      fetchNotifications();
-    }
+    fetchNotifications();
+
+    // Keep the notification bell current even when a bid is submitted from
+    // another dashboard/session. Realtime can be enabled separately, but the
+    // polling fallback does not depend on Realtime publication settings.
+    const refreshTimer = window.setInterval(fetchNotifications, 5000);
 
     return () => {
-      isMounted = false; // 3. Cleanup
+      isMounted = false;
+      window.clearInterval(refreshTimer);
     };
-  }, [session]);
+  }, [session?.user?.id]);
   useEffect(() => {
     const fetchProfile = async () => {
       const { data } = await supabase
@@ -1937,64 +2484,51 @@ const SellerDashboard = ({ session }) => {
 
     const now = new Date();
 
-    // Find listings that qualify for a donation reminder
-    const eligibleListings = myListings
+    // Expired listings immediately surface the Donate action/reminder.
+    // This is based on the database status so the owner is prompted as soon
+    // as the database expiration worker marks the listing expired.
+    const expiredListings = myListings
       .filter((listing) => {
-        // Don't remind about donated listings
-        if (
-          listing.status?.toLowerCase() === "donated" ||
-          listing.status?.toLowerCase() === "drop_off_assigned" ||
-          listing.status?.toLowerCase() === "processed"
-        ) {
-          return false;
-        }
-
-        // Don't remind about inactive/sold listings
-        if (
-          ["inactive", "sold", "completed", "cancelled"].includes(
-            listing.status?.toLowerCase(),
-          )
-        ) {
-          return false;
-        }
-
-        // Calculate listing age
-        const createdDate = new Date(listing.created_at);
-
-        if (Number.isNaN(createdDate.getTime())) {
-          return false;
-        }
-
-        const ageInDays =
-          (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
-
-        // Only listings old enough for the first reminder
-        if (ageInDays < config.firstReminder) {
-          return false;
-        }
-
-        // No inquiry/bid
-        const activeBids =
-          listing.bids?.filter((bid) => bid.status !== "declined") || [];
-
-        if (activeBids.length > 0) {
-          return false;
-        }
-
-        return true;
+        const status = String(listing.status || "").toLowerCase();
+        return status === "expired";
       })
       .map((listing) => {
         const createdDate = new Date(listing.created_at);
+        const ageInDays = Number.isNaN(createdDate.getTime())
+          ? 0
+          : Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+        return { ...listing, ageInDays, isExpired: true, isStrongSuggestion: true };
+      });
 
+    if (expiredListings.length > 0) {
+      setDonationReminder(expiredListings[0]);
+      return;
+    }
+
+    // Normal donation reminders continue to use the existing configuration.
+    const eligibleListings = myListings
+      .filter((listing) => {
+        const status = String(listing.status || "").toLowerCase();
+        if (["donated", "drop_off_assigned", "processed", "expired"].includes(status)) return false;
+        if (["inactive", "sold", "completed", "cancelled"].includes(status)) return false;
+
+        const createdDate = new Date(listing.created_at);
+        if (Number.isNaN(createdDate.getTime())) return false;
+
+        const ageInDays =
+          (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (ageInDays < config.firstReminder) return false;
+
+        const activeBids =
+          listing.bids?.filter((bid) => bid.status !== "declined") || [];
+        return activeBids.length === 0;
+      })
+      .map((listing) => {
+        const createdDate = new Date(listing.created_at);
         const ageInDays = Math.floor(
           (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24),
         );
-
-        return {
-          ...listing,
-          ageInDays,
-          isStrongSuggestion: ageInDays >= config.autoSuggest,
-        };
+        return { ...listing, ageInDays, isExpired: false, isStrongSuggestion: ageInDays >= config.autoSuggest };
       })
       .sort((a, b) => b.ageInDays - a.ageInDays);
 
@@ -2017,6 +2551,7 @@ const SellerDashboard = ({ session }) => {
           .select(`*, seller:seller_id (full_name, business_name, role, barangay), bids (*)`)
           .neq("seller_id", session.user.id)
           .eq("status", "active")
+          .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
           .order("created_at", { ascending: false });
 
         if (otherError) throw otherError;
@@ -2165,30 +2700,60 @@ const SellerDashboard = ({ session }) => {
     );
   }
   const handleSelectListing = async (listing) => {
-    setSelectedListing(listing);
     setBidAmount("");
     setBidMessage("");
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("bids")
-      .select("id, amount, status, created_at")
-      .eq("listing_id", listing.id)
-      .eq("bidder_id", session.user.id)
-      .order("created_at", { ascending: false })
-      .limit(1);
+    try {
+      // Load every bid so the bidder always sees the real current
+      // lowest active price before placing another offer.
+      const { data: allBids, error: bidsError } = await supabase
+        .from("bids")
+        .select("id, amount, status, created_at, bidder_id")
+        .eq("listing_id", listing.id)
+        .order("created_at", { ascending: false });
 
-    if (!error) {
-      setListingBids(data || []);
-    } else {
-      console.error(
-        "Error checking existing bid:",
-        error.message
+      if (bidsError) throw bidsError;
+
+      const bids = allBids || [];
+      const activeBids = bids.filter(
+        (bid) => String(bid.status || "pending").toLowerCase() === "pending"
       );
-      setListingBids([]);
-    }
 
-    setLoading(false);
+      const askingPrice = Number(listing.asking_price || 0);
+      const validAmounts = activeBids
+        .map((bid) => Number(bid.amount || 0))
+        .filter((amount) => amount > 0);
+
+      const lowestActiveBid =
+        validAmounts.length > 0
+          ? Math.min(...validAmounts)
+          : askingPrice;
+
+      const selectedWithCurrentPrice = {
+        ...listing,
+        bids,
+        lowest_active_bid: lowestActiveBid,
+        current_displayed_price: lowestActiveBid,
+      };
+
+      setSelectedListing(selectedWithCurrentPrice);
+      setListingBids(
+        bids.filter((bid) => bid.bidder_id === session.user.id)
+      );
+    } catch (error) {
+      console.error("Error loading listing bids:", error);
+      const askingPrice = Number(listing.asking_price || 0);
+      setSelectedListing({
+        ...listing,
+        bids: listing.bids || [],
+        lowest_active_bid: askingPrice,
+        current_displayed_price: askingPrice,
+      });
+      setListingBids([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openEditProfile = () => {
@@ -2442,34 +3007,68 @@ const SellerDashboard = ({ session }) => {
 
             {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="absolute top-14 right-0 w-85 bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z- overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                {/* Header */}
-                <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-white">
-                  <div>
-                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">
-                      Notifications
-                    </h3>
-                    <button className="text-xs text-blue-500 font-bold hover:underline mt-0.5">
-                      Mark all read (
-                      {notifications.filter((n) => !n.is_read).length})
+              <>
+                {/* Invisible full-screen click target. Clicking anywhere outside
+                    the notification panel closes it, so the bell does not have
+                    to be clicked again. */}
+                <button
+                  type="button"
+                  aria-label="Close notifications"
+                  className="fixed inset-0 z-40 cursor-default"
+                  onClick={() => setShowNotifications(false)}
+                />
+
+                <div
+                  className="absolute top-14 right-0 w-85 bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-white">
+                    <div>
+                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">
+                        Notifications
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={handleMarkAllRead}
+                        disabled={notifications.filter((n) => !n.is_read).length === 0}
+                        className="text-xs text-blue-500 font-bold hover:underline mt-0.5 disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed"
+                      >
+                        Mark all read (
+                        {notifications.filter((n) => !n.is_read).length})
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearAllNotifications}
+                      disabled={notifications.length === 0 && !donationReminder}
+                      className="text-xs bg-slate-50 text-slate-500 px-4 py-2 rounded-full font-black uppercase tracking-tighter hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Clear All
                     </button>
                   </div>
-                  <button className="text-xs bg-slate-50 text-slate-500 px-4 py-2 rounded-full font-black uppercase tracking-tighter hover:bg-slate-100 transition">
-                    Clear All
-                  </button>
-                </div>
                 {donationReminder && (
                   <NotificationItem
                     icon={<Gift />}
                     bg="bg-[#f97316]"
                     title={
-                      donationReminder.isStrongSuggestion
-                        ? "Donation Recommended"
-                        : "Listing Needs Attention"
+                      donationReminder.isExpired
+                        ? "Listing Expired — Donate"
+                        : donationReminder.isStrongSuggestion
+                          ? "Donation Recommended"
+                          : "Listing Needs Attention"
                     }
-                    desc={`Your ${donationReminder.device_model} listing has received no inquiries for ${donationReminder.ageInDays} days. Consider donating it.`}
-                    time={`${donationReminder.ageInDays} days old`}
+                    desc={
+                      donationReminder.isExpired
+                        ? `Your ${donationReminder.device_model} listing has expired. It is no longer available in the buyer marketplace. Please donate or resolve the listing.`
+                        : `Your ${donationReminder.device_model} listing has received no inquiries for ${donationReminder.ageInDays} days. Consider donating it.`
+                    }
+                    time={donationReminder.isExpired ? "Expired" : `${donationReminder.ageInDays} days old`}
                     unread={true}
+                    onClick={() => {
+                      setShowNotifications(false);
+                      handleOpenDonation(donationReminder);
+                    }}
                     onDelete={() => setDonationReminder(null)}
                   />
                 )}
@@ -2490,6 +3089,17 @@ const SellerDashboard = ({ session }) => {
                             <CheckCircle2 />
                           )
                         }
+                        onClick={() => {
+                          if (notif.type === "listing_expired") {
+                            const expiredListing = (myListings || []).find(
+                              (listing) => listing.id === notif.related_listing_id,
+                            );
+                            if (expiredListing) {
+                              setShowNotifications(false);
+                              handleOpenDonation(expiredListing);
+                            }
+                          }
+                        }}
                         bg={
                           notif.type === "bid"
                             ? "bg-[#3b82f6]" // Blue for Bids
@@ -2517,11 +3127,16 @@ const SellerDashboard = ({ session }) => {
                   )}
                 </div>
 
-                {/* Footer Link */}
-                <button className="w-full py-4 text-xs font-black text-slate-400 bg-slate-50/30 hover:bg-slate-50 transition uppercase tracking-[0.2em] border-t border-slate-50">
-                  View All Notifications
+                {/* Footer */}
+                <button
+                  type="button"
+                  onClick={() => setShowNotifications(false)}
+                  className="w-full py-4 text-xs font-black text-slate-400 bg-slate-50/30 hover:bg-slate-50 transition uppercase tracking-[0.2em] border-t border-slate-50"
+                >
+                  Close Notifications
                 </button>
-              </div>
+                </div>
+              </>
             )}
           </div>
 
@@ -2964,6 +3579,16 @@ const SellerDashboard = ({ session }) => {
               const barangay = getListingBarangay(item);
               const deviceId = item.device_id || item.model_number || item.serial_number || "Electronic Device";
               const firstBid = bidsForItem[0];
+              const pendingBids = bidsForItem.filter(
+                (bid) => String(bid.status || "").toLowerCase() === "pending"
+              );
+              const pendingAmounts = pendingBids
+                .map((bid) => Number(bid.amount || 0))
+                .filter((amount) => amount > 0);
+              const lowestActiveBid =
+                pendingAmounts.length > 0
+                  ? Math.min(...pendingAmounts)
+                  : Number(item.asking_price || 0);
 
               if (mode === "bid") {
                 const bid = item;
@@ -3034,10 +3659,14 @@ const SellerDashboard = ({ session }) => {
                     </span>
                   </div>
 
-                  <div className="mt-5 grid grid-cols-3 gap-2">
+                  <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
                       <p className="text-[11px] text-slate-400">Asking</p>
                       <p className="mt-1 text-sm font-black text-slate-800">₱{Number(item.asking_price || 0).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-xl bg-[#eef5ff] px-3 py-3 text-center">
+                      <p className="text-[11px] text-slate-400">Current Lowest</p>
+                      <p className="mt-1 text-sm font-black text-[#3285a1]">₱{lowestActiveBid.toLocaleString()}</p>
                     </div>
                     <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
                       <p className="text-[11px] text-slate-400">Condition</p>
@@ -3309,6 +3938,8 @@ const SellerDashboard = ({ session }) => {
                                   ? "bg-green-50 text-green-600 border-green-200"
                                   : tx.status === "cancelled"
                                     ? "bg-red-50 text-red-600 border-red-200"
+                                    : tx.status === "pending_review"
+                                    ? "bg-amber-100 text-amber-700 border-amber-300"
                                     : tx.status === "meetup_scheduled"
                                       ? "bg-blue-50 text-blue-600 border-blue-200"
                                       : "bg-amber-50 text-amber-600 border-amber-200"
@@ -3324,11 +3955,13 @@ const SellerDashboard = ({ session }) => {
                                       : "Repair Pending"
                                 : isCompleted
                                   ? "Completed"
-                                  : tx.status === "meetup_scheduled"
-                                    ? "Meetup Scheduled"
-                                    : tx.status === "cancelled"
-                                      ? "Cancelled"
-                                      : "Pending"}
+                                  : tx.status === "pending_review"
+                                    ? "Pending Review"
+                                    : tx.status === "meetup_scheduled"
+                                      ? "Meetup Scheduled"
+                                      : tx.status === "cancelled"
+                                        ? "Cancelled"
+                                        : "Pending"}
                             </span>
                           </div>
 
@@ -3364,6 +3997,7 @@ const SellerDashboard = ({ session }) => {
                         const isBuyer = tx.harvester_id === session.user.id;
                         const isCompleted = tx.status === "completed";
                         const isMeetupScheduled = tx.status === "meetup_scheduled";
+                        const isPendingReview = tx.status === "pending_review";
                         const isRepair = isRepairTransaction(tx);
                         const repairDevice = getRepairDevice(tx);
                         const repairCategory = getRepairCategory(tx);
@@ -3470,6 +4104,36 @@ const SellerDashboard = ({ session }) => {
                                     <p className="text-xl font-black text-[#2d7a7f]">₱{Number(tx.amount || 0).toLocaleString()}</p>
                                   </div>
                                 )}
+                              </div>
+
+                              {/* COMPLETE TRANSACTION HISTORY */}
+                              <div className="mb-6 rounded-2xl border border-slate-100 bg-slate-50 p-5">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-xs font-black uppercase tracking-widest text-slate-400">Transaction History</p>
+                                    <p className="mt-1 text-xs text-slate-500">Status changes are preserved for reference and tracking.</p>
+                                  </div>
+                                  <ArrowLeftRight size={17} className="text-slate-400" />
+                                </div>
+                                <div className="mt-4">
+                                  {loadingTransactionStatusHistory ? (
+                                    <p className="text-xs text-slate-400">Loading history...</p>
+                                  ) : transactionStatusHistory.length === 0 ? (
+                                    <p className="text-xs text-slate-400">No status history is available yet. Apply the Phase 7 migration to enable the permanent history log.</p>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      {transactionStatusHistory.map((entry, index) => (
+                                        <div key={entry.id || `${entry.changed_at}-${index}`} className="flex gap-3">
+                                          <div className="mt-1 h-2.5 w-2.5 rounded-full bg-[#3285a1] shrink-0" />
+                                          <div>
+                                            <p className="text-xs font-black text-slate-700">{entry.old_status ? `${String(entry.old_status).replaceAll("_", " ")} → ` : ""}{String(entry.new_status || "updated").replaceAll("_", " ")}</p>
+                                            <p className="mt-1 text-[11px] text-slate-400">{new Date(entry.changed_at).toLocaleString()}</p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
 
                               {/* REPAIR / MARKETPLACE DETAILS AND ACTIONS */}
@@ -4290,7 +4954,8 @@ const SellerDashboard = ({ session }) => {
         <CreateListingModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          userId={session.user.id} // use this instead
+          userId={session.user.id}
+          onCreated={handleListingCreated}
         />
         <RepairReviewModal
           isOpen={showRepairReviewModal}
@@ -5130,9 +5795,11 @@ const NotificationItem = ({
   desc,
   time,
   unread,
+  onClick,
   onDelete,
 }) => (
   <div
+    onClick={onClick}
     className={`p-4 flex gap-4 hover:bg-slate-50 transition cursor-pointer relative group border-b border-slate-50 last:border-0 ${unread ? "bg-blue-50/10" : "bg-transparent"
       }`}
   >

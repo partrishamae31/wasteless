@@ -639,7 +639,7 @@ const runLocalOcr = async (file, onProgress, options = {}) => {
 // quota / offline, we automatically fall back to the local Tesseract
 // scan above so the user is never blocked.
 // =====================================================================
-const MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 // <input type="date"> needs YYYY-MM-DD. Gemini already returns that; this
 // also cleans up the raw strings produced by the local OCR fallback.
@@ -922,33 +922,33 @@ const SignUp = ({ onLoginClick }) => {
 
   // Persist the minimal signup state (no passwords, no files) after each change.
   // Save registration progress whenever the user changes data or steps.
-// Passwords and uploaded documents are intentionally excluded.
-React.useEffect(() => {
-  const {
-    password,
-    confirmPassword,
-    governmentId,
-    businessPermit,
-    techCert,
-    ...savedFormData
-  } = formData;
+  // Passwords and uploaded documents are intentionally excluded.
+  React.useEffect(() => {
+    const {
+      password,
+      confirmPassword,
+      governmentId,
+      businessPermit,
+      techCert,
+      ...savedFormData
+    } = formData;
 
-  saveSignupProgress({
+    saveSignupProgress({
+      step,
+      accountType,
+      emailVerified,
+      authUserId,
+      formData: savedFormData,
+      shopLocation,
+    });
+  }, [
     step,
     accountType,
     emailVerified,
     authUserId,
-    formData: savedFormData,
+    formData,
     shopLocation,
-  });
-}, [
-  step,
-  accountType,
-  emailVerified,
-  authUserId,
-  formData,
-  shopLocation,
-]);
+  ]);
 
 
   // Never trust a cached auth user ID on its own. The Auth user may have been
@@ -980,8 +980,8 @@ React.useEffect(() => {
     };
     validateRestoredIdentity();
     return () => { cancelled = true; };
-  // Run once on mount: savedProgress is the snapshot used to initialize state.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Run once on mount: savedProgress is the snapshot used to initialize state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // =========================
@@ -1847,77 +1847,148 @@ React.useEffect(() => {
   const cancelUnfinishedSignup = async () => {
     const temporaryUserId = authUserId || savedProgress.authUserId;
 
+    // Nothing was verified yet.
+    // We can safely clear the browser-side signup state and return to Login.
     if (!temporaryUserId) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (error) {
+        console.warn("Signup cleanup signOut failed:", error);
+      }
+
       clearSignupProgress();
       localStorage.removeItem("wasteless_signup_in_progress");
       return true;
     }
 
     try {
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token;
+      let accessToken = null;
 
-      if (sessionError || !accessToken) {
-        console.error("No active signup session found:", sessionError);
-        throw new Error(
-          "The unfinished signup could not be cancelled because the verification session is no longer active. Please refresh the page and try Login again."
-        );
+      // ------------------------------------------------------------
+      // 1. Try the current session first.
+      // ------------------------------------------------------------
+      const {
+        data: currentSessionData,
+        error: currentSessionError,
+      } = await supabase.auth.getSession();
+
+      if (!currentSessionError) {
+        accessToken = currentSessionData?.session?.access_token || null;
       }
 
-      const { data, error } = await supabase.functions.invoke(
-        "cancel-unfinished-signup",
-        {
-          body: { userId: temporaryUserId },
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
-
-      if (error) {
-        console.error("cancel-unfinished-signup failed:", error);
-        let detail = error.message || "Unknown Edge Function error.";
-
+      // ------------------------------------------------------------
+      // 2. If the session is missing/expired, try refreshing it.
+      // ------------------------------------------------------------
+      if (!accessToken) {
         try {
-          const response = error.context;
-          if (response?.clone) {
-            const body = await response.clone().json();
-            detail = body?.error || body?.message || detail;
+          const {
+            data: refreshedData,
+            error: refreshError,
+          } = await supabase.auth.refreshSession();
+
+          if (!refreshError) {
+            accessToken =
+              refreshedData?.session?.access_token || null;
           }
-        } catch {
-          // Keep the original error message when the response is not JSON.
-        }
-
-        throw new Error(detail);
-      }
-
-      if (data?.deleted !== true) {
-        if (data?.reason === "profile_exists") {
-          throw new Error(
-            "This signup has already been completed. Please log in instead of starting a new account."
+        } catch (refreshError) {
+          console.warn(
+            "Could not refresh expired signup session:",
+            refreshError
           );
         }
+      }
 
-        throw new Error(
-          "The unfinished account was not deleted. Please try again."
+      // ------------------------------------------------------------
+      // 3. If we recovered a valid session, try deleting the
+      //    unfinished Auth user through the Edge Function.
+      // ------------------------------------------------------------
+      if (accessToken) {
+        try {
+          const { data, error } =
+            await supabase.functions.invoke(
+              "cancel-unfinished-signup",
+              {
+                body: {
+                  userId: temporaryUserId,
+                },
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              }
+            );
+
+          if (!error && data?.deleted === true) {
+            console.log(
+              "Temporary signup Auth user deleted:",
+              temporaryUserId
+            );
+          } else if (data?.reason === "profile_exists") {
+            // Registration was already completed.
+            console.warn(
+              "Signup already has a completed profile."
+            );
+          } else if (error) {
+            console.warn(
+              "Temporary signup cleanup failed:",
+              error
+            );
+          }
+        } catch (cleanupError) {
+          // Cleanup failure must NOT prevent the user from reaching Login.
+          console.warn(
+            "Could not delete temporary signup user:",
+            cleanupError
+          );
+        }
+      } else {
+        // ----------------------------------------------------------
+        // 4. No usable session remains.
+        //
+        // We cannot securely call the protected Edge Function anymore,
+        // but we also must not trap the user on the signup page.
+        // ----------------------------------------------------------
+        console.warn(
+          "Signup verification session has expired. " +
+          "Skipping server-side cancellation and clearing local signup state."
         );
       }
 
-      // The temporary Auth user is now gone. Sign out only after the server
-      // confirms deletion, then clear the browser's signup progress.
-      await supabase.auth.signOut();
+      // ------------------------------------------------------------
+      // 5. Always clean the browser-side signup state.
+      // ------------------------------------------------------------
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.warn(
+          "Signup signOut failed:",
+          signOutError
+        );
+      }
+
       clearSignupProgress();
       localStorage.removeItem("wasteless_signup_in_progress");
+
       return true;
     } catch (error) {
-      console.error("Cancel unfinished signup error:", error);
-      alert(
-        error?.message ||
-          "We couldn't cancel the unfinished signup. Please try again."
+      // ------------------------------------------------------------
+      // IMPORTANT:
+      // Leaving signup should never trap the user.
+      // ------------------------------------------------------------
+      console.error(
+        "Unexpected unfinished signup cleanup error:",
+        error
       );
-      return false;
+
+      clearSignupProgress();
+      localStorage.removeItem("wasteless_signup_in_progress");
+
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // Ignore signOut failure.
+      }
+
+      return true;
     }
   };
 
@@ -1925,12 +1996,15 @@ React.useEffect(() => {
     if (loading) return;
 
     setLoading(true);
-    const cancelled = await cancelUnfinishedSignup();
-    setLoading(false);
 
-    if (!cancelled) return;
+    try {
+      await cancelUnfinishedSignup();
 
-    onLoginClick();
+      // Always allow the user to reach Login.
+      onLoginClick();
+    } finally {
+      setLoading(false);
+    }
   };
 
   const governmentIdReady =
@@ -2126,7 +2200,7 @@ React.useEffect(() => {
                   disabled={loading}
                   className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm hover:bg-[#246367] transition-all shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {loading ? "Creating account..." : "Continue"}
+                  {loading ? "Continue..." : "Continue"}
                 </button>
               </div>
             </div>
@@ -2183,125 +2257,125 @@ React.useEffect(() => {
               </div>
 
               {accountType === "harvester" && (
-              <div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
-                <label className="text-xs font-bold text-gray-700 block">Personal Government ID <span className="text-red-500">*</span></label>
-                {/* <input
+                <div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
+                  <label className="text-xs font-bold text-gray-700 block">Personal Government ID <span className="text-red-500">*</span></label>
+                  {/* <input
                   type="file"
                   ref={governmentIdRef}
                   accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                   onChange={(e) => handleFileChange(e, "governmentId")}
                   className="block w-full text-xs"
                 /> */}
-                
-                <div
-                      onClick={() => governmentIdRef.current?.click()}
-                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.governmentId
-                        ? "border-emerald-400 bg-emerald-50/10"
-                        : "border-gray-200"
-                        }`}
-                      >
-                      <input
-                        type="file"
-                        ref={governmentIdRef}
-                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(e) =>
-                          handleFileChange(e, "governmentId")
-                        }
-                      />
 
-                      <Upload
-                        className={
-                          formData.governmentId
-                            ? "text-emerald-500 mb-2"
-                            : "text-gray-400 mb-2"
-                        }
-                        size={24}
-                      />
-
-                      <span className="text-teal-600 font-semibold text-sm">
-                        {formData.governmentId
-                          ? "ID uploaded!"
-                          : "Click to upload"}
-                      </span>
-
-                      <span className="text-gray-400 text-xs mt-1">
-                        {formData.governmentId
-                          ? formData.governmentId.name
-                          : "PDF, JPEG, PNG, or WebP (max 5MB)"}
-                      </span>
-                    </div>
-                    {formData.governmentId && (
-                  <div className="flex items-center justify-between gap-3 rounded-lg bg-white border border-teal-100 px-3 py-2">
-                    <p className="text-xs text-emerald-700 font-semibold truncate">
-                      Selected: {formData.governmentId.name}
-                    </p>
-                    {idScanCompleted && (
-                      <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs font-black uppercase tracking-wide">
-                        ✓ ID Verified
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={scanGovernmentId}
-                  disabled={scanningId || !formData.governmentId}
-                  className="w-full py-3 rounded-lg border-2 border-teal-600 text-teal-700 font-black text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-teal-50 transition"
-                >
-                  {scanningId ? "Scanning Government ID…" : idScanCompleted ? "Rescan Government ID" : "Scan ID and Auto-Fill"}
-                </button>
-                
-                
-
-                {idScanCompleted ? (
                   <div
-                    role="status"
-                    aria-live="polite"
-                    className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm"
+                    onClick={() => governmentIdRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-gray-50 cursor-pointer transition-colors ${formData.governmentId
+                      ? "border-emerald-400 bg-emerald-50/10"
+                      : "border-gray-200"
+                      }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 shrink-0 rounded-full bg-emerald-500 text-white flex items-center justify-center text-lg font-black">
-                        ✓
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-black text-emerald-900 uppercase tracking-wide">
-                          ID Scan Complete
-                        </p>
-                        <p className="text-xs text-emerald-800 font-semibold leading-relaxed mt-1">
-                          Scan complete. <strong>Review the extracted name, address, and barangay below before continuing.</strong>
-                        </p>
-                        <p className="text-xs text-emerald-700 mt-1.5">
-                          The scan assists with registration data entry; it does not independently verify ID authenticity.
-                        </p>
+                    <input
+                      type="file"
+                      ref={governmentIdRef}
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleFileChange(e, "governmentId")
+                      }
+                    />
+
+                    <Upload
+                      className={
+                        formData.governmentId
+                          ? "text-emerald-500 mb-2"
+                          : "text-gray-400 mb-2"
+                      }
+                      size={24}
+                    />
+
+                    <span className="text-teal-600 font-semibold text-sm">
+                      {formData.governmentId
+                        ? "ID uploaded!"
+                        : "Click to upload"}
+                    </span>
+
+                    <span className="text-gray-400 text-xs mt-1">
+                      {formData.governmentId
+                        ? formData.governmentId.name
+                        : "PDF, JPEG, PNG, or WebP (max 5MB)"}
+                    </span>
+                  </div>
+                  {formData.governmentId && (
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-white border border-teal-100 px-3 py-2">
+                      <p className="text-xs text-emerald-700 font-semibold truncate">
+                        Selected: {formData.governmentId.name}
+                      </p>
+                      {idScanCompleted && (
+                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs font-black uppercase tracking-wide">
+                          ✓ ID Verified
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={scanGovernmentId}
+                    disabled={scanningId || !formData.governmentId}
+                    className="w-full py-3 rounded-lg border-2 border-teal-600 text-teal-700 font-black text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-teal-50 transition"
+                  >
+                    {scanningId ? "Scanning Government ID…" : idScanCompleted ? "Rescan Government ID" : "Scan ID and Auto-Fill"}
+                  </button>
+
+
+
+                  {idScanCompleted ? (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 shrink-0 rounded-full bg-emerald-500 text-white flex items-center justify-center text-lg font-black">
+                          ✓
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-emerald-900 uppercase tracking-wide">
+                            ID Scan Complete
+                          </p>
+                          <p className="text-xs text-emerald-800 font-semibold leading-relaxed mt-1">
+                            Scan complete. <strong>Review the extracted name, address, and barangay below before continuing.</strong>
+                          </p>
+                          <p className="text-xs text-emerald-700 mt-1.5">
+                            The scan assists with registration data entry; it does not independently verify ID authenticity.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ) : scanMessage ? (
-                  <div
-                    role="alert"
-                    aria-live="polite"
-                    className="rounded-xl border border-amber-200 bg-amber-50 p-3"
-                  >
-                    <p className="text-xs font-bold text-amber-900">
-                      ID scan needs attention
-                    </p>
-                    <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                      {scanMessage}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <p className="text-xs text-amber-900 font-semibold">
-                      Government ID scan required before Review Summary
-                    </p>
-                    <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                      Upload a clear ID, scan it, then review the extracted name, address, and barangay. The Review Summary button stays disabled until the scan is complete.
-                    </p>
-                  </div>
-                )}
-              </div>
+                  ) : scanMessage ? (
+                    <div
+                      role="alert"
+                      aria-live="polite"
+                      className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+                    >
+                      <p className="text-xs font-bold text-amber-900">
+                        ID scan needs attention
+                      </p>
+                      <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                        {scanMessage}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-xs text-amber-900 font-semibold">
+                        Government ID scan required before Review Summary
+                      </p>
+                      <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                        Upload a clear ID, scan it, then review the extracted name, address, and barangay. The Review Summary button stays disabled until the scan is complete.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
               {accountType === "repair_shop" && (
                 <>
@@ -2467,7 +2541,7 @@ React.useEffect(() => {
                         ? "border-emerald-400 bg-emerald-50/10"
                         : "border-gray-200"
                         }`}
-                      >
+                    >
                       <input
                         type="file"
                         ref={permitRef}
@@ -2522,7 +2596,7 @@ React.useEffect(() => {
                     <p className="text-xs text-gray-500 mt-1">OCR assists with data entry. Review the extracted details; scanning does not verify permit authenticity.</p>
                   </div>
 
-                  
+
                   <div className="space-y-4 rounded-xl border border-emerald-100 bg-emerald-50/30 p-4">
                     <p className="text-xs font-semibold text-gray-700">Business Permit Details</p>
                     <p className="text-xs text-gray-500">Review the fields extracted from your business permit before submitting.</p>
@@ -2566,11 +2640,11 @@ React.useEffect(() => {
               <div className="space-y-4 rounded-xl border border-gray-200 p-4">
                 <p className="text-xs font-semibold text-gray-700">Review your details</p>
                 {/* REVIEW NAME EXTRACTED FROM ID */}
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-2">Full Name <span className="text-red-500">*</span></label>
-                <input name="fullName" type="text" value={formData.fullName} onChange={handleChange} placeholder={accountType === "repair_shop" ? "Full name of owner/contact person" : "Name as shown on your government ID"} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                {!formData.fullName.trim() && <p className="text-xs text-amber-700 mt-1">{accountType === "repair_shop" ? "Enter the full name shown on the business permit." : "Scan your ID first. If the name cannot be read, enter it exactly as shown on your ID."}</p>}
-              </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-2">Full Name <span className="text-red-500">*</span></label>
+                  <input name="fullName" type="text" value={formData.fullName} onChange={handleChange} placeholder={accountType === "repair_shop" ? "Full name of owner/contact person" : "Name as shown on your government ID"} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                  {!formData.fullName.trim() && <p className="text-xs text-amber-700 mt-1">{accountType === "repair_shop" ? "Enter the full name shown on the business permit." : "Scan your ID first. If the name cannot be read, enter it exactly as shown on your ID."}</p>}
+                </div>
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-2">Address <span className="text-red-500">*</span></label>
                   <textarea name="address" rows={2} value={formData.address} onChange={handleChange} placeholder={accountType === "repair_shop" ? "Complete shop address" : "Address as shown on your government ID"} className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm resize-none" />
@@ -2722,7 +2796,7 @@ React.useEffect(() => {
                     )}
                   </div>
 
-                  
+
                 </div>
               )}
 
@@ -2763,7 +2837,7 @@ React.useEffect(() => {
                 <p className="text-xs text-emerald-800 leading-relaxed">Review all information carefully. You can edit any field by going back before creating your account.</p>
               </div>
 
-              
+
 
               <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden text-sm">
                 {[
@@ -2792,13 +2866,12 @@ React.useEffect(() => {
                   return (
                     <div
                       key={label}
-                      className={`p-3  flex flex-col gap-1 ${
-                        highlighted ? "bg-white/70" : ""
-                      }`}
+                      className={`p-3  flex flex-col gap-1 ${highlighted ? "bg-white/70" : ""
+                        }`}
                     >
                       <span className={`text-xs font-bold uppercase tracking-wide ${highlighted ? "text-black-700" : "text-gray-400"}`}>
                         {label}
-                
+
                       </span>
                       <span className={`break-words ${highlighted ? "text-gray-900" : "text-gray-800"}`}>
                         {value || "—"}
@@ -2847,9 +2920,8 @@ React.useEffect(() => {
             Already have an account?{" "}
             <span
               onClick={handleBackToLogin}
-              className={`text-teal-600 font-bold hover:underline ${
-                loading ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-              }`}
+              className={`text-teal-600 font-bold hover:underline ${loading ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                }`}
             >
               Login
             </span>

@@ -92,6 +92,9 @@ const CHECKLIST_ITEMS = {
 };
 
 
+const NOT_WORKING_MAX_DAYS = 60;
+const WORKING_BIDDING_DAYS = 7;
+
 const DiagnosisSection = ({ title, count, items, selected, onToggle }) => {
   return (
     <div className="space-y-3">
@@ -569,37 +572,34 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   };
 
 
+  // Large household appliances are outside the platform's supported
+  // e-waste listing scope. Apply this guard to every category so a user
+  // cannot bypass the restriction by choosing a different category.
   const isLargeApplianceDetected = () => {
-    if (
-      !formData.model ||
-      (formData.category !== "Others" && formData.category !== "Parts")
-    ) {
-      return false;
-    }
+    const inputLower = String(formData.model || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+    if (!inputLower) return false;
 
     const prohibitedKeywords = [
-      "refrigerator",
-      "fridge",
-      "ref",
-      "washing machine",
-      "washer",
-      "dryer",
-      "aircon",
-      "air con",
-      "air conditioner",
-      "ac",
-      "microwave",
-      "oven",
-      "stove",
-      "range hood",
-      "freezer",
-      "dishwasher",
-      "chiller",
-      "water dispenser",
+      "refrigerator", "refrigerator freezer", "fridge", "freezer",
+      "washing machine", "washer", "tumble dryer", "dryer",
+      "air conditioner", "aircon", "air con",
+      "microwave", "microwave oven", "oven", "stove", "range hood",
+      "dishwasher", "chiller", "water dispenser", "water cooler",
+      "electric range", "gas range", "range cooker",
+      "large appliance", "home appliance", "household appliance",
+      "television", "tv",
     ];
 
-    const inputLower = formData.model.toLowerCase().trim();
-    return prohibitedKeywords.some((keyword) => inputLower.includes(keyword));
+    // Word-boundary matching avoids rejecting legitimate model names that
+    // merely contain a short token such as "ac" inside another word.
+    return prohibitedKeywords.some((keyword) => {
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, "i").test(inputLower);
+    });
   };
 
   const hasFormError = isLargeApplianceDetected();
@@ -618,15 +618,6 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       };
     });
   };
-  useEffect(() => {
-    if (issues.noDamage) {
-      setFormData((prev) => ({
-        ...prev,
-        condition: "Working",
-        last_working_date: "",
-      }));
-    }
-  }, [issues.noDamage]);
   const handleHazardDetection = async (listingId, selectedIssues) => {
     // Define which issues trigger specific hazards
     const highRiskIssues = {
@@ -818,7 +809,14 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   };
 
   const getApplicableChecklistKeys = () => {
-    const categoryKeys = CHECKLIST_BY_CATEGORY[formData.category] || [];
+    // Not Working devices may not be capable of completing device-level
+    // operations such as factory reset, account removal, or SIM removal.
+    // Those checks therefore do not apply to a Not Working listing.
+    const categoryKeys =
+      formData.condition === "Not Working"
+        ? []
+        : CHECKLIST_BY_CATEGORY[formData.category] || [];
+
     return showHazardWarning
       ? [...categoryKeys, "hazardAcknowledged"]
       : categoryKeys;
@@ -918,6 +916,35 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     });
   };
 
+  const handleChangeConditionToWorking = () => {
+    setFormData((prev) => ({
+      ...prev,
+      condition: "Working",
+      last_working_date: "",
+    }));
+  };
+
+  const handleChangeConditionToNotWorking = () => {
+    setFormData((prev) => ({
+      ...prev,
+      condition: "Not Working",
+    }));
+  };
+
+  const handleKeepWorkingAndClearFunctionalIssues = () => {
+    setIssues((prev) => ({
+      ...prev,
+      functional: [],
+    }));
+  };
+
+  const handleKeepNotWorkingAndClearNoDamage = () => {
+    setIssues((prev) => ({
+      ...prev,
+      noDamage: false,
+    }));
+  };
+
   const categories = [
     {
       id: "Smartphone",
@@ -963,6 +990,23 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     issues.functional.length > 0 ||
     issues.cosmetic.length > 0;
 
+  // REQ-5: Cross-check the damage assessment against the condition selected
+  // earlier in the listing flow. A "Working" device cannot simultaneously
+  // report functional failures, while "Not Working" cannot be marked as
+  // having no visible damage. The user must explicitly correct one side
+  // before the assessment can be continued.
+  const hasFunctionalIssues = issues.functional.length > 0;
+  const conditionAssessmentMismatch =
+    (formData.condition === "Working" && hasFunctionalIssues) ||
+    (formData.condition === "Not Working" && issues.noDamage);
+
+  const mismatchReason =
+    formData.condition === "Working" && hasFunctionalIssues
+      ? `The assessment includes ${issues.functional.length === 1 ? "a functional issue" : "functional issues"}, but the selected condition is "Working". Please confirm or correct the device condition before continuing.`
+      : formData.condition === "Not Working" && issues.noDamage
+        ? `The assessment is marked "No Visible Damage", but the selected condition is "Not Working". Please confirm or correct the device condition before continuing.`
+        : "";
+
   const hasMandatoryListingFields =
     Boolean(formData.model?.trim()) &&
     Boolean(formData.condition) &&
@@ -989,24 +1033,58 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
   const checkAndNotifyHarvesters = async (newListing) => {
     try {
-      // Matches your schema: device_model, max_price, is_active
-      const { data: matchingAlerts } = await supabase
+      // Match the listing against the Repair Shop component-alert criteria:
+      // exact model, active alert, requested condition, and alert price ceiling.
+      // The alert table is also used by the existing Harvester Alerts UI, so
+      // this keeps notification behavior consistent with that workflow.
+      const { data: alertRows, error: alertError } = await supabase
         .from("alerts")
-        .select("harvester_id")
-        .eq("device_model", newListing.device_model)
+        .select("harvester_id, device_model, condition, max_price, preferred_barangay")
         .eq("is_active", true)
-        .gte("max_price", newListing.asking_price);
+        .eq("device_model", newListing.device_model);
 
-      if (matchingAlerts?.length > 0) {
-        const notifications = matchingAlerts.map((alert) => ({
-          user_id: alert.harvester_id,
+      if (alertError) throw alertError;
+
+      const listingCondition = String(newListing.condition || "").trim().toLowerCase();
+      const listingPrice = Number(newListing.asking_price || 0);
+      const listingBarangay = String(newListing.barangay || "").trim().toLowerCase();
+
+      const matchingAlerts = (alertRows || []).filter((alert) => {
+        const alertCondition = String(alert.condition || "").trim().toLowerCase();
+        const maxPrice = Number(alert.max_price || 0);
+        const preferredBarangay = String(alert.preferred_barangay || "").trim().toLowerCase();
+
+        const conditionMatches = !alertCondition || alertCondition === listingCondition;
+        const priceMatches = !maxPrice || listingPrice <= maxPrice;
+        const locationMatches =
+          !preferredBarangay ||
+          !listingBarangay ||
+          preferredBarangay === listingBarangay;
+
+        return conditionMatches && priceMatches && locationMatches;
+      });
+
+      // Do not notify the same Repair Shop more than once for one listing.
+      const uniqueUserIds = [...new Set(
+        matchingAlerts
+          .map((alert) => alert.harvester_id)
+          .filter(Boolean),
+      )];
+
+      if (uniqueUserIds.length > 0) {
+        const notifications = uniqueUserIds.map((userId) => ({
+          user_id: userId,
           type: "alert_match",
           title: "New E-Waste Match!",
-          content: `A ${newListing.device_model} was listed for ₱${newListing.asking_price}.`,
+          content: `A ${newListing.device_model} (${newListing.condition}) was listed for ₱${newListing.asking_price}.`,
           related_listing_id: newListing.id,
           is_read: false,
         }));
-        await supabase.from("notifications").insert(notifications);
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert(notifications);
+
+        if (notificationError) throw notificationError;
       }
     } catch (err) {
       console.error("Alert Engine Error:", err.message);
@@ -1019,11 +1097,13 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     const files = Array.from(e.target.files);
 
     // Filter for PNG and JPEG/JPG only
+    const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
     const validFiles = files.filter(
       (file) =>
-        file.type === "image/png" ||
-        file.type === "image/jpeg" ||
-        file.type === "image/jpg",
+        (file.type === "image/png" ||
+          file.type === "image/jpeg" ||
+          file.type === "image/jpg") &&
+        file.size <= MAX_FILE_SIZE_BYTES,
     );
 
     if (validFiles.length !== files.length) {
@@ -1075,6 +1155,14 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         alert(
           `Unsupported file type: ${file.name}. Only images (PNG, JPEG) and videos (MP4, MOV) are accepted.`,
         );
+        continue;
+      }
+
+      // REQ-7: hard-enforce the 10 MB limit per file before creating a
+      // preview object URL or adding the file to the listing.
+      const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert(`File too large: ${file.name}. Each photo or video must be 10MB or smaller.`);
         continue;
       }
 
@@ -1143,8 +1231,52 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
       const finalDescription =
         `${problemSummary} ${formData.description}`.trim();
+      const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+      const validAttachmentTypes = new Set([
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "video/mp4",
+        "video/quicktime",
+        "video/mov",
+      ]);
+
+      const attachmentsAreValid =
+        formData.attachments.length >= 1 &&
+        formData.attachments.length <= 5 &&
+        formData.attachments.every(
+          (item) =>
+            item?.file &&
+            validAttachmentTypes.has(item.file.type) &&
+            item.file.size <= MAX_FILE_SIZE_BYTES,
+        );
+
+      if (!formData.category || !formData.model?.trim()) {
+        alert("Please select a category and model before creating the listing.");
+        return;
+      }
+
+      if (hasFormError) {
+        alert("Large household appliances cannot be listed on this platform.");
+        return;
+      }
+
+      if (!isAssessmentComplete) {
+        alert("Assessment Incomplete. Please select at least one damage/issue or mark the device as 'No Visible Damage' to continue.");
+        return;
+      }
+
+      if (conditionAssessmentMismatch) {
+        alert("Assessment and Condition Need Confirmation. Please confirm or correct the device condition before proceeding.");
+        return;
+      }
+
+      if (!attachmentsAreValid) {
+        alert("Photos Required. Please upload 1 to 5 supported photos or videos, with each file 10MB or smaller.");
+        return;
+      }
+
       if (
-        !formData.model?.trim() ||
         !formData.condition ||
         (formData.condition === "Not Working" &&
           !formData.last_working_date) ||
@@ -1156,9 +1288,31 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       }
 
       const finalPrice = parseFloat(formData.price);
-      // Default bidding period: 7 days. Change this constant if your
-      // approved project specification uses a different duration.
-      const biddingEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      let biddingEndsAt;
+      if (formData.condition === "Not Working") {
+        const lastWorkingDate = new Date(`${formData.last_working_date}T23:59:59.999`);
+        if (Number.isNaN(lastWorkingDate.getTime())) {
+          throw new Error("Please provide a valid last working date.");
+        }
+
+        const expiryDate = new Date(lastWorkingDate.getTime());
+        expiryDate.setDate(expiryDate.getDate() + NOT_WORKING_MAX_DAYS);
+
+        if (expiryDate.getTime() <= Date.now()) {
+          throw new Error(
+            `This Not Working device passed the ${NOT_WORKING_MAX_DAYS}-day posting window from its last working date and cannot be posted.`,
+          );
+        }
+
+        // Posting later consumes the time already elapsed since the last
+        // working date; it never creates a fresh 60-day period.
+        biddingEndsAt = expiryDate.toISOString();
+      } else {
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + WORKING_BIDDING_DAYS);
+        biddingEndsAt = expiryDate.toISOString();
+      }
 
       const { data: insertedData, error } = await supabase
         .from("listings")
@@ -1201,8 +1355,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   };
   const activeLabel = formData.category || "Device";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl relative my-auto animate-in fade-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-hidden">
+      <div className="bg-white w-full max-w-xl max-h-[calc(100dvh-2rem)] h-[calc(100dvh-2rem)] rounded-3xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300">
         {/* Modal Header */}
         <div className="flex justify-between items-center p-6 border-b border-gray-50">
           <h2 className="text-xl font-bold text-gray-800">
@@ -1217,7 +1371,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         </div>
 
         {/* Step Indicator — 5 steps */}
-        <div className="px-8 pt-2 pb-6">
+        <div className="px-8 pt-2 pb-6 shrink-0">
           <div className="flex items-center">
             {[1, 2, 3, 4, 5].map((num, idx) => (
               <React.Fragment key={num}>
@@ -1242,7 +1396,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           </div>
         </div>
 
-        <div className="p-8 pb-6 space-y-6 max-h-[70vh] overflow-y-auto">
+        <div
+          className="flex-1 min-h-0 p-8 pb-6 space-y-6 overflow-y-auto overscroll-contain touch-pan-y"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in">
               <p className="text-2xl font-bold text-gray-800 text-left">
@@ -1449,6 +1606,31 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       Please specify the device's last-used/last-working date.
                     </p>
                   )}
+                  {formData.last_working_date && (() => {
+                    const lastWorking = new Date(`${formData.last_working_date}T00:00:00`);
+                    if (Number.isNaN(lastWorking.getTime())) return null;
+                    const expiry = new Date(lastWorking.getTime());
+                    expiry.setDate(expiry.getDate() + NOT_WORKING_MAX_DAYS);
+                    const remainingMs = expiry.getTime() - Date.now();
+                    const remainingDays = Math.max(0, Math.ceil(remainingMs / (1000 * 60 * 60 * 24)));
+                    const isTooOld = remainingMs <= 0;
+                    return (
+                      <div className={`rounded-xl border p-3 text-xs ${
+                        isTooOld
+                          ? "bg-red-50 border-red-200 text-red-700"
+                          : "bg-amber-50 border-amber-200 text-amber-800"
+                      }`}>
+                        <p className="font-bold">
+                          {isTooOld
+                            ? `This device is beyond the ${NOT_WORKING_MAX_DAYS}-day posting window.`
+                            : `${remainingDays} day${remainingDays === 1 ? "" : "s"} remaining from the ${NOT_WORKING_MAX_DAYS}-day window.`}
+                        </p>
+                        <p className="mt-1 opacity-80">
+                          Listing expiry: {expiry.toLocaleDateString()}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1464,7 +1646,9 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     formData.attachments.length === 0 ||
                     !formData.condition ||
                     (formData.condition === "Not Working" &&
-                      !formData.last_working_date)
+                      (!formData.last_working_date ||
+                        new Date(`${formData.last_working_date}T23:59:59.999`).getTime() +
+                          NOT_WORKING_MAX_DAYS * 24 * 60 * 60 * 1000 <= Date.now()))
                   }
                   onClick={() => setStep(3)}
                   className="flex-1 py-4 rounded-2xl font-bold text-base transition-all enabled:bg-[#17708c] enabled:text-white enabled:hover:bg-[#125f75] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
@@ -1638,6 +1822,83 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 </div>
               )}
 
+              {conditionAssessmentMismatch && (
+                <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle
+                      size={20}
+                      className="text-red-500 shrink-0 mt-0.5"
+                    />
+                    <div>
+                      <p className="text-sm font-extrabold text-red-900">
+                        Assessment and Condition Need Confirmation
+                      </p>
+                      <p className="text-xs text-red-700 leading-relaxed mt-1">
+                        {mismatchReason}
+                      </p>
+                    </div>
+                  </div>
+
+                  {formData.condition === "Working" && hasFunctionalIssues && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={handleChangeConditionToNotWorking}
+                        className="p-4 rounded-xl border-2 border-red-200 bg-white text-left hover:border-red-300 hover:bg-red-50 transition-colors"
+                      >
+                        <p className="text-sm font-bold text-gray-800">
+                          Change to Not Working
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Keep the reported functional issues and correct the device condition.
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleKeepWorkingAndClearFunctionalIssues}
+                        className="p-4 rounded-xl border-2 border-gray-200 bg-white text-left hover:border-gray-300 hover:bg-gray-50 transition-colors"
+                      >
+                        <p className="text-sm font-bold text-gray-800">
+                          Keep Working
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Remove the selected functional issues and keep the earlier condition.
+                        </p>
+                      </button>
+                    </div>
+                  )}
+
+                  {formData.condition === "Not Working" && issues.noDamage && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={handleChangeConditionToWorking}
+                        className="p-4 rounded-xl border-2 border-gray-200 bg-white text-left hover:border-[#17708c]/40 hover:bg-emerald-50/30 transition-colors"
+                      >
+                        <p className="text-sm font-bold text-gray-800">
+                          Change to Working
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Keep "No Visible Damage" and correct the device condition.
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleKeepNotWorkingAndClearNoDamage}
+                        className="p-4 rounded-xl border-2 border-gray-200 bg-white text-left hover:border-gray-300 hover:bg-gray-50 transition-colors"
+                      >
+                        <p className="text-sm font-bold text-gray-800">
+                          Keep Not Working
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Remove "No Visible Damage" and complete the issue assessment.
+                        </p>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex gap-4 pt-2">
                 <button
                   onClick={() => setStep(2)}
@@ -1646,7 +1907,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   Back
                 </button>
                 <button
-                  disabled={!isAssessmentComplete}
+                  disabled={!isAssessmentComplete || conditionAssessmentMismatch}
                   onClick={() => setStep(4)}
                   className="flex-1 py-4 rounded-2xl font-bold text-base transition-all enabled:bg-[#17708c] enabled:text-white enabled:hover:bg-[#125f75] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
@@ -1754,7 +2015,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     />
                     <div>
                       <p className="text-xs uppercase tracking-wider text-slate-300">
-                        Market Value Context
+                        Estimated Recovery Value
                       </p>
                       <h3 className="text-xl font-bold leading-snug">
                         No transaction history found
@@ -2214,7 +2475,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 </p>
               )}
 
-              <div className="flex gap-4 sticky bottom-0 bg-white/90 backdrop-blur pb-2 pt-2">
+              <div className="flex gap-4 sticky bottom-0 bg-white/90 backdrop-blur pb-2 pt-2 z-10000">
                 <button
                   onClick={() => setStep(4)}
                   className="flex-1 py-4 border border-gray-200 text-gray-600 rounded-2xl font-bold hover:bg-gray-50 transition-colors"
