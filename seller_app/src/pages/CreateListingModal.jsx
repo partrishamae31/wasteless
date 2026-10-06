@@ -854,12 +854,18 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
   useEffect(() => {
     calculateRecoveryValue();
-  }, [issues, formData.base_part_value, formData.category]);
+  }, [issues, formData.base_part_value, formData.base_scrap_value, formData.category, formData.condition, formData.last_working_date]);
 
   const calculateRecoveryValue = () => {
-    const baseValue = formData.base_part_value || 0;
-    const scrap = formData.base_scrap_value || 0;
+    const baseValue = Number(formData.base_part_value) || 0;
+    const scrap = Number(formData.base_scrap_value) || 0;
     const currentCategory = formData.category || "Others";
+
+    // Condition is part of the recovery model, not just display context.
+    // Working devices retain the full component valuation; Not Working
+    // devices receive a reduced recovery factor because functional recovery
+    // is less certain. This is recalculated whenever condition changes.
+    const conditionFactor = formData.condition === "Not Working" ? 0.65 : 1;
 
     // Dynamic extraction based on user selection
     const activeComponentSchema =
@@ -878,7 +884,9 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     Object.keys(activeComponentSchema).forEach((key) => {
       const component = activeComponentSchema[key];
 
-      const componentBaseValue = Math.round(baseValue * component.weight);
+      const componentBaseValue = Math.round(
+        baseValue * component.weight * conditionFactor,
+      );
 
       const hasDamage = component.issues.some((issue) =>
         selectedIssues.includes(issue),
@@ -898,7 +906,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       });
     });
 
-    const finalPartsValue = Math.max(sumOfIntactComponents, scrap);
+    const conditionAdjustedScrap = Math.round(scrap * conditionFactor);
+    const finalPartsValue = Math.max(sumOfIntactComponents, conditionAdjustedScrap);
 
     setReusableValue(Math.round(finalPartsValue));
     setScrapValue(scrap);
@@ -1007,13 +1016,21 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         ? `The assessment is marked "No Visible Damage", but the selected condition is "Not Working". Please confirm or correct the device condition before continuing.`
         : "";
 
+  // Asking price must be a real, finite, strictly positive number.
+  // This intentionally rejects pasted values such as "100abc", whitespace,
+  // scientific notation, and other non-numeric strings.
+  const isValidAskingPrice =
+    typeof formData.price === "string" &&
+    /^\d+(?:\.\d{1,2})?$/.test(formData.price.trim()) &&
+    Number.isFinite(Number(formData.price)) &&
+    Number(formData.price) > 0;
+
   const hasMandatoryListingFields =
     Boolean(formData.model?.trim()) &&
     Boolean(formData.condition) &&
     (formData.condition === "Working" ||
       Boolean(formData.last_working_date)) &&
-    formData.price !== "" &&
-    Number(formData.price) > 0;
+    isValidAskingPrice;
 
   const areApplicableChecklistItemsComplete =
     getApplicableChecklistKeys().every((key) => checklist[key] === true);
@@ -1024,7 +1041,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   // Data-sanitization and preparation checks are completed in Step 5.
   const isStep4Complete =
     hasMandatoryListingFields &&
-    hasAttachments;
+    hasAttachments &&
+    checklist.valuationAcknowledged;
 
   // Step 5 is the final preparation/sanitization stage.
   const isStep5Complete =
@@ -1933,11 +1951,13 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                       className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
                     />
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       value={formData.price}
-                      onChange={(e) =>
-                        setFormData({ ...formData, price: e.target.value })
-                      }
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setFormData((prev) => ({ ...prev, price: nextValue }));
+                      }}
                       placeholder={
                         hasMarketHistory
                           ? `e.g., ${reusableValue}`
@@ -1950,6 +1970,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     Set the minimum price you're willing to accept. Buyers can
                     bid at or above this price.
                   </p>
+                  {formData.price !== "" && !isValidAskingPrice && (
+                    <p className="text-xs text-red-600 font-semibold" role="alert">
+                      Enter a valid positive numeric asking price (for example, 6000 or 6000.00).
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -2120,6 +2145,25 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               </div>
 
 
+              {showHazardWarning && (
+                <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 flex gap-3" role="alert">
+                  <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-red-900">
+                      Safe-Storage Warning
+                    </p>
+                    <p className="text-xs text-red-800 leading-relaxed">
+                      This valuation includes a hazardous-material risk based on the reported damage. Store the device in a safe, isolated area and follow the handling and disposal guidance before transport or handover.
+                    </p>
+                    {!checklist.hazardAcknowledged && (
+                      <p className="text-xs font-bold text-red-700">
+                        Hazard acknowledgement is required before continuing.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Market Insights */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
@@ -2179,6 +2223,25 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                   </li>
                 </ul>
               </div>
+
+              <label className="flex items-start gap-3 p-5 bg-gray-50 rounded-2xl cursor-pointer border border-gray-100">
+                <input
+                  type="checkbox"
+                  checked={checklist.valuationAcknowledged}
+                  onChange={() => handleChecklistToggle("valuationAcknowledged")}
+                  className="mt-1 w-4 h-4 rounded border-gray-300 text-[#2d7a7f]"
+                />
+                <div className="space-y-1">
+                  <p className="text-base font-bold text-gray-800">
+                    I acknowledge the valuation is a non-binding estimate
+                  </p>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    {hasMarketHistory
+                      ? `I understand the Estimated Recovery Value (₱${reusableValue.toLocaleString()}) is for decision-support only and actual buyer offers may vary.`
+                      : "I understand that marketplace recovery data is unavailable for this model and the displayed baseline is only a non-binding reference."}
+                  </p>
+                </div>
+              </label>
 
               <div className="flex gap-4 pt-4 sticky bottom-0 bg-white/90 backdrop-blur pb-2">
                 <button
