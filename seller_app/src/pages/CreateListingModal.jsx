@@ -1341,9 +1341,6 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       if (insertedData && selectedIssues.length > 0) {
         await handleHazardDetection(insertedData.id, selectedIssues);
       }
-
-      if (insertedData) await checkAndNotifyHarvesters(insertedData);
-
       alert("Listing Created Successfully!");
       resetCreateListingForm();
       onClose();
