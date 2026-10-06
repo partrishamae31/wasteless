@@ -100,7 +100,7 @@ const LocationSelector = ({ position, onChange }) => {
 };
 
 
-const OCR_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const OCR_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 const OCR_MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 const cleanOcrText = (value = "") =>
@@ -548,7 +548,7 @@ const loadImageForOcr = async (file) => {
     return canvas;
   }
 
-  throw new Error("Please upload a PDF, JPEG, PNG, or WebP file.");
+  throw new Error("Please upload a PDF, JPEG, or PNG file.");
 };
 
 const createOcrVariants = (sourceCanvas) => {
@@ -1068,17 +1068,12 @@ const SignUp = ({ onLoginClick }) => {
       "image/jpeg",
       "image/jpg",
       "image/png",
-      "image/webp",
     ];
 
-    if (!allowedTypes.includes(file.type)) {
-      alert("Please upload a PDF, JPEG, PNG, or WebP file.");
-      e.target.value = "";
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      alert("File size must not exceed 5MB.");
+    // Registration test cases require unsupported formats to be silently
+    // rejected. The file picker also exposes only PDF/JPEG/PNG through the
+    // accept attributes below.
+    if (!allowedTypes.includes(file.type) || file.size > 5 * 1024 * 1024) {
       e.target.value = "";
       return;
     }
@@ -1131,13 +1126,9 @@ const SignUp = ({ onLoginClick }) => {
 
   const scanGovernmentId = async () => {
     const file = governmentIdRef.current?.files?.[0] || formData.governmentId;
-    if (!file) { alert("Please upload your government ID first."); return; }
-    if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") {
-      alert("Please upload a PDF, JPEG, PNG, or WebP ID."); return;
-    }
-    if (file.size > OCR_MAX_FILE_SIZE) {
-      alert("File size must not exceed 5MB."); return;
-    }
+    if (!file) return;
+    if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") return;
+    if (file.size > OCR_MAX_FILE_SIZE) return;
 
     setScanningId(true);
     setScanMessage("Scanning ID…");
@@ -1184,9 +1175,9 @@ const SignUp = ({ onLoginClick }) => {
       );
     } catch (error) {
       setIdScanCompleted(false);
-      console.error("Government ID local OCR failed:", error);
-      setScanMessage("Scan failed. You can enter your details manually.");
-      alert(error?.message || "We couldn't read the ID. Please use a clearer image or enter the details manually.");
+      // TC_REG_09 requires no user-facing message for an illegible ID.
+      console.warn("Government ID scan failed:", error);
+      setScanMessage("");
     } finally {
       setScanningId(false);
     }
@@ -1199,7 +1190,7 @@ const SignUp = ({ onLoginClick }) => {
       return;
     }
     if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") {
-      alert("Please upload a PDF, JPEG, PNG, or WebP permit.");
+      alert("Please upload a PDF, JPEG, or PNG permit.");
       return;
     }
     if (file.size > OCR_MAX_FILE_SIZE) {
@@ -1294,7 +1285,7 @@ const SignUp = ({ onLoginClick }) => {
       return;
     }
     if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") {
-      alert("Please upload a PDF, JPEG, PNG, or WebP certificate.");
+      alert("Please upload a PDF, JPEG, or PNG certificate.");
       return;
     }
     if (file.size > OCR_MAX_FILE_SIZE) {
@@ -1458,7 +1449,7 @@ const SignUp = ({ onLoginClick }) => {
         const { data, error } = await supabase.auth.signUp({
           email: formData.email.trim().toLowerCase(),
           password: formData.password,
-          options: { data: { role: accountType, buyer_type: accountType, is_verified: false, status: "active", verification_badge: "New User" } }
+          options: { data: { role: accountType, buyer_type: accountType, is_verified: false, status: "active", verification_badge: "Pending Verification" } }
         });
         if (error) throw error;
         if (!data?.user) throw new Error("Could not create the account.");
@@ -1521,12 +1512,9 @@ const SignUp = ({ onLoginClick }) => {
         alert("Email verified! Please complete your account verification details.");
       } catch (err) {
         console.error("OTP verification error:", err);
-        const message = getFriendlyErrorMessage(
-          err,
-          "We couldn't verify that code. Please check it and try again.",
-        );
+        const message =
+          "The verification code is invalid or expired. Please request a new one,";
         setOtpError(message);
-        alert(message);
       } finally {
         setLoading(false);
       }
@@ -1595,6 +1583,16 @@ const SignUp = ({ onLoginClick }) => {
 
         if (!formData.techCert) {
           alert("Please upload your Certification Document.");
+          return;
+        }
+
+        if (!permitScanCompleted) {
+          alert("Please scan your Business Permit / DTI Registration before continuing.");
+          return;
+        }
+
+        if (!techCertScanCompleted) {
+          alert("Please scan your Technical Certification before continuing.");
           return;
         }
 
@@ -1808,10 +1806,42 @@ const SignUp = ({ onLoginClick }) => {
 
       if (profileError) throw profileError;
 
+      // Notify every Administrator that a new account is ready for review.
+      // This is intentionally best-effort so a notification/RLS problem never
+      // rolls back an otherwise valid registration.
+      try {
+        const { data: admins, error: adminLookupError } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("role", "admin");
+
+        if (!adminLookupError && Array.isArray(admins) && admins.length) {
+          const notifications = admins.map((admin) => ({
+            user_id: admin.id,
+            type: "registration_pending_verification",
+            title: "New Registration Pending Verification",
+            content: `${formData.fullName || formData.email} submitted a ${finalRole === "repair_shop" ? "Repair Shop" : "Second-Hand Electronics Owner/Dealer"} registration for review.`,
+            related_listing_id: null,
+            is_read: false,
+            description: "A newly registered account is waiting for administrator verification.",
+          }));
+
+          const { error: notificationError } = await supabase
+            .from("notifications")
+            .insert(notifications);
+
+          if (notificationError) {
+            console.warn("Registration admin notification failed:", notificationError.message);
+          }
+        }
+      } catch (notificationError) {
+        console.warn("Registration admin notification failed:", notificationError);
+      }
+
       const { error: metadataError } = await supabase.auth.updateUser({
         data: {
           role: finalRole,
-          verification_badge: "New User",
+          verification_badge: "Pending Verification",
           verification_status: "pending",
         },
       });
@@ -1830,7 +1860,7 @@ const SignUp = ({ onLoginClick }) => {
       localStorage.removeItem("wasteless_signup_in_progress");
 
       setIsSubmitted(true);
-      alert("Account created successfully. Your badge is New User while verification is pending. Please log in with your email and password.");
+      alert("Account created successfully. Your badge is Pending Verification while verification is pending. Please log in with your email and password.");
     } catch (err) {
       console.error("Final registration submit error:", err);
       alert(getFriendlyErrorMessage(err, "We couldn't finish creating your account. Please try again in a moment."));
@@ -2016,14 +2046,25 @@ const SignUp = ({ onLoginClick }) => {
       Boolean(formData.barangay)
     );
 
+  const repairShopDocumentsReady =
+    accountType !== "repair_shop" ||
+    (
+      permitScanCompleted &&
+      techCertScanCompleted &&
+      Boolean(formData.businessPermit) &&
+      Boolean(formData.techCert)
+    );
+
   const canReviewSummary =
     !loading &&
-    (accountType === "repair_shop" || governmentIdReady);
+    governmentIdReady &&
+    repairShopDocumentsReady;
 
   const canCreateAccount =
     !loading &&
     registrationSummaryReady &&
-    (accountType === "repair_shop" || governmentIdReady);
+    governmentIdReady &&
+    repairShopDocumentsReady;
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#1a4567] via-[#2d7a7f] to-[#6da43a] flex items-center justify-center p-6 font-sans">
@@ -2262,7 +2303,7 @@ const SignUp = ({ onLoginClick }) => {
                   {/* <input
                   type="file"
                   ref={governmentIdRef}
-                  accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                   onChange={(e) => handleFileChange(e, "governmentId")}
                   className="block w-full text-xs"
                 /> */}
@@ -2277,7 +2318,7 @@ const SignUp = ({ onLoginClick }) => {
                     <input
                       type="file"
                       ref={governmentIdRef}
-                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                       className="hidden"
                       onChange={(e) =>
                         handleFileChange(e, "governmentId")
@@ -2302,7 +2343,7 @@ const SignUp = ({ onLoginClick }) => {
                     <span className="text-gray-400 text-xs mt-1">
                       {formData.governmentId
                         ? formData.governmentId.name
-                        : "PDF, JPEG, PNG, or WebP (max 5MB)"}
+                        : "PDF, JPEG, or PNG (max 5MB)"}
                     </span>
                   </div>
                   {formData.governmentId && (
@@ -2443,7 +2484,7 @@ const SignUp = ({ onLoginClick }) => {
                       <input
                         type="file"
                         ref={techRef}
-                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                         className="hidden"
                         onChange={(e) =>
                           handleFileChange(e, "techCert")
@@ -2468,7 +2509,7 @@ const SignUp = ({ onLoginClick }) => {
                       <span className="text-gray-400 text-xs mt-1">
                         {formData.techCert
                           ? formData.techCert.name
-                          : "PDF, JPEG, PNG, or WebP (max 5MB)"}
+                          : "PDF, JPEG, or PNG (max 5MB)"}
                       </span>
                     </div>
 
@@ -2545,7 +2586,7 @@ const SignUp = ({ onLoginClick }) => {
                       <input
                         type="file"
                         ref={permitRef}
-                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                         className="hidden"
                         onChange={(e) =>
                           handleFileChange(e, "businessPermit")
@@ -2570,7 +2611,7 @@ const SignUp = ({ onLoginClick }) => {
                       <span className="text-gray-400 text-xs mt-1">
                         {formData.businessPermit
                           ? formData.businessPermit.name
-                          : "PDF, JPEG, PNG, or WebP (max 5MB)"}
+                          : "PDF, JPEG, or PNG (max 5MB)"}
                       </span>
                     </div>
                     <button
@@ -2908,6 +2949,7 @@ const SignUp = ({ onLoginClick }) => {
           {isSubmitted && (
             <div className="space-y-4 animate-fadeIn text-center">
               <h3 className="text-lg font-bold text-gray-800">Registration complete</h3>
+              <div className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800">Pending Verification</div>
               <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-xl">
                 <p className="text-sm text-emerald-800 leading-relaxed">
                   Your registration details and documents were submitted. You can now log in. Your account is active, but verification is still pending. An administrator will review your submitted documents before your account is marked as verified.

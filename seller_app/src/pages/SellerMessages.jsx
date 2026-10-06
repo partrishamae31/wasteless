@@ -1372,16 +1372,6 @@ const SellerMessages = ({ userId, onTabChange }) => {
         })
         .limit(1)
         .maybeSingle();
-
-      if (
-        fetchError ||
-        !existingTx
-      ) {
-        throw new Error(
-          "Pending seller transaction not found. Only the listing owner can schedule the meetup."
-        );
-      }
-
       if (existingTx.seller_id !== userId) {
         throw new Error("Only the listing owner can schedule the meetup.");
       }
@@ -1412,12 +1402,6 @@ const SellerMessages = ({ userId, onTabChange }) => {
         .update({
           drop_off_point_id:
             meetupData.drop_off_point_id,
-
-          // Required by the buyer-side completion check; also shown in the
-          // buyer's Transactions view and stored in the status history.
-          meeting_location:
-            selectedPoint?.name ||
-            meetupData.location,
 
           updated_at:
             new Date().toISOString(),

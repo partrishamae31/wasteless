@@ -13,6 +13,7 @@ import EnvOfficerPanel from "./wmo/EnvOfficerPanel";
 import AdminLogin from "./pages/AdminLogin";
 import AdminSignup from "./admin/AdminSignup";
 import ResetPassword from "./pages/ResetPassword";
+import Landing from "./pages/Landing";
 
 // Guards against out-of-order auth events (e.g. a transient session from
 // admin account creation racing the restored one): only the newest
@@ -23,12 +24,15 @@ function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState("login");
+  const [currentPage, setCurrentPage] = useState("landing");
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isSuspended, setIsSuspended] = useState(false);
   const [roleMismatch, setRoleMismatch] = useState(null);
+  const [verificationStatus, setVerificationStatus] = useState(null);
+  const [isVerified, setIsVerified] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // --- ADMIN DEMO / DIRECT ADMIN LOGIN STATE ---
   const [isAdminDemo, setIsAdminDemo] = useState(false);
@@ -57,6 +61,9 @@ function App() {
     setIsAdminDemo(false);
     setIsSuspended(false);
     setRoleMismatch(null);
+    setVerificationStatus(null);
+    setIsVerified(false);
+    setSessionExpired(false);
     setIsUnauthorized(false);
     localStorage.removeItem("wasteless_signup_in_progress");
     setCurrentPage("login");
@@ -129,7 +136,7 @@ function App() {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("role, status")
+      .select("role, status, verification_status, is_verified")
       .eq("id", authSession.user.id)
       .maybeSingle();
 
@@ -180,7 +187,7 @@ function App() {
     if (selectedRole && selectedRole !== data.role) {
       const roleNames = {
         seller: "Seller",
-        harvester: "Harvester",
+        harvester: "Second-Hand Electronics Owner/Dealer",
         repair_shop: "Repair Shop",
         env_officer: "Waste Management Officer",
         admin: "Administrator",
@@ -191,6 +198,9 @@ function App() {
         registered: roleNames[data.role] || data.role,
       });
 
+      // TC_REG_12/13: a selected role must match the role stored in the
+      // authenticated profile. Do not allow the dashboard to render.
+      setIsUnauthorized(true);
       localStorage.removeItem("wasteless_login_role");
 
       await supabase.auth.signOut();
@@ -216,7 +226,7 @@ function App() {
 
     // The in-memory page is only navigation state. Once authentication
     // has been restored, the authenticated role is the source of truth.
-    setCurrentPage("login");
+    setCurrentPage("landing");
 
     // Clear the saved role after a successful match.
     if (selectedRole) {
@@ -236,11 +246,58 @@ function App() {
     setIsSuspended(false);
     setSession(authSession);
     setRole(data.role);
+    setVerificationStatus(String(data.verification_status || "pending").toLowerCase());
+    setIsVerified(Boolean(data.is_verified) || ["verified", "approved"].includes(String(data.verification_status || "").toLowerCase()));
+    setSessionExpired(false);
     setIsUnauthorized(false);
 
     setLoading(false);
     setIsChecked(true);
   };
+
+  // ============================================================
+  // INACTIVITY SESSION TIMEOUT
+  // ============================================================
+  // TC_REG_14: automatically sign the user out after 30 minutes of
+  // inactivity and return them to Login with an expiry message.
+  useEffect(() => {
+    if (!session?.user || !role || isPasswordResetPath) return undefined;
+
+    const TIMEOUT_MS = 30 * 60 * 1000;
+    let timer;
+
+    const resetTimer = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        try {
+          await supabase.auth.signOut();
+        } catch (error) {
+          console.warn("Session timeout sign-out error:", error);
+        }
+
+        setSession(null);
+        setRole(null);
+        setVerificationStatus(null);
+        setIsVerified(false);
+        setIsSuspended(false);
+        setRoleMismatch(null);
+        setIsUnauthorized(false);
+        setSessionExpired(true);
+        setCurrentPage("landing");
+        setLoading(false);
+        setIsChecked(true);
+      }, TIMEOUT_MS);
+    };
+
+    const activityEvents = ["mousedown", "keydown", "scroll", "touchstart", "pointerdown"];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      window.clearTimeout(timer);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [session?.user?.id, role, isPasswordResetPath]);
 
   // ============================================================
   // INITIAL ROUTING + NORMAL AUTH LISTENER
@@ -453,7 +510,14 @@ function App() {
 
             <button
               onClick={() => {
+                // Return to the normal Login screen. The generic
+                // unauthorized state must also be cleared; otherwise
+                // clearing only roleMismatch makes App fall through to
+                // the "Email not registered" screen.
                 setRoleMismatch(null);
+                setIsUnauthorized(false);
+                setSessionExpired(false);
+                localStorage.removeItem("wasteless_login_role");
                 setCurrentPage("login");
               }}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-[#2d91a8] to-[#619d2d] text-white font-semibold text-sm"
@@ -538,6 +602,9 @@ function App() {
         <SellerDashboard
           session={session}
           onLogout={handleLogout}
+          verificationStatus={verificationStatus}
+          isVerified={isVerified}
+          readOnly={!isVerified}
         />
       );
     }
@@ -547,6 +614,9 @@ function App() {
         <HarvesterDashboard
           session={session}
           onLogout={handleLogout}
+          verificationStatus={verificationStatus}
+          isVerified={isVerified}
+          readOnly={!isVerified}
         />
       );
     }
@@ -566,8 +636,29 @@ function App() {
   // ============================================================
   return (
     <div className="App">
+      {sessionExpired && (
+        <div
+          role="alert"
+          className="fixed top-4 left-1/2 z-[100] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-lg"
+        >
+          Your session has expired due to inactivity. Please sign in again.
+        </div>
+      )}
+      {currentPage === "landing" && (
+  <Landing
+    onGetStarted={() => setCurrentPage("login")}
+    onSignUp={() => {
+      clearSignupProgress();
+      localStorage.setItem("wasteless_signup_in_progress", "true");
+      setCurrentPage("signup");
+    }}
+  />
+)}
+
       {currentPage === "login" && (
         <Login
+          onBackToHome={() => setCurrentPage("landing")}
+
           onSignUpClick={() => {
             clearSignupProgress();
             localStorage.setItem("wasteless_signup_in_progress", "true");

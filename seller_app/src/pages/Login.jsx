@@ -9,9 +9,11 @@ import {
   Mail,
   Lock,
   ArrowRight,
+  Store,
+  Wrench,
 } from "lucide-react";
 
-const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
+const Login = ({ onSignUpClick, onEnvClick, onBackToHome, setIsRoleChecking }) => {
   const [isAdminView, setIsAdminView] = useState(false);
   const [isOfficerView, setIsOfficerView] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -19,6 +21,9 @@ const Login = ({ onSignUpClick, onEnvClick, setIsRoleChecking }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // Registration roles exposed to users. These labels intentionally match the
+  // functional requirements; the stored Supabase enum values remain unchanged.
+  const [selectedRole, setSelectedRole] = useState("harvester");
   const [isForgotPasswordView, setIsForgotPasswordView] = useState(false);
 const [resetEmail, setResetEmail] = useState("");
 const [resetLoading, setResetLoading] = useState(false);
@@ -198,15 +203,22 @@ if (isForgotPasswordView) {
 
     setErrorMsg("");
 
-    // Role selection was removed: the account's role is read from its
-    // profile after authentication and the correct dashboard is rendered
-    // automatically. One account = one role, enforced by the profile.
+    if (!selectedRole) {
+      setErrorMsg("Please select your account role.");
+      return;
+    }
+
     if (!email || !password) {
       setErrorMsg("Please enter your email and password.");
       return;
     }
 
     setLoading(true);
+
+    // Persist the user's selected account type while authentication is in
+    // progress. App.jsx also checks this value during its auth listener so
+    // the wrong-role case cannot be bypassed by an auth-state race.
+    localStorage.setItem("wasteless_login_role", selectedRole);
 
     try {
       // Authenticate user
@@ -240,8 +252,6 @@ if (isForgotPasswordView) {
         throw profileError;
       }
 
-      // The profile's own role decides which dashboard opens; no manual
-      // role pick means users can never sign in "as the wrong role".
       if (!profile || !profile.role) {
         await supabase.auth.signOut();
         setErrorMsg(
@@ -249,6 +259,38 @@ if (isForgotPasswordView) {
         );
         return;
       }
+
+      // The selected role is a UI/account-type check only. The authoritative
+      // role is always read from Supabase, so a user cannot gain access to a
+      // different dashboard by changing the selection.
+      if (profile.role !== selectedRole) {
+        const roleLabels = {
+          harvester: "Second-Hand Electronics Owner/Dealer",
+          repair_shop: "Repair Shop",
+          admin: "Administrator",
+          env_officer: "Waste Management Officer",
+          seller: "Seller",
+        };
+
+        const selectedRoleLabel =
+          roleLabels[selectedRole] || selectedRole;
+        const registeredRoleLabel =
+          roleLabels[profile.role] || profile.role;
+
+        // End the authenticated session immediately. The selected role is
+        // never allowed to override the role stored in profiles.
+        await supabase.auth.signOut();
+        localStorage.removeItem("wasteless_login_role");
+
+        setErrorMsg(
+          `Wrong role selected. You selected ${selectedRoleLabel}, but this account is registered as ${registeredRoleLabel}. Please select the correct role and sign in again.`
+        );
+        return;
+      }
+
+      // The role matched the account. Remove the temporary selection before
+      // entering the dashboard so App.jsx does not treat it as a mismatch.
+      localStorage.removeItem("wasteless_login_role");
 
       if (setIsRoleChecking) {
         setIsRoleChecking(false);
@@ -259,9 +301,11 @@ if (isForgotPasswordView) {
       console.error("Login error:", error);
 
       if (error.message === "Invalid login credentials") {
-        setErrorMsg(
-          "Authentication failed. Please check your email or password."
-        );
+        const message =
+          "Authentication failed. Please check your email or password.";
+        setErrorMsg(message);
+        // TC_REG_11 requires an authentication error through a popup notification.
+        alert(message);
       } else {
         setErrorMsg(
           error.message || "An unexpected error occurred."
@@ -278,8 +322,9 @@ if (isForgotPasswordView) {
   const handleSocialLogin = async (provider) => {
     try {
       setErrorMsg("");
-      // No manual role: App.jsx routes social logins by the profile's role.
-      localStorage.removeItem("wasteless_login_role");
+      // Keep the selected role so App.jsx can reject a social login when
+      // the authenticated profile belongs to a different account type.
+      localStorage.setItem("wasteless_login_role", selectedRole);
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -346,6 +391,17 @@ if (isForgotPasswordView) {
 
         <div className="w-full max-w-[500px]">
 
+          {/* BACK TO LANDING PAGE */}
+          {onBackToHome && (
+            <button
+              type="button"
+              onClick={onBackToHome}
+              className="mb-6 text-sm font-medium text-[#2d91a8] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d91a8] rounded"
+            >
+              ← Back to home
+            </button>
+          )}
+
           {/* HEADER */}
           <div className="mb-8">
             <h2 className="text-[28px] font-bold text-[#182033] tracking-tight">
@@ -353,7 +409,7 @@ if (isForgotPasswordView) {
             </h2>
 
             <p className="text-[#7c8494] text-sm mt-1">
-              Sign in to access your dashboard
+              Select your account type and sign in to access your dashboard
             </p>
           </div>
 
@@ -380,6 +436,83 @@ if (isForgotPasswordView) {
               </button>
             </div>
           )}
+
+          {/* ACCOUNT ROLE */}
+          <div className="mb-6">
+            <label className="text-xs font-semibold text-[#4d5667] block mb-2">
+              Select Your Role
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRole("harvester");
+                  setErrorMsg("");
+                }}
+                aria-pressed={selectedRole === "harvester"}
+                className={`min-h-[104px] rounded-xl border-2 px-4 py-4 text-left transition ${
+                  selectedRole === "harvester"
+                    ? "border-[#3295aa] bg-[#f1fbfc] shadow-sm"
+                    : "border-[#dce1e7] bg-white hover:border-[#9ccbd5] hover:bg-[#f9fcfd]"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      selectedRole === "harvester"
+                        ? "bg-[#3295aa]/10 text-[#2587a2]"
+                        : "bg-[#f3f5f7] text-[#6f7785]"
+                    }`}
+                  >
+                    <Store size={19} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold leading-5 text-[#182033]">
+                      Second-Hand Electronics Owner/Dealer
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4 text-[#7c8494]">
+                      List and sell electronic devices
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRole("repair_shop");
+                  setErrorMsg("");
+                }}
+                aria-pressed={selectedRole === "repair_shop"}
+                className={`min-h-[104px] rounded-xl border-2 px-4 py-4 text-left transition ${
+                  selectedRole === "repair_shop"
+                    ? "border-[#3295aa] bg-[#f1fbfc] shadow-sm"
+                    : "border-[#dce1e7] bg-white hover:border-[#9ccbd5] hover:bg-[#f9fcfd]"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      selectedRole === "repair_shop"
+                        ? "bg-[#3295aa]/10 text-[#2587a2]"
+                        : "bg-[#f3f5f7] text-[#6f7785]"
+                    }`}
+                  >
+                    <Wrench size={19} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold leading-5 text-[#182033]">
+                      Repair Shop
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4 text-[#7c8494]">
+                      Browse and bid on eligible devices
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
 
           {/* LOGIN FORM */}
           <form onSubmit={handleEmailLogin} className="space-y-5">

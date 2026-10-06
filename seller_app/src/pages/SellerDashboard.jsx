@@ -1684,12 +1684,20 @@ const SellerDashboard = ({ session }) => {
         return;
       }
 
-      if (
-        ["completed", "cancelled"].includes(
-          String(txToCancel.status || "").toLowerCase()
-        )
-      ) {
-        alert("This transaction is already closed and cannot be cancelled.");
+      const cancelableStatuses = ["pending", "matched"];
+      const currentCancelStatus = String(txToCancel.status || "").trim().toLowerCase();
+
+      // FR #9.2.2.1: cancellation is allowed only before meetup confirmation.
+      // Once a meetup is scheduled, the transaction must proceed to handover,
+      // completion, or automatic Pending Review instead.
+      if (!cancelableStatuses.includes(currentCancelStatus)) {
+        alert(
+          currentCancelStatus === "meetup_scheduled"
+            ? "This transaction cannot be cancelled because the meetup has already been scheduled."
+            : currentCancelStatus === "pending_review"
+              ? "This transaction is already Pending Review and can only be resolved by an Administrator."
+              : "This transaction is already closed or is not eligible for cancellation."
+        );
         return;
       }
 
@@ -4034,15 +4042,37 @@ const SellerDashboard = ({ session }) => {
                                         : "Repair Matched"
                                     : isCompleted
                                       ? "Completed"
-                                      : isMeetupScheduled
-                                        ? "Meetup Scheduled"
-                                        : "Matched"}
+                                      : isPendingReview
+                                        ? "Pending Review"
+                                        : isMeetupScheduled
+                                          ? "Meetup Scheduled"
+                                          : "Matched"}
                                 </span>
                                 <span className="bg-white/10 px-3 py-1 rounded-full text-xs font-black uppercase">
                                   {isSeller ? "You are selling" : "You are buying"}
                                 </span>
                               </div>
                             </div>
+
+                            {/* FR #9.2.2.2 / REQ-6: timeout review state */}
+                            {isPendingReview && (
+                              <div className="mx-8 mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                                <div className="flex items-start gap-3">
+                                  <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-600" />
+                                  <div>
+                                    <p className="text-sm font-black text-amber-800">Transaction Pending Review</p>
+                                    <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                                      The scheduled handover was not confirmed within the allowed period. The transaction has been flagged for Administrator review.
+                                    </p>
+                                    {tx.pending_review_at && (
+                                      <p className="mt-2 text-[11px] font-bold text-amber-600">
+                                        Flagged: {new Date(tx.pending_review_at).toLocaleString()}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
 
                             {/* PROGRESS */}
                             <div className="p-10 border-b border-slate-50">
@@ -4070,9 +4100,9 @@ const SellerDashboard = ({ session }) => {
                               ) : (
                                 <div className="relative flex justify-between items-center max-w-lg mx-auto">
                                   <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2" />
-                                  <div className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${isCompleted ? "bg-green-500 w-full" : isMeetupScheduled ? "bg-blue-500 w-1/2" : "bg-blue-500 w-0"}`} />
+                                  <div className={`absolute top-1/2 left-0 h-1 transition-all duration-700 -translate-y-1/2 ${isCompleted ? "bg-green-500 w-full" : isPendingReview ? "bg-amber-500 w-1/2" : isMeetupScheduled ? "bg-blue-500 w-1/2" : "bg-blue-500 w-0"}`} />
                                   <div className="relative z-10 flex flex-col items-center"><div className="bg-white p-1 rounded-full border-2 border-green-500 text-green-500"><Check size={14} strokeWidth={3} /></div><span className="absolute -bottom-7 text-xs font-bold text-slate-500 whitespace-nowrap">Matched</span></div>
-                                  <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isMeetupScheduled || isCompleted ? "border-blue-500 text-blue-500" : "border-slate-200 text-slate-300"}`}>{isMeetupScheduled || isCompleted ? <Check size={14} strokeWidth={3} /> : <Clock size={14} />}</div><span className="absolute -bottom-7 text-xs font-bold text-slate-500 whitespace-nowrap">Meetup Scheduled</span></div>
+                                  <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-blue-500 text-blue-500" : isPendingReview || isMeetupScheduled ? "border-amber-500 text-amber-500" : "border-slate-200 text-slate-300"}`}>{isCompleted || isPendingReview || isMeetupScheduled ? <Check size={14} strokeWidth={3} /> : <Clock size={14} />}</div><span className="absolute -bottom-7 text-xs font-bold text-slate-500 whitespace-nowrap">Meetup Scheduled</span></div>
                                   <div className="relative z-10 flex flex-col items-center"><div className={`bg-white p-1 rounded-full border-2 ${isCompleted ? "border-green-500 text-green-500" : "border-slate-200 text-slate-300"}`}><Check size={14} strokeWidth={3} className={isCompleted ? "opacity-100" : "opacity-0"} /></div><span className="absolute -bottom-7 text-xs font-bold text-slate-500 whitespace-nowrap">Handover Complete</span></div>
                                 </div>
                               )}
@@ -4249,6 +4279,8 @@ const SellerDashboard = ({ session }) => {
                                     <div className="space-y-3"><div className="bg-purple-50 border border-purple-100 rounded-xl p-4"><p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p><p className="text-xs text-purple-600 mt-1">The repair shop will mark the repair service as completed after the device has been repaired.</p></div></div>
                                   ) : isBuyer && isMeetupScheduled ? (
                                     <div className="space-y-3"><div className="bg-amber-50 border border-amber-100 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Handover Pending</p><p className="text-xs text-amber-600 mt-1">After you receive the item at the scheduled meetup, confirm the handover below.</p></div><button onClick={() => handleCompleteTransaction(tx.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"><CheckCheck size={18}/> Confirm Handover Complete</button></div>
+                                  ) : isPendingReview ? (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Awaiting Administrator Review</p><p className="text-xs text-amber-700 mt-1">No further participant action is available while this transaction is under review.</p></div>
                                   ) : isSeller && !isMeetupScheduled ? (
                                     <div className="space-y-3"><button onClick={() => {setShowMessages(true);setActiveTab("listings");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> Schedule Meetup via Messages</button><button onClick={() => setShowCancelModal(true)} className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"><XCircle size={18}/> Cancel Transaction</button></div>
                                   ) : isSeller && isMeetupScheduled ? (
@@ -4633,303 +4665,7 @@ const SellerDashboard = ({ session }) => {
                   </div>
                 )}
 
-                {/* MY LISTINGS + BIDS */}
-                <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                  <div className="flex items-center justify-between border-b pb-2">
-                    <h3 className="font-bold text-gray-800 text-sm">
-                      My Listings & Bids
-                    </h3>
-                    <span className="text-xs font-bold text-slate-400">
-                      {myListings.length} listings
-                    </span>
-                  </div>
-
-                  {myListings.length > 0 ? (
-                    <div className="space-y-5">
-                      {myListings.map((item) => {
-                        const activeBids = (item.bids || []).filter(
-                          (bid) => bid.status !== "declined",
-                        );
-
-                        const askingPrice = Number(item.asking_price || 0);
-
-                        return (
-                          <div
-                            key={item.id}
-                            className="bg-white border border-slate-200 rounded-[1.75rem] p-5 sm:p-6 shadow-sm"
-                          >
-                            <div className="flex flex-col lg:flex-row gap-6">
-
-                              {/* =========================
-          LEFT — LISTING INFORMATION
-      ========================== */}
-                              <div className="flex-1 min-w-0">
-
-                                <div className="flex items-start justify-between gap-4">
-                                  <div>
-                                    <p className="text-lg font-black text-slate-800">
-                                      {item.device_model}
-                                    </p>
-
-                                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                                      <span className="text-xs font-bold text-slate-500">
-                                        Asking Price:
-                                      </span>
-
-                                      <span className="text-xs font-black text-[#3285a1]">
-                                        ₱{askingPrice.toLocaleString()}
-                                      </span>
-
-                                      <span className="text-slate-300">•</span>
-
-                                      <span className="text-xs text-slate-400">
-                                        {item.status}
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="bg-[#3285a1]/10 text-[#3285a1] px-3 py-2 rounded-full shrink-0">
-                                    <span className="text-xs font-black">
-                                      {activeBids.length}{" "}
-                                      {activeBids.length === 1 ? "BID" : "BIDS"}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* LISTING DETAILS */}
-                                <div className="grid grid-cols-2 gap-3 mt-5">
-
-                                  <div className="bg-slate-50 rounded-xl p-3">
-                                    <p className="text-xs uppercase font-bold text-slate-400">
-                                      Condition
-                                    </p>
-
-                                    <p className="text-sm font-black text-slate-700 mt-1">
-                                      {item.condition || "Not specified"}
-                                    </p>
-                                  </div>
-
-                                  <div className="bg-slate-50 rounded-xl p-3">
-                                    <p className="text-xs uppercase font-bold text-slate-400">
-                                      Asking Price
-                                    </p>
-
-                                    <p className="text-sm font-black text-[#3285a1] mt-1">
-                                      ₱{askingPrice.toLocaleString()}
-                                    </p>
-                                  </div>
-
-                                </div>
-
-                              </div>
-
-
-                              {/* =========================
-          RIGHT — BIDS RECEIVED
-      ========================== */}
-                              <div className="w-full lg:w-[390px] lg:border-l lg:border-slate-100 lg:pl-6">
-
-                                <div className="flex items-center justify-between mb-3">
-                                  <div>
-                                    <p className="text-xs uppercase tracking-wider font-black text-slate-400">
-                                      Bids Received
-                                    </p>
-
-                                    <p className="text-xs text-slate-500 mt-1">
-                                      Offers from harvesters
-                                    </p>
-                                  </div>
-
-                                  <div className="w-9 h-9 rounded-xl bg-[#3285a1]/10 flex items-center justify-center">
-                                    <Gavel
-                                      size={17}
-                                      className="text-[#3285a1]"
-                                    />
-                                  </div>
-                                </div>
-
-
-                                {/* BIDS */}
-                                {activeBids.length > 0 ? (
-                                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-
-                                    {activeBids.map((bid) => {
-
-                                      const bidAmount = Number(bid.amount || 0);
-
-                                      const bidderName =
-                                        getBuyerDisplayName(bid.profiles);
-
-                                      const bidderRole =
-                                        getBuyerRoleLabel(
-                                          bid.profiles?.role
-                                        );
-
-                                      const initials =
-                                        bidderName
-                                          ?.split(" ")
-                                          .map((n) => n[0])
-                                          .join("")
-                                          .slice(0, 2)
-                                          .toUpperCase() || "TH";
-
-                                      return (
-                                        <div
-                                          key={bid.id}
-                                          className="border border-slate-200 rounded-2xl p-4 bg-slate-50"
-                                        >
-
-                                          {/* BIDDER */}
-                                          <div className="flex items-center justify-between gap-3">
-
-                                            <div className="flex items-center gap-3 min-w-0">
-
-                                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3285a1] to-[#6da43a] text-white flex items-center justify-center text-xs font-black shrink-0">
-                                                {initials}
-                                              </div>
-
-                                              <div className="min-w-0">
-
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    setSelectedBidder({
-                                                      ...bid.profiles,
-                                                      id: bid.bidder_id,
-                                                    })
-                                                  }
-                                                  className="text-xs font-black text-slate-800 hover:text-[#3285a1] transition truncate block text-left"
-                                                >
-                                                  {bidderName}
-                                                </button>
-
-                                                <span className="text-xs font-bold text-[#3285a1]">
-                                                  {bidderRole}
-                                                </span>
-
-                                              </div>
-
-                                            </div>
-
-
-                                            {/* OFFER AMOUNT */}
-                                            <div className="text-right shrink-0">
-
-                                              <p className="text-xs uppercase font-bold text-slate-400">
-                                                Offer
-                                              </p>
-
-                                              <p className="text-lg font-black text-[#3285a1]">
-                                                ₱{bidAmount.toLocaleString()}
-                                              </p>
-
-                                            </div>
-
-                                          </div>
-
-
-                                          {/* STATUS */}
-                                          <div className="flex items-center justify-between mt-3">
-
-                                            <span
-                                              className={`px-2.5 py-1 rounded-full text-xs font-black ${bid.status === "accepted"
-                                                ? "bg-emerald-100 text-emerald-700"
-                                                : bid.status === "declined"
-                                                  ? "bg-red-100 text-red-600"
-                                                  : "bg-amber-100 text-amber-700"
-                                                }`}
-                                            >
-                                              {bid.status === "accepted"
-                                                ? "Accepted"
-                                                : bid.status === "declined"
-                                                  ? "Declined"
-                                                  : "Pending"}
-                                            </span>
-
-                                            {bid.created_at && (
-                                              <span className="text-xs text-slate-400">
-                                                {new Date(
-                                                  bid.created_at
-                                                ).toLocaleDateString("en-US", {
-                                                  month: "short",
-                                                  day: "numeric",
-                                                  year: "numeric",
-                                                })}
-                                              </span>
-                                            )}
-
-                                          </div>
-
-
-                                          {/* ACTIONS */}
-                                          {bid.status === "pending" && (
-                                            <div className="flex gap-2 mt-3">
-
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleAcceptBid(bid, item)
-                                                }
-                                                className="flex-1 bg-[#3285a1] text-white py-2.5 rounded-xl text-xs font-black hover:bg-[#2a7089] transition flex items-center justify-center gap-1.5"
-                                              >
-                                                <Check size={13} />
-                                                Accept
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleDeclineBid(bid, item)
-                                                }
-                                                className="flex-1 bg-white border border-red-200 text-red-500 py-2.5 rounded-xl text-xs font-black hover:bg-red-50 transition flex items-center justify-center gap-1.5"
-                                              >
-                                                <X size={13} />
-                                                Decline
-                                              </button>
-
-                                            </div>
-                                          )}
-
-                                        </div>
-                                      );
-                                    })}
-
-                                  </div>
-
-                                ) : (
-
-                                  /* NO BIDS */
-                                  <div className="border border-dashed border-slate-200 rounded-2xl p-6 text-center">
-
-                                    <Gavel
-                                      size={25}
-                                      className="mx-auto text-slate-300"
-                                    />
-
-                                    <p className="text-xs font-bold text-slate-500 mt-2">
-                                      No bids received yet
-                                    </p>
-
-                                    <p className="text-xs text-slate-400 mt-1">
-                                      Offers from verified harvesters will appear here.
-                                    </p>
-
-                                  </div>
-                                )}
-
-                              </div>
-
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 text-center py-6">
-                      You have not created any listings yet.
-                    </p>
-                  )}
-                </div>
+                
               </div>
             </div>
           </div>
