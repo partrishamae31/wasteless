@@ -48,6 +48,7 @@ import {
   Link2,
   Gavel,
   Download,
+  Lock,
 } from "lucide-react";
 const isRepairTransaction = (transaction) => {
   const type = String(transaction?.transaction_type || "").trim().toLowerCase();
@@ -73,6 +74,42 @@ const getRepairIssue = (transaction) =>
 
 const getRepairNotes = (transaction) =>
   getRepairField(transaction, "Notes", "");
+
+// Marketplace reputation is intentionally kept separate from Repair Service
+// reputation. `profiles.average_rating` / `total_reviews` are the marketplace
+// participant score used by Trust Tier and marketplace seller displays.
+// Repair Service ratings live in `repair_reviews` and are displayed separately.
+const syncUserReputation = async (userId) => {
+  if (!userId) return null;
+
+  const { data: marketplaceReviews, error: marketplaceError } = await supabase
+    .from("reviews")
+    .select("overall_rating")
+    .eq("seller_id", userId);
+
+  if (marketplaceError) throw marketplaceError;
+
+  const eligibleRatings = (marketplaceReviews || [])
+    .map((review) => Number(review?.overall_rating))
+    .filter((rating) => Number.isFinite(rating) && rating > 0);
+
+  const totalReviews = eligibleRatings.length;
+  const averageRating = totalReviews
+    ? eligibleRatings.reduce((sum, rating) => sum + rating, 0) / totalReviews
+    : 0;
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({
+      average_rating: Number(averageRating.toFixed(2)),
+      total_reviews: totalReviews,
+    })
+    .eq("id", userId);
+
+  if (profileError) throw profileError;
+
+  return { averageRating, totalReviews };
+};
 
 const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubmitted }) => {
   const [communication, setCommunication] = useState(0);
@@ -145,6 +182,35 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
     setSubmitting(true);
 
     try {
+      // Re-check the transaction from Supabase immediately before inserting.
+      // This prevents a stale open modal from submitting a rating after the
+      // transaction has been cancelled/reverted since the dashboard loaded.
+      const { data: latestTransaction, error: latestTransactionError } = await supabase
+        .from("transactions")
+        .select("id,status,repair_appointment_id,harvester_id")
+        .eq("id", transaction.id)
+        .maybeSingle();
+
+      if (latestTransactionError) throw latestTransactionError;
+
+      if (!latestTransaction || String(latestTransaction.status || "").trim().toLowerCase() !== "completed") {
+        alert("This repair service is no longer eligible for rating because the transaction is not completed.");
+        onClose();
+        return;
+      }
+
+      if (latestTransaction.repair_appointment_id !== transaction.repair_appointment_id) {
+        alert("The repair appointment information has changed. Please refresh and try again.");
+        onClose();
+        return;
+      }
+
+      if (latestTransaction.harvester_id !== transaction.harvester_id) {
+        alert("The repair shop information has changed. Please refresh and try again.");
+        onClose();
+        return;
+      }
+
       const { data: existingReview, error: existingError } = await supabase
         .from("repair_reviews")
         .select("id")
@@ -175,7 +241,23 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // TC_RATE_06: also handle the database uniqueness constraint when two
+        // submissions race each other or the modal was opened in two tabs.
+        if (error.code === "23505") {
+          alert("You have already reviewed this repair service.");
+          onSubmitted?.(data);
+          onClose();
+          return;
+        }
+        throw error;
+      }
+
+      // Keep marketplace profile reputation fields synchronized with
+      // marketplace reviews only. Repair Service reviews must never change
+      // profiles.average_rating / profiles.total_reviews because TC_RATE_09
+      // and TC_RATE_10 require separate Purchase and Repair Service scores.
+      await syncUserReputation(transaction.harvester_id);
 
       onSubmitted?.(data);
       alert("Repair shop rated successfully!");
@@ -422,33 +504,8 @@ const MarketplaceRatingModal = ({
 
       if (insertError) throw insertError;
 
-      const { data: allReviews, error: reviewsError } = await supabase
-        .from("reviews")
-        .select("overall_rating")
-        .eq("seller_id", ratedUserId);
-
-      if (reviewsError) throw reviewsError;
-
-      const validReviews = (allReviews || []).filter(
-        (review) => Number(review.overall_rating) > 0
-      );
-      const totalReviews = validReviews.length;
-      const averageRating = totalReviews
-        ? validReviews.reduce(
-            (sum, review) => sum + Number(review.overall_rating),
-            0
-          ) / totalReviews
-        : 0;
-
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          average_rating: averageRating,
-          total_reviews: totalReviews,
-        })
-        .eq("id", ratedUserId);
-
-      if (profileError) throw profileError;
+      // Recalculate reputation from all eligible review sources.
+      await syncUserReputation(ratedUserId);
 
       onSubmitted?.(transaction.id, insertedReview);
       alert(`${isRatingBuyer ? "Buyer" : "Seller"} rated successfully!`);
@@ -836,6 +893,7 @@ const SellerDashboard = ({ session }) => {
   const [myDonations, setMyDonations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileModalTab, setProfileModalTab] = useState("profile");
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -843,7 +901,7 @@ const SellerDashboard = ({ session }) => {
   const [passwordSuccess, setPasswordSuccess] = useState("");
 
   const handleChangePassword = async (event) => {
-    event.preventDefault();
+    event?.preventDefault();
     setPasswordError("");
     setPasswordSuccess("");
     if (passwordForm.next.length < 6) return setPasswordError("Your new password must contain at least 6 characters.");
@@ -888,6 +946,8 @@ const SellerDashboard = ({ session }) => {
   const [checkingRole, setCheckingRole] = useState(true);
   const [notifications, setNotifications] = useState([]);
   const [donationReminder, setDonationReminder] = useState(null);
+  const [expiredListingAction, setExpiredListingAction] = useState(null);
+  const [processingExpiredListing, setProcessingExpiredListing] = useState(false);
   const [donationConfig, setDonationConfig] = useState({
     firstReminder: 7,
     secondReminder: 3,
@@ -900,12 +960,14 @@ const SellerDashboard = ({ session }) => {
 
   // Trust Tier data is loaded from the same trust_tiers table used by Admin.
   const [trustTiers, setTrustTiers] = useState([]);
+  const [sellerTrustTiers, setSellerTrustTiers] = useState({});
   const [trustTierLoading, setTrustTierLoading] = useState(true);
   const [trustTierError, setTrustTierError] = useState("");
   const [userTrustStats, setUserTrustStats] = useState({
     completedTransactions: 0,
     averageRating: 0,
     totalReviews: 0,
+    trustTierId: null,
   });
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [listingToDonate, setListingToDonate] = useState(null);
@@ -1087,6 +1149,54 @@ const SellerDashboard = ({ session }) => {
     setIsDonationModalOpen(true);
   };
 
+  // Hazardous/Not Working and Parts listings cannot remain bid-eligible after
+  // their safe-storage period. Once expired, the owner must resolve the listing
+  // by donating it or unlisting it.
+  const handleUnlistExpiredListing = async (listing) => {
+    if (!listing?.id || !session?.user?.id) return;
+
+    setProcessingExpiredListing(true);
+    try {
+      const { data, error } = await supabase
+        .from("listings")
+        .update({ status: "inactive" })
+        .eq("id", listing.id)
+        .eq("seller_id", session.user.id)
+        .in("status", ["expired", "active"])
+        .select("id,status,device_model,category,condition")
+        .single();
+
+      if (error) throw error;
+
+      // Pending offers must no longer be actionable once the listing is removed.
+      const { error: bidError } = await supabase
+        .from("bids")
+        .update({ status: "declined" })
+        .eq("listing_id", listing.id)
+        .eq("status", "pending");
+
+      if (bidError) {
+        console.warn("Unable to close pending bids for unlisted item:", bidError.message);
+      }
+
+      setMyListings((prev) =>
+        prev.map((item) =>
+          item.id === listing.id ? { ...item, ...(data || {}), status: "inactive" } : item
+        )
+      );
+      setListings((prev) => prev.filter((item) => item.id !== listing.id));
+      setDonationReminder((prev) => (prev?.id === listing.id ? null : prev));
+      setExpiredListingAction(null);
+
+      alert("The expired listing has been unlisted and bidding is disabled.");
+    } catch (error) {
+      console.error("Unlist expired listing error:", error);
+      alert(`Failed to unlist the expired listing: ${error.message}`);
+    } finally {
+      setProcessingExpiredListing(false);
+    }
+  };
+
   const handleConfirmDonation = async (
   listingId,
   dropOffPointId = null,
@@ -1186,17 +1296,49 @@ const SellerDashboard = ({ session }) => {
 };
 
   const handleOpenRepairReview = async (transaction) => {
-    if (!transaction?.repair_appointment_id) return alert("Repair appointment information is missing.");
+    if (!transaction?.id) {
+      alert("Transaction information is missing.");
+      return;
+    }
+
+    // TC_RATE_04 / TC_RATE_08 / TC_RATE_09: a repair-service rating is
+    // available only after the corresponding transaction is actually completed.
+    if (String(transaction.status || "").trim().toLowerCase() !== "completed") {
+      alert("You can rate the Repair Shop only after the repair transaction is completed.");
+      return;
+    }
+
+    if (!transaction?.repair_appointment_id) {
+      alert("Repair appointment information is missing.");
+      return;
+    }
+
+    if (!session?.user?.id) {
+      alert("Your account information is missing. Please log in again.");
+      return;
+    }
+
     try {
-      const { data, error } = await supabase.from("repair_reviews").select("id")
+      // TC_RATE_06: check the unique reviewer + appointment pair before
+      // opening the form. The database check inside RepairReviewModal remains
+      // the final duplicate guard for concurrent/repeated submissions.
+      const { data, error } = await supabase
+        .from("repair_reviews")
+        .select("id")
         .eq("appointment_id", transaction.repair_appointment_id)
-        .eq("reviewer_id", session.user.id).maybeSingle();
+        .eq("reviewer_id", session.user.id)
+        .maybeSingle();
+
       if (error) throw error;
+
       if (data) {
-        setReviewedRepairAppointments((prev) => new Set(prev).add(transaction.repair_appointment_id));
+        setReviewedRepairAppointments((prev) =>
+          new Set(prev).add(transaction.repair_appointment_id),
+        );
         alert("You have already reviewed this repair service.");
         return;
       }
+
       setSelectedRepairReviewTransaction(transaction);
       setShowRepairReviewModal(true);
     } catch (error) {
@@ -1382,7 +1524,7 @@ const SellerDashboard = ({ session }) => {
       setTrustTierError("");
 
       try {
-        const [tiersResult, txResult, marketplaceReviewsResult, repairReviewsResult] =
+        const [tiersResult, txResult, trustResult, marketplaceReviewsResult] =
           await Promise.all([
             supabase
               .from("trust_tiers")
@@ -1390,23 +1532,25 @@ const SellerDashboard = ({ session }) => {
               .order("min_transactions", { ascending: true }),
             supabase
               .from("transactions")
-              .select("id,seller_id,harvester_id,status")
+              .select("id,seller_id,harvester_id,status,carbon_saved")
               .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
               .eq("status", "completed"),
             supabase
+              .from("user_trust_tiers")
+              .select("trust_tier_id,completed_transactions,average_rating,total_reviews")
+              .eq("user_id", userId)
+              .maybeSingle(),
+            supabase
               .from("reviews")
               .select("overall_rating")
-              .eq("seller_id", userId),
-            supabase
-              .from("repair_reviews")
-              .select("overall_rating")
-              .eq("repair_shop_id", userId),
+              .eq("seller_id", userId)
+              .eq("moderation_status", "approved"),
           ]);
 
         if (tiersResult.error) throw tiersResult.error;
         if (txResult.error) throw txResult.error;
+        if (trustResult.error) throw trustResult.error;
         if (marketplaceReviewsResult.error) throw marketplaceReviewsResult.error;
-        if (repairReviewsResult.error) throw repairReviewsResult.error;
 
         const tiers = (tiersResult.data || []).map((tier) => ({
           ...tier,
@@ -1415,28 +1559,77 @@ const SellerDashboard = ({ session }) => {
           privileges: Array.isArray(tier.privileges) ? tier.privileges : [],
         }));
 
-        const allReviews = [
-          ...(marketplaceReviewsResult.data || []),
-          ...(repairReviewsResult.data || []),
-        ].filter((review) => Number(review.overall_rating) > 0);
-
-        const completedTransactions = (txResult.data || []).length;
-        const totalReviews = allReviews.length;
-        const averageRating = totalReviews
-          ? allReviews.reduce((sum, review) => sum + Number(review.overall_rating), 0) / totalReviews
+        // Owner/Dealer trust tiers use marketplace reviews only. Repair-shop
+        // reviews remain separate and continue to use the existing repair
+        // review flow elsewhere in this dashboard. The database evaluator is
+        // the source of truth when a user_trust_tiers row exists; the fallback
+        // keeps the dashboard working while that row is being initialized.
+        const completedTransactionsData = txResult.data || [];
+        const calculatedCompletedTransactions = completedTransactionsData.length;
+        const eligibleRatings = (marketplaceReviewsResult.data || [])
+          .map((review) => Number(review.overall_rating))
+          .filter((rating) => Number.isFinite(rating) && rating > 0);
+        const calculatedTotalReviews = eligibleRatings.length;
+        const calculatedAverageRating = calculatedTotalReviews
+          ? eligibleRatings.reduce((sum, rating) => sum + rating, 0) / calculatedTotalReviews
           : 0;
+
+        const trustRow = trustResult.data || null;
+        const completedTransactions = trustRow
+          ? Number(trustRow.completed_transactions || 0)
+          : calculatedCompletedTransactions;
+        const totalReviews = trustRow
+          ? Number(trustRow.total_reviews || 0)
+          : calculatedTotalReviews;
+        const averageRating = trustRow
+          ? Number(trustRow.average_rating || 0)
+          : calculatedAverageRating;
+
+        // CO₂ recovery is earned from completed transactions where this
+        // account is the harvester/buyer. Do not count completed sales made
+        // by the account as recovered devices.
+        const completedHarvestingTransactions = completedTransactionsData.filter(
+          (transaction) =>
+            transaction.harvester_id === userId &&
+            transaction.status === "completed",
+        );
+
+        const recoveredDevices = completedHarvestingTransactions.length;
+        const co2RecoveredKg = completedHarvestingTransactions.reduce(
+          (sum, transaction) => sum + Number(transaction.carbon_saved || 0),
+          0,
+        );
 
         setTrustTiers(tiers);
         setUserTrustStats({
           completedTransactions,
           averageRating,
           totalReviews,
+          trustTierId: trustRow?.trust_tier_id || null,
+          recoveredDevices,
+          co2RecoveredKg: Number(co2RecoveredKg.toFixed(2)),
         });
+
+        // Keep the profile drawer synchronized with the same source used by
+        // the Trust Tier calculation.
+        setProfileData((prev) => ({
+          ...(prev || {}),
+          recovered_devices: recoveredDevices,
+          completed_pickups: recoveredDevices,
+          co2_recovered_kg: Number(co2RecoveredKg.toFixed(2)),
+        }));
       } catch (error) {
         console.error("Error loading trust tier:", error);
         setTrustTierError(error.message || "Unable to load trust tier.");
         setTrustTiers([]);
-        setUserTrustStats({ completedTransactions: 0, averageRating: 0, totalReviews: 0 });
+        setUserTrustStats({
+          completedTransactions: 0,
+          averageRating: 0,
+          totalReviews: 0,
+          trustTierId: null,
+          recoveredDevices: 0,
+          co2RecoveredKg: 0,
+        });
       } finally {
         setTrustTierLoading(false);
       }
@@ -1449,7 +1642,13 @@ const SellerDashboard = ({ session }) => {
     (a, b) => Number(a.min_transactions) - Number(b.min_transactions)
   );
 
+  // Recovery values shown in the Trust Tier panel are derived from
+  // completed harvesting transactions, not from the profile row.
+  const trustRecoveryCo2 = Number(userTrustStats?.co2RecoveredKg ?? 0);
+  const trustRecoveredDevices = Number(userTrustStats?.recoveredDevices ?? 0);
+
   const currentTrustTier =
+    sortedTrustTiers.find((tier) => tier.id === userTrustStats.trustTierId) ||
     sortedTrustTiers
       .filter(
         (tier) =>
@@ -1484,6 +1683,143 @@ const SellerDashboard = ({ session }) => {
   const progressPercent = nextTrustTier
     ? Math.round(Math.min(transactionProgress, ratingProgress))
     : 100;
+
+  const normalizePrivilege = (privilege) =>
+    String(privilege || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ");
+
+  const hasTrustPrivilege = (privilegeNames = []) => {
+    const currentPrivileges = (currentTrustTier?.privileges || []).map(normalizePrivilege);
+    if (!currentPrivileges.length) return true;
+    const requested = privilegeNames.map(normalizePrivilege);
+    return requested.some((name) =>
+      currentPrivileges.some(
+        (available) =>
+          available === name ||
+          (available.includes(name) && !/(premium|advanced|priority|featured|exclusive)/i.test(available))
+      )
+    );
+  };
+
+  const getTrustTierBadgeText = (tier) =>
+    tier?.name ? `${getTrustTierLabel(tier.name)} Trust Tier` : "Trust Tier";
+
+  // Reputation status changes are persisted as in-app notifications. Local
+  // storage is used only as a deduplication marker; the database remains the
+  // source of truth for the actual notification.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId || trustTierLoading || !trustTiers.length) return;
+
+    const runReputationNotifications = async () => {
+      try {
+        // Trust-tier elevation/downgrade notifications are now created by
+        // evaluate_user_trust_tier() in Supabase. This effect keeps the
+        // existing proximity notification functionality without creating
+        // duplicate tier-change notifications from the browser.
+
+        if (nextTrustTier) {
+          const transactionRequirement = Math.max(Number(nextTrustTier.min_transactions || 0), 1);
+          const ratingRequirement = Math.max(Number(nextTrustTier.min_rating || 0), 0.1);
+          const transactionRatio = userTrustStats.completedTransactions / transactionRequirement;
+          const ratingRatio = userTrustStats.averageRating / ratingRequirement;
+          const proximityThreshold = 0.90;
+          const isNearNextTier =
+            (transactionRatio >= proximityThreshold && userTrustStats.averageRating > 0) ||
+            (ratingRatio >= proximityThreshold && userTrustStats.completedTransactions > 0);
+
+          if (isNearNextTier) {
+            const proximityKey = `tier-proximity:${nextTrustTier.name}`;
+            const proximityStorageKey = `wasteless-reputation-notification:${userId}:${proximityKey}`;
+            if (!window.localStorage.getItem(proximityStorageKey)) {
+              const missingTransactions = Math.max(0, transactionRequirement - userTrustStats.completedTransactions);
+              const missingRating = Math.max(0, ratingRequirement - userTrustStats.averageRating);
+              const content = `You are close to ${getTrustTierBadgeText(nextTrustTier)}. ${missingTransactions > 0 ? `${missingTransactions} more completed transaction${missingTransactions === 1 ? "" : "s"}` : "Your transaction requirement is met"} and ${missingRating > 0 ? `an average rating of ${ratingRequirement.toFixed(1)} is still needed` : "your rating requirement is met"}.`;
+              const { error } = await supabase.from("notifications").insert({
+                user_id: userId,
+                type: "trust_tier_proximity",
+                title: `Almost ${getTrustTierLabel(nextTrustTier.name)}!`,
+                content,
+                description: content,
+                is_read: false,
+              });
+              if (!error) window.localStorage.setItem(proximityStorageKey, "1");
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("Reputation notification check failed:", error);
+      }
+    };
+
+    runReputationNotifications();
+  }, [
+    session?.user?.id,
+    trustTierLoading,
+    trustTiers,
+    currentTrustTier?.name,
+    nextTrustTier?.name,
+    userTrustStats.completedTransactions,
+    userTrustStats.averageRating,
+  ]);
+
+  useEffect(() => {
+    const loadMarketplaceSellerTiers = async () => {
+      const userId = session?.user?.id;
+      if (!userId || !trustTiers.length || !listings.length) return;
+
+      try {
+        const sellerIds = [...new Set(listings.map((listing) => listing.seller_id).filter(Boolean))];
+        if (!sellerIds.length) return;
+
+        const [{ data: sellerTransactions, error: txError }, { data: sellerReviews, error: reviewError }] = await Promise.all([
+          supabase
+            .from("transactions")
+            .select("seller_id,harvester_id,status")
+            .eq("status", "completed")
+            .or(sellerIds.map((id) => `seller_id.eq.${id}`).join(",") + "," + sellerIds.map((id) => `harvester_id.eq.${id}`).join(",")),
+          supabase
+            .from("reviews")
+            .select("seller_id,overall_rating")
+            .in("seller_id", sellerIds)
+            .eq("moderation_status", "approved"),
+        ]);
+
+        if (txError) throw txError;
+        if (reviewError) throw reviewError;
+
+        const next = {};
+        sellerIds.forEach((sellerId) => {
+          const completed = (sellerTransactions || []).filter(
+            (tx) => tx.seller_id === sellerId || tx.harvester_id === sellerId
+          ).length;
+          const ratings = (sellerReviews || [])
+            .filter((review) => review.seller_id === sellerId)
+            .map((review) => Number(review.overall_rating))
+            .filter((rating) => Number.isFinite(rating) && rating > 0);
+          const average = ratings.length
+            ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
+            : 0;
+          const tier = [...trustTiers]
+            .sort((a, b) => Number(a.min_transactions) - Number(b.min_transactions))
+            .filter(
+              (candidate) =>
+                completed >= Number(candidate.min_transactions) &&
+                average >= Number(candidate.min_rating)
+            )
+            .at(-1);
+          next[sellerId] = tier || trustTiers.find((candidate) => candidate.name === "NEWCOMER") || null;
+        });
+        setSellerTrustTiers(next);
+      } catch (error) {
+        console.warn("Unable to calculate marketplace seller trust tiers:", error);
+      }
+    };
+
+    loadMarketplaceSellerTiers();
+  }, [listings, trustTiers, session?.user?.id]);
 
   const getTrustTierLabel = (name) => {
     const labels = {
@@ -2445,17 +2781,182 @@ const SellerDashboard = ({ session }) => {
       window.clearInterval(refreshTimer);
     };
   }, [session?.user?.id]);
+  // Load profile data together with the user's completed harvesting
+  // transactions so the Trust Tier CO₂ card always reflects the database.
+  // carbon_saved is stored on transactions and is the source of truth for
+  // the recovery contribution.
   useEffect(() => {
     const fetchProfile = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      setProfileData(data);
+      if (!session?.user?.id || !isAuthorized) return;
+
+      try {
+        const userId = session.user.id;
+
+        const [{ data: profile, error: profileError }, { data: recoveryTransactions, error: recoveryError }] =
+          await Promise.all([
+            supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", userId)
+              .single(),
+            supabase
+              .from("transactions")
+              .select("id, harvester_id, status, carbon_saved")
+              .eq("harvester_id", userId)
+              .eq("status", "completed"),
+          ]);
+
+        if (profileError) throw profileError;
+
+        if (recoveryError) {
+          console.error("Error loading CO₂ recovery data:", recoveryError);
+        }
+
+        const completedRecoveryTransactions = recoveryTransactions || [];
+        const recoveredDevices = completedRecoveryTransactions.length;
+        const co2RecoveredKg = completedRecoveryTransactions.reduce(
+          (sum, transaction) => sum + Number(transaction.carbon_saved || 0),
+          0,
+        );
+
+        setProfileData({
+          ...profile,
+          recovered_devices: recoveredDevices,
+          completed_pickups: recoveredDevices,
+          co2_recovered_kg: Number(co2RecoveredKg.toFixed(2)),
+        });
+      } catch (error) {
+        console.error("Error loading profile:", error);
+      }
     };
-    if (session && isAuthorized) fetchProfile(); // Added isAuthorized check inside
-  }, [session, isAuthorized]);
+
+    fetchProfile();
+  }, [session?.user?.id, isAuthorized]);
+
+  useEffect(() => {
+    if (!myListings || myListings.length === 0) return;
+
+    const now = Date.now();
+    const SAFE_STORAGE_DAYS = 60;
+    const safeStorageMs = SAFE_STORAGE_DAYS * 24 * 60 * 60 * 1000;
+
+    const getSafeStorageExpiry = (listing) => {
+      const condition = String(listing?.condition || "").trim().toLowerCase();
+      const category = String(listing?.category || "").trim().toLowerCase();
+
+      // TC_HAZ_03 applies to Not Working / For Parts inventory.
+      const isNotWorkingOrParts =
+        condition === "not working" ||
+        condition.includes("not working") ||
+        category === "parts" ||
+        category.includes("for parts");
+
+      if (!isNotWorkingOrParts) return null;
+
+      if (listing?.expires_at) {
+        const expiry = new Date(listing.expires_at);
+        if (!Number.isNaN(expiry.getTime())) return expiry;
+      }
+
+      const baseDateValue = listing?.last_working_date || listing?.created_at;
+      const baseDate = new Date(baseDateValue);
+      if (Number.isNaN(baseDate.getTime())) return null;
+
+      return new Date(baseDate.getTime() + safeStorageMs);
+    };
+
+    const expiredActiveListings = myListings.filter((listing) => {
+      const status = String(listing?.status || "").toLowerCase();
+      const expiry = getSafeStorageExpiry(listing);
+      return status === "active" && expiry && expiry.getTime() <= now;
+    });
+
+    if (expiredActiveListings.length === 0) return;
+
+    let cancelled = false;
+
+    const expireListings = async () => {
+      const expiredIds = [];
+
+      for (const listing of expiredActiveListings) {
+        try {
+          const { data, error } = await supabase
+            .from("listings")
+            .update({ status: "expired" })
+            .eq("id", listing.id)
+            .eq("seller_id", session.user.id)
+            .eq("status", "active")
+            .select("id,status,device_model,category,condition,created_at,expires_at,asking_price,drop_off_point_id")
+            .maybeSingle();
+
+          if (error) throw error;
+
+          if (data) {
+            expiredIds.push(listing.id);
+
+            // Expired listings cannot retain actionable pending bids.
+            const { error: bidError } = await supabase
+              .from("bids")
+              .update({ status: "declined" })
+              .eq("listing_id", listing.id)
+              .eq("status", "pending");
+
+            if (bidError) {
+              console.warn("Unable to close pending bids for expired listing:", bidError.message);
+            }
+
+            const { error: notificationError } = await supabase
+              .from("notifications")
+              .insert({
+                user_id: session.user.id,
+                type: "listing_expired",
+                title: "Listing Expired — Action Required",
+                description: `Your ${listing.device_model || "device"} listing exceeded its safe-storage period. Choose Donate or Unlist to resolve it.`,
+                related_listing_id: listing.id,
+                is_read: false,
+              });
+
+            if (notificationError) {
+              console.warn("Expired-listing notification failed:", notificationError.message);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to expire listing:", listing.id, error);
+        }
+      }
+
+      if (cancelled || expiredIds.length === 0) return;
+
+      const expiredMap = new Map(
+        expiredActiveListings
+          .filter((listing) => expiredIds.includes(listing.id))
+          .map((listing) => [listing.id, { ...listing, status: "expired" }])
+      );
+
+      setMyListings((prev) =>
+        prev.map((listing) => expiredMap.get(listing.id) || listing)
+      );
+      setListings((prev) =>
+        prev.filter((listing) => !expiredIds.includes(listing.id))
+      );
+
+      const firstExpired = expiredActiveListings.find((listing) =>
+        expiredIds.includes(listing.id)
+      );
+
+      if (firstExpired) {
+        const promptListing = { ...firstExpired, status: "expired", isExpired: true };
+        setDonationReminder(promptListing);
+        setExpiredListingAction(promptListing);
+      }
+    };
+
+    expireListings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [myListings, session?.user?.id]);
 
   useEffect(() => {
     if (!myListings || myListings.length === 0) {
@@ -2510,6 +3011,7 @@ const SellerDashboard = ({ session }) => {
 
     if (expiredListings.length > 0) {
       setDonationReminder(expiredListings[0]);
+      setExpiredListingAction(expiredListings[0]);
       return;
     }
 
@@ -3075,7 +3577,11 @@ const SellerDashboard = ({ session }) => {
                     unread={true}
                     onClick={() => {
                       setShowNotifications(false);
-                      handleOpenDonation(donationReminder);
+                      if (donationReminder.isExpired) {
+                        setExpiredListingAction(donationReminder);
+                      } else {
+                        handleOpenDonation(donationReminder);
+                      }
                     }}
                     onDelete={() => setDonationReminder(null)}
                   />
@@ -3104,7 +3610,10 @@ const SellerDashboard = ({ session }) => {
                             );
                             if (expiredListing) {
                               setShowNotifications(false);
-                              handleOpenDonation(expiredListing);
+                              setExpiredListingAction({
+                                ...expiredListing,
+                                isExpired: true,
+                              });
                             }
                           }
                         }}
@@ -3225,6 +3734,7 @@ const SellerDashboard = ({ session }) => {
               <div className="p-2">
                 <button
                   onClick={() => {
+                    setProfileModalTab("profile");
                     setShowProfileModal(true);
                     setShowProfileMenu(false);
                   }}
@@ -3518,11 +4028,16 @@ const SellerDashboard = ({ session }) => {
                   )
                   .map((item) => [item.id, item])
               ).values()
-            ).sort(
-              (a, b) =>
-                new Date(b.created_at || 0).getTime() -
-                new Date(a.created_at || 0).getTime()
-            );
+            ).sort((a, b) => {
+              // Higher trust tiers are intentionally prioritized for marketplace
+              // visibility. Creation date remains the tie-breaker.
+              const aTier = sellerTrustTiers[a.seller_id];
+              const bTier = sellerTrustTiers[b.seller_id];
+              const aRank = aTier ? Number(aTier.min_transactions || 0) : 0;
+              const bRank = bTier ? Number(bTier.min_transactions || 0) : 0;
+              if (bRank !== aRank) return bRank - aRank;
+              return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+            });
 
             // Keep the Listings tab restricted to Working items only.
             // Non-working / defective listings remain in the database but are
@@ -3571,6 +4086,10 @@ const SellerDashboard = ({ session }) => {
             const openNewListing = () => {
               if (profileData?.verification_status !== "verified") {
                 alert("Your account is still pending admin verification. You cannot create listings yet.");
+                return;
+              }
+              if (!hasTrustPrivilege(["basic listings", "listings"])) {
+                alert(`This action is restricted to your current trust tier (${getTrustTierLabel(currentTrustTier.name)}). Requirements and available privileges are shown in your Trust Tier section.`);
                 return;
               }
               setIsModalOpen(true);
@@ -3649,6 +4168,12 @@ const SellerDashboard = ({ session }) => {
                   {isMine && mode === "all" && (
                     <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[#eef7fa] px-2.5 py-1 text-[10px] font-bold text-[#3285a1]">
                       <User size={12} /> Your Listing
+                    </div>
+                  )}
+                  {!isMine && mode === "all" && sellerTrustTiers[item.seller_id] &&
+                    Number(sellerTrustTiers[item.seller_id].min_transactions || 0) > 0 && (
+                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 border border-amber-100">
+                      <Award size={12} /> Recommended Seller · {getTrustTierLabel(sellerTrustTiers[item.seller_id].name)}
                     </div>
                   )}
 
@@ -3874,8 +4399,17 @@ const SellerDashboard = ({ session }) => {
                           {selectedListingDetails.seller_id === session.user.id && getVisibleBids(selectedListingDetails).length > 0 && (
                             <button type="button" onClick={() => { setSelectedListingDetails(null); setSelectedBidListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189]">View Bids</button>
                           )}
-                          {selectedListingDetails.seller_id === session.user.id && String(selectedListingDetails.status).toLowerCase() === "active" && getVisibleBids(selectedListingDetails).length === 0 && (
-                            <button type="button" onClick={() => { setSelectedListingDetails(null); handleOpenDonation(selectedListingDetails); }} className="flex-1 rounded-xl border border-purple-200 bg-purple-50 py-3 text-sm font-bold text-purple-700 hover:bg-purple-100">Donate</button>
+                          {selectedListingDetails.seller_id === session.user.id && ["active", "expired"].includes(String(selectedListingDetails.status).toLowerCase()) && getVisibleBids(selectedListingDetails).length === 0 && (
+                            <button type="button" onClick={() => {
+                              setSelectedListingDetails(null);
+                              if (String(selectedListingDetails.status).toLowerCase() === "expired") {
+                                setExpiredListingAction({ ...selectedListingDetails, isExpired: true });
+                              } else {
+                                handleOpenDonation(selectedListingDetails);
+                              }
+                            }} className="flex-1 rounded-xl border border-purple-200 bg-purple-50 py-3 text-sm font-bold text-purple-700 hover:bg-purple-100">
+                              {String(selectedListingDetails.status).toLowerCase() === "expired" ? "Resolve Listing" : "Donate"}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -4357,317 +4891,285 @@ const SellerDashboard = ({ session }) => {
             </form>
           </div>
         )}
-        {/* Profile Modal Overlay */}
+        {/* Profile Modal / Side Drawer */}
         {showProfileModal && (
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-6"
+            className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-[2px]"
             onClick={() => setShowProfileModal(false)}
           >
-            <div
-              className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-50 shadow-2xl animate-in fade-in zoom-in duration-200"
+            <aside
+              className="absolute right-0 top-0 h-full w-full max-w-[390px] bg-white shadow-2xl animate-in slide-in-from-right duration-200 overflow-hidden flex flex-col"
               onClick={(event) => event.stopPropagation()}
+              aria-label="Profile"
             >
-              {/* Profile Modal Header */}
-              <div className="bg-gradient-to-br from-[#448b78] to-[#6da43a] p-6 sm:p-8 text-white relative rounded-t-3xl">
+              {/* Seller profile header */}
+              <div className="relative shrink-0 bg-[#287f95] px-5 pt-5 pb-4 text-white">
                 <button
+                  type="button"
                   onClick={() => setShowProfileModal(false)}
-                  className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
+                  className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+                  aria-label="Close profile"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
 
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
-                      {currentProfileName.charAt(0).toUpperCase()}
-                    </div>
-                    <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
-                      <Camera size={12} />
-                    </button>
+                <div className="flex items-center gap-3 pr-10">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-emerald-400 to-green-600 text-lg font-black shadow-sm">
+                    {currentProfileName.charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <h2 className="text-xl font-bold">
-                      {currentProfileName}
-                    </h2>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${profileData?.verification_status === "approved"
-                          ? "bg-emerald-500/20 text-white"
-                          : profileData?.verification_status === "pending"
-                            ? "bg-amber-500/20 text-white"
-                            : profileData?.verification_status === "rejected"
-                              ? "bg-red-500/20 text-white"
-                              : "bg-slate-500/20 text-white"
-                          }`}
-                      >
-                        <CheckCircle size={10} />
-
-                        {profileData?.verification_status === "verified"
-                          ? "Verified Seller"
-                          : profileData?.verification_status === "pending"
-                            ? "Verification Pending"
-                            : profileData?.verification_status === "rejected"
-                              ? "Verification Rejected"
-                              : "Not Submitted"}
-                      </span>
-                      <span className="text-xs opacity-80">
-                        Active since{" "}
-                        {new Date(session.user.created_at).toLocaleDateString(
-                          "en-US",
-                          { month: "long", year: "numeric" },
-                        )}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 mt-2 text-yellow-300">
-                      <Star size={12} fill="currentColor" />
-                      <span className="text-xs font-bold text-white">
-                        0.0{" "}
-                        <span className="opacity-70 font-normal">
-                          (0 reviews)
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="truncate text-base font-black">{currentProfileName}</h2>
+                      {profileData?.verification_status === "approved" || profileData?.verification_status === "verified" ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold text-white">
+                          <CheckCircle size={10} /> Verified
                         </span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Full-Screen Profile Content */}
-              <div className="flex-1 p-6 md:p-10 space-y-6 bg-slate-50/50">
-                <div className="flex justify-end">
-                  <button type="button" onClick={openEditProfile} className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-[#246367] transition shadow-sm">
-                    <Edit3 size={14} /> Edit Profile
-                  </button>
-                </div>
-                {/* Stats Grid */}
-                <div className="grid grid-cols-4 gap-3">
-                  {[
-                    {
-                      label: "Total Listings",
-                      val: myListings.length,
-                      icon: <Package size={16} />,
-                      color: "text-blue-500",
-                      bg: "bg-blue-50",
-                    },
-                    {
-                      label: "Items Sold",
-                      val: myListings.filter((item) =>
-                        ["meetup scheduled", "sold", "completed"].includes(
-                          item.status?.toLowerCase(),
-                        ),
-                      ).length,
-                      icon: <TrendingUp size={16} />,
-                      color: "text-green-500",
-                      bg: "bg-green-50",
-                    },
-                    {
-                      label: "Rating",
-                      val: profileData?.average_rating?.toFixed(1) || "0.0", // Dynamic data
-                      icon: <Star size={16} />,
-                      color: "text-yellow-500",
-                      bg: "bg-yellow-50",
-                    },
-                    {
-                      label: "Reviews",
-                      val: profileData?.total_reviews || "0", // Dynamic data
-                      icon: <MessageSquare size={16} />,
-                      color: "text-purple-500",
-                      bg: "bg-purple-50",
-                    },
-                  ].map((stat, i) => (
-                    <div
-                      key={i}
-                      className={`${stat.bg} p-3 rounded-2xl border border-white shadow-sm flex flex-col items-center text-center`}
-                    >
-                      <div className={`${stat.color} mb-1`}>{stat.icon}</div>
-                      <div className="text-sm font-black text-gray-800">
-                        {stat.val}
-                      </div>
-                      <div className="text-xs text-gray-500 font-medium leading-tight">
-                        {stat.label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {/* Dynamic Trust Tier Section - requirements come from Supabase trust_tiers */}
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
-                  <Shield
-                    className="absolute right-4 top-4 opacity-20"
-                    size={60}
-                  />
-                  <div className="relative z-10">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] font-black text-white/70">
-                          Your Trust Tier
-                        </p>
-                        <h3 className="font-black text-2xl mt-1">
-                          {trustTierLoading ? "Loading..." : getTrustTierLabel(currentTrustTier.name)}
-                        </h3>
-                        <p className="text-xs opacity-80 mt-1">
-                          Based on completed transactions and your ratings
-                        </p>
-                      </div>
-                      <div className="bg-white/15 border border-white/20 rounded-2xl px-3 py-2 text-center min-w-[72px]">
-                        <Shield size={16} className="mx-auto mb-1 text-yellow-300" />
-                        <span className="text-xs font-black uppercase tracking-wider">Tier</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 mt-4 mb-4">
-                      <span className="text-xs font-bold flex items-center gap-1 text-white">
-                        <span className="text-yellow-400">★</span>
-                        {userTrustStats.averageRating > 0
-                          ? userTrustStats.averageRating.toFixed(1)
-                          : "0.0"}
-                        <span className="opacity-70 font-normal ml-0.5">
-                          ({userTrustStats.totalReviews} reviews)
-                        </span>
-                      </span>
-                      {userTrustStats.averageRating >= 4.0 && (
-                        <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
-                          Recommended
+                      ) : (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold text-white">
+                          <CheckCircle size={10} /> {profileData?.verification_status === "pending" ? "Pending" : "Not Verified"}
                         </span>
                       )}
                     </div>
-
-                    {trustTierError ? (
-                      <div className="bg-red-500/15 border border-red-300/20 rounded-xl p-3 text-xs text-red-100">
-                        Unable to load Trust Tier requirements: {trustTierError}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-2 gap-2 mb-3">
-                          <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold">
-                              Completed
-                            </p>
-                            <p className="text-lg font-black mt-1">
-                              {userTrustStats.completedTransactions}
-                            </p>
-                            <p className="text-xs text-white/60">transactions</p>
-                          </div>
-                          <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold">
-                              Requirement
-                            </p>
-                            <p className="text-lg font-black mt-1">
-                              {currentTrustTier.min_transactions}+
-                            </p>
-                            <p className="text-xs text-white/60">transactions for tier</p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2 bg-white/10 p-3 rounded-xl border border-white/10">
-                          <div className="flex justify-between text-xs font-bold">
-                            <span className="flex items-center gap-1 uppercase tracking-wider">
-                              <ArrowUpRight size={10} /> Next Tier:
-                              <span className="text-cyan-300 ml-1">
-                                {nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : "Max Tier"}
-                              </span>
-                            </span>
-                            <span>{progressPercent}% complete</span>
-                          </div>
-                          <div className="w-full bg-black/20 h-1.5 rounded-full overflow-hidden">
-                            <div
-                              style={{ width: `${progressPercent}%` }}
-                              className="bg-gradient-to-r from-cyan-400 to-purple-400 h-full shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-500"
-                            />
-                          </div>
-                          {nextTrustTier ? (
-                            <div className="flex justify-between text-xs text-white/65">
-                              <span>
-                                Transactions: {userTrustStats.completedTransactions}/{Number(nextTrustTier.min_transactions)}
-                              </span>
-                              <span>
-                                Rating: {userTrustStats.averageRating.toFixed(1)}/{Number(nextTrustTier.min_rating).toFixed(1)}
-                              </span>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-emerald-200 font-bold">
-                              You have reached the highest available trust tier.
-                            </p>
-                          )}
-                        </div>
-
-                        {currentTrustTier.privileges?.length > 0 && (
-                          <div className="mt-3">
-                            <p className="text-xs uppercase tracking-wider text-white/60 font-bold mb-2">
-                              Current Privileges
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {currentTrustTier.privileges.slice(0, 5).map((privilege, index) => (
-                                <span
-                                  key={`${privilege}-${index}`}
-                                  className="text-xs bg-white/10 border border-white/10 px-2 py-1 rounded-full text-white/85"
-                                >
-                                  {privilege}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
+                    <p className="mt-0.5 truncate text-xs text-white/80">
+                      Tech Harvester · {currentProfileBarangay || "Not assigned"}
+                    </p>
                   </div>
                 </div>
-                <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                  <h3 className="font-bold text-gray-800 text-sm border-b pb-2">
-                    Personal Information
-                  </h3>
-                  <div className="flex justify-end">
-                    <button type="button" onClick={() => { setPasswordForm({ current: "", next: "", confirm: "" }); setPasswordError(""); setPasswordSuccess(""); setShowChangePasswordModal(true); }} className="rounded-xl border border-[#2d7a7f] px-4 py-2 text-xs font-bold text-[#2d7a7f] hover:bg-teal-50">Change Password</button>
-                  </div>
-                  <div className="grid gap-4">
-                    <InfoRow
-                      label="Full Name"
-                      value={currentProfileName}
-                      icon={<User size={14} />}
-                    />
-                    <InfoRow
-                      label="Email Address"
-                      value={session.user.email}
-                      icon={<Mail size={14} />}
-                    />
-                    <InfoRow
-                      label="Phone Number"
-                      value={currentProfilePhone}
-                      icon={<Phone size={14} />}
-                    />
-                    <InfoRow
-                      label="Barangay"
-                      value={currentProfileBarangay}
-                      icon={<MapPin size={14} />}
-                    />
-                  </div>
+              </div>
+
+              {/* Profile tabs */}
+              <div className="shrink-0 border-b border-slate-100 bg-white px-4 pt-3">
+                <div className="grid grid-cols-3 rounded-xl bg-slate-100 p-0.5">
+                  {[
+                    { id: "profile", label: "View Profile" },
+                    { id: "security", label: "Account & Security" },
+                    { id: "trust", label: "Trust Tier" },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setProfileModalTab(tab.id)}
+                      className={`rounded-lg px-2 py-2 text-[10px] font-bold transition ${
+                        profileModalTab === tab.id
+                          ? "bg-white text-[#287f95] shadow-sm"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
+              {/* Drawer content */}
+              <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+                {/* ================= VIEW PROFILE ================= */}
+                {profileModalTab === "profile" && (
+                  <div className="px-4 pb-8 pt-5">
+                    <section>
+                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                        Personal Information
+                      </p>
 
-                {showChangePasswordModal && (
-                  <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4" onClick={() => setShowChangePasswordModal(false)}>
-                    <div role="dialog" aria-modal="true" aria-labelledby="change-password-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-                      <div className="mb-5 flex items-center justify-between">
-                        <h3 id="change-password-title" className="text-lg font-bold text-slate-800">Change Password</h3>
-                        <button type="button" aria-label="Close change password" onClick={() => setShowChangePasswordModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
+                      <div className="space-y-2">
+                        <InfoRow label="Full Name" value={currentProfileName} icon={<User size={14} />} />
+                        <InfoRow label="Email" value={session?.user?.email || "No email provided"} icon={<Mail size={14} />} />
+                        <InfoRow label="Phone Number" value={currentProfilePhone || "No phone number"} icon={<Phone size={14} />} />
+                        <InfoRow label="Barangay" value={currentProfileBarangay || "Not assigned"} icon={<MapPin size={14} />} />
                       </div>
-                      <p className="mb-4 text-sm text-slate-500">Enter your current password, then choose a new one.</p>
-                      {passwordError && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{passwordError}</p>}
-                      {passwordSuccess && <p role="status" className="mb-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">{passwordSuccess}</p>}
-                      <form onSubmit={handleChangePassword} className="space-y-3">
-                        <input type="password" autoComplete="current-password" aria-label="Current password" placeholder="Current password" value={passwordForm.current} onChange={(e) => { setPasswordForm(p => ({ ...p, current: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
-                        <input type="password" autoComplete="new-password" aria-label="New password" placeholder="New password (at least 6 characters)" minLength={6} value={passwordForm.next} onChange={(e) => { setPasswordForm(p => ({ ...p, next: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
-                        <input type="password" autoComplete="new-password" aria-label="Confirm new password" placeholder="Confirm new password" minLength={6} value={passwordForm.confirm} onChange={(e) => { setPasswordForm(p => ({ ...p, confirm: e.target.value })); setPasswordError(""); setPasswordSuccess(""); }} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#3295aa]" />
-                        <div className="flex gap-3 pt-2">
-                          <button type="button" onClick={() => setShowChangePasswordModal(false)} className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600">Cancel</button>
-                          <button type="submit" disabled={passwordSaving} className="flex-1 rounded-xl bg-[#2d7a7f] px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{passwordSaving ? "Updating..." : "Update Password"}</button>
-                        </div>
-                      </form>
-                    </div>
+                    </section>
+
+                    <button
+                      type="button"
+                      onClick={openEditProfile}
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#2d8da6] px-4 py-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#26798e]"
+                    >
+                      <Edit3 size={14} /> Edit Profile
+                    </button>
                   </div>
                 )}
 
-                
+                {/* ================= ACCOUNT & SECURITY ================= */}
+                {profileModalTab === "security" && (
+                  <div className="px-4 pb-8 pt-6">
+                    <section>
+                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                        Change Password
+                      </p>
+
+                      <div className="space-y-3">
+                        {[
+                          ["Current Password", "current", passwordForm.current],
+                          ["New Password", "next", passwordForm.next],
+                          ["Confirm New Password", "confirm", passwordForm.confirm],
+                        ].map(([label, key, value]) => (
+                          <label key={key} className="block">
+                            <span className="text-[10px] font-medium text-slate-500">{label}</span>
+                            <input
+                              type="password"
+                              value={value}
+                              onChange={(e) => {
+                                setPasswordForm((prev) => ({ ...prev, [key]: e.target.value }));
+                                setPasswordError("");
+                                setPasswordSuccess("");
+                              }}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[11px] outline-none focus:border-[#2d8da6] focus:ring-2 focus:ring-cyan-100"
+                            />
+                          </label>
+                        ))}
+
+                        {passwordError && (
+                          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-[10px] text-red-700">
+                            {passwordError}
+                          </p>
+                        )}
+                        {passwordSuccess && (
+                          <p role="status" className="rounded-lg border border-green-200 bg-green-50 p-2.5 text-[10px] text-green-700">
+                            {passwordSuccess}
+                          </p>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleChangePassword}
+                          disabled={passwordSaving}
+                          className="w-full rounded-xl bg-[#2d8da6] py-2.5 text-[10px] font-black text-white transition hover:bg-[#26798e] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {passwordSaving ? "Updating Password..." : "Update Password"}
+                        </button>
+                      </div>
+                    </section>
+
+                    <div className="my-6 border-t border-slate-100" />
+
+                    <section>
+                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                        Danger Zone
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleDeactivateAccount}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-300 py-3 text-[10px] font-bold text-red-600 transition hover:bg-red-50"
+                      >
+                        <XCircle size={13} /> Deactivate Account
+                      </button>
+                    </section>
+                  </div>
+                )}
+
+                {/* ================= TRUST TIER ================= */}
+                {profileModalTab === "trust" && (
+                  <div className="px-4 pb-8 pt-5">
+                    {/* Stats */}
+                    <div className="mb-4 grid grid-cols-4 gap-2">
+                      {[
+                        { label: "Total Listings", value: myListings.length },
+                        {
+                          label: "Items Sold",
+                          value: myListings.filter((item) => ["meetup scheduled", "sold", "completed"].includes(item.status?.toLowerCase())).length,
+                        },
+                        { label: "Rating", value: Number(userTrustStats.averageRating || 0).toFixed(1) },
+                        { label: "Reviews", value: userTrustStats.totalReviews || 0 },
+                      ].map((stat) => (
+                        <div key={stat.label} className="rounded-xl bg-slate-50 px-2 py-3 text-center">
+                          <p className="text-sm font-black text-slate-800">{stat.value}</p>
+                          <p className="mt-1 text-[8px] leading-tight text-slate-400">{stat.label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Current tier */}
+                    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Current Tier</p>
+                          <h3 className="mt-1 text-lg font-black text-slate-700">
+                            {trustTierLoading ? "Loading..." : getTrustTierLabel(currentTrustTier?.name)}
+                          </h3>
+                        </div>
+                        <div className="text-right text-[9px] text-slate-400">
+                          {nextTrustTier ? (
+                            <>
+                              <p>{Number(userTrustStats.completedTransactions || 0)} transactions</p>
+                              <p>{Math.max(0, Number(nextTrustTier.min_transactions || 0) - Number(userTrustStats.completedTransactions || 0))} more to {getTrustTierLabel(nextTrustTier.name)}</p>
+                            </>
+                          ) : (
+                            <p>Highest tier reached</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between text-[8px] text-slate-400">
+                        <span>{getTrustTierLabel(currentTrustTier?.name)}</span>
+                        <span>{nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : getTrustTierLabel(currentTrustTier?.name)}</span>
+                      </div>
+                      <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#2d8da6] transition-all"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                      <div className="mt-1 text-right text-[8px] text-slate-400">{progressPercent}% to next tier</div>
+                    </section>
+
+                    {/* CO2 */}
+                    <section className="mt-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-green-100 p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                            <Leaf size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black uppercase text-[#145374]">CO₂ Recovery Contribution</p>
+                            <p className="text-[8px] text-[#3b91ad]">from harvesting & processing e-waste</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-lg font-black text-[#145374]">
+                            {trustRecoveryCo2.toFixed(2)} <span className="text-[9px]">kg</span>
+                          </p>
+                          <p className="text-[8px] text-[#3b91ad]">CO₂ recovered</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center gap-2 border-t border-emerald-100 pt-3">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
+                          <Package size={13} />
+                        </div>
+                        <p className="text-[9px] text-[#145374]">
+                          <span className="font-black">{trustRecoveredDevices} devices</span> recovered & processed
+                        </p>
+                      </div>
+                    </section>
+
+                    {/* Privileges */}
+                    <section className="mt-4">
+                      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Current Privileges</p>
+                      <div className="space-y-1.5">
+                        {(() => {
+                          const privileges = currentTrustTier?.privileges || [];
+                          const nextPrivileges = nextTrustTier?.privileges || [];
+                          const allPrivileges = [...new Set([...privileges, ...nextPrivileges])];
+                          if (!allPrivileges.length) {
+                            return <div className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-500">No privileges configured for this tier.</div>;
+                          }
+                          return allPrivileges.map((privilege, index) => {
+                            const active = privileges.some((p) => String(p).trim().toLowerCase() === String(privilege).trim().toLowerCase());
+                            return (
+                              <div key={`${privilege}-${index}`} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${active ? "bg-emerald-50" : "bg-slate-50"}`}>
+                                <span className={active ? "text-emerald-500" : "text-slate-300"}>
+                                  {active ? <CheckCircle size={13} /> : <Lock size={11} />}
+                                </span>
+                                <span className={`text-[10px] font-semibold ${active ? "text-slate-700" : "text-slate-400"}`}>{privilege}</span>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </section>
+                  </div>
+                )}
               </div>
-            </div>
+            </aside>
           </div>
         )}
         {selectedReceiptTransaction && (
@@ -4722,6 +5224,89 @@ const SellerDashboard = ({ session }) => {
             }
           }}
         />
+        {expiredListingAction && (
+          <div className="fixed inset-0 z-[380] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+            <div className="w-full max-w-lg rounded-[2rem] bg-white shadow-2xl overflow-hidden">
+              <div className="bg-gradient-to-r from-orange-500 to-red-500 p-6 text-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-white/80">
+                      Safe-Storage Period Exceeded
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black">Action Required</h2>
+                    <p className="mt-2 text-sm text-white/85">
+                      This Not Working / For Parts listing has exceeded its maximum
+                      safe-storage period. Bidding and bid acceptance are disabled.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExpiredListingAction(null)}
+                    disabled={processingExpiredListing}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+                    aria-label="Close expired listing prompt"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-orange-500">
+                    Listing
+                  </p>
+                  <p className="mt-1 text-base font-black text-slate-800">
+                    {expiredListingAction.device_model || "Electronic Device"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {expiredListingAction.category || "Electronic Device"} ·{" "}
+                    {expiredListingAction.condition || "Not Working"}
+                  </p>
+                </div>
+
+                <p className="text-sm leading-relaxed text-slate-600">
+                  To comply with safe-storage requirements, resolve this listing
+                  by choosing one of the following actions.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExpiredListingAction(null);
+                      handleOpenDonation(expiredListingAction);
+                    }}
+                    disabled={processingExpiredListing}
+                    className="rounded-2xl border-2 border-purple-200 bg-purple-50 px-5 py-4 text-left hover:bg-purple-100 disabled:opacity-50"
+                  >
+                    <Gift size={20} className="text-purple-600 mb-2" />
+                    <span className="block text-sm font-black text-purple-700">Donate</span>
+                    <span className="block mt-1 text-xs text-purple-600">
+                      Select a drop-off point and donate the device.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleUnlistExpiredListing(expiredListingAction)}
+                    disabled={processingExpiredListing}
+                    className="rounded-2xl border-2 border-slate-200 bg-slate-50 px-5 py-4 text-left hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    <XCircle size={20} className="text-slate-600 mb-2" />
+                    <span className="block text-sm font-black text-slate-700">
+                      {processingExpiredListing ? "Unlisting..." : "Unlist"}
+                    </span>
+                    <span className="block mt-1 text-xs text-slate-500">
+                      Remove the listing from the marketplace and close its pending bids.
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <DonationModal
           isOpen={isDonationModalOpen}
           onClose={() => {

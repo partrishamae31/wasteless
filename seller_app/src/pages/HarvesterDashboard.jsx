@@ -100,6 +100,13 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profilePanelTab, setProfilePanelTab] = useState("profile");
+  const [passwordForm, setPasswordForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
   const [showAchievementsModal, setShowAchievementsModal] = useState(false);
 
   const [dashboardStats, setDashboardStats] = useState({
@@ -149,8 +156,15 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [trustTierError, setTrustTierError] = useState("");
   const [userTrustStats, setUserTrustStats] = useState({
     completedTransactions: 0,
+    // Repair Shop ratings are intentionally kept separate.
+    // `averageRating`/`totalReviews` remain as the purchase-transaction
+    // rating aliases used by the existing Trust Tier calculation.
     averageRating: 0,
     totalReviews: 0,
+    purchaseTransactionRating: 0,
+    purchaseTransactionReviews: 0,
+    repairServiceRating: 0,
+    repairServiceReviews: 0,
   });
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -448,23 +462,38 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
         const tiers = tiersResult.data || [];
         const completedTransactions = (transactionsResult.data || []).length;
-        const allReviews = [
-          ...(marketplaceReviewsResult.data || []),
-          ...(repairReviewsResult.data || []),
-        ].filter((review) => review?.overall_rating != null);
 
-        const averageRating = allReviews.length
-          ? allReviews.reduce(
-              (sum, review) => sum + Number(review.overall_rating || 0),
-              0,
-            ) / allReviews.length
+        // IMPORTANT: Purchase Transaction and Repair Service ratings must
+        // never be averaged together. They represent two different
+        // customer experiences and are displayed separately throughout the
+        // Repair Shop profile. The existing Trust Tier rules continue to use
+        // the Purchase Transaction rating as the participant rating.
+        const purchaseTransactionRatings = (marketplaceReviewsResult.data || [])
+          .map((review) => Number(review?.overall_rating))
+          .filter((rating) => Number.isFinite(rating));
+        const repairServiceRatings = (repairReviewsResult.data || [])
+          .map((review) => Number(review?.overall_rating))
+          .filter((rating) => Number.isFinite(rating));
+
+        const purchaseTransactionReviews = purchaseTransactionRatings.length;
+        const repairServiceReviews = repairServiceRatings.length;
+        const purchaseTransactionRating = purchaseTransactionReviews
+          ? purchaseTransactionRatings.reduce((sum, rating) => sum + rating, 0) / purchaseTransactionReviews
+          : 0;
+        const repairServiceRating = repairServiceReviews
+          ? repairServiceRatings.reduce((sum, rating) => sum + rating, 0) / repairServiceReviews
           : 0;
 
         setTrustTiers(tiers);
         setUserTrustStats({
           completedTransactions,
-          averageRating,
-          totalReviews: allReviews.length,
+          // Keep these existing fields as aliases for the purchase score only.
+          averageRating: purchaseTransactionRating,
+          totalReviews: purchaseTransactionReviews,
+          purchaseTransactionRating,
+          purchaseTransactionReviews,
+          repairServiceRating,
+          repairServiceReviews,
         });
       } catch (error) {
         console.error("Error fetching repair shop trust tier:", error);
@@ -733,6 +762,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
   const handleReverify = () => {
     setShowProfileDropdown(false);
+    setProfilePanelTab("profile");
     setShowProfileModal(true);
     setIsEditingProfile(true);
   };
@@ -1651,6 +1681,87 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       // Newest
       return new Date(b.created_at) - new Date(a.created_at);
     });
+  const handleChangePassword = async () => {
+    const current = passwordForm.current.trim();
+    const next = passwordForm.next;
+    const confirm = passwordForm.confirm;
+
+    if (!current || !next || !confirm) {
+      alert("Please complete all password fields.");
+      return;
+    }
+
+    if (next.length < 8) {
+      alert("Your new password must be at least 8 characters.");
+      return;
+    }
+
+    if (next !== confirm) {
+      alert("The new password and confirmation do not match.");
+      return;
+    }
+
+    if (!session?.user?.email) {
+      alert("User session not found. Please log in again.");
+      return;
+    }
+
+    setChangingPassword(true);
+
+    try {
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: session.user.email,
+        password: current,
+      });
+
+      if (reauthError) {
+        throw new Error("Current password is incorrect.");
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: next,
+      });
+
+      if (updateError) throw updateError;
+
+      setPasswordForm({ current: "", next: "", confirm: "" });
+      alert("Password updated successfully.");
+    } catch (error) {
+      console.error("CHANGE PASSWORD ERROR:", error);
+      alert(error?.message || "Unable to update your password.");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const handleDeactivateAccount = async () => {
+    const confirmed = window.confirm(
+      "Deactivate your Repair Shop account? Your account will no longer be active until it is restored by an administrator."
+    );
+
+    if (!confirmed || !session?.user?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ status: "inactive" })
+        .eq("id", session.user.id);
+
+      if (error) throw error;
+
+      await supabase.auth.signOut();
+      setShowProfileModal(false);
+      setIsEditingProfile(false);
+
+      if (typeof onLogout === "function") {
+        onLogout();
+      }
+    } catch (error) {
+      console.error("DEACTIVATE ACCOUNT ERROR:", error);
+      alert(error?.message || "Unable to deactivate your account.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
       {/* =========================================================
@@ -1904,6 +2015,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                       <button
                         onClick={() => {
                           setShowProfileDropdown(false);
+                          setProfilePanelTab("profile");
+                          setIsEditingProfile(false);
                           setShowProfileModal(true);
                         }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-2xl transition-colors text-xs font-bold"
@@ -1918,6 +2031,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         label="Settings"
                         onClick={() => {
                           setShowProfileDropdown(false);
+                          setProfilePanelTab("profile");
                           setShowProfileModal(true);
                           setIsEditingProfile(true);
                         }}
@@ -1963,839 +2077,29 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             />
           )}
           {showProfileModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 backdrop-blur-sm p-4 sm:p-6">
-              <div className="bg-white w-full max-w-2xl rounded-[2rem] overflow-hidden shadow-2xl animate-in zoom-in duration-300 max-h-[92vh] flex flex-col border border-white/80">
-                {/* HEADER */}
-                <div className="bg-gradient-to-br from-[#527a24] via-[#769c2d] to-[#8fb83c] p-6 sm:p-7 text-white relative min-h-[148px]">
-                  <button
-                    onClick={() => {
-                      setShowProfileModal(false);
-                      setIsEditingProfile(false);
-                    }}
-                    className="absolute top-4 right-4 hover:bg-white/20 p-1 rounded-full transition"
-                  >
-                    <XCircle size={20} />
-                  </button>
-
-                  <div className="flex items-center gap-4">
-                    <div className="relative">
-                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white/30">
-                        {profileData?.initials || "H"}
-                      </div>
-
-                      <button className="absolute bottom-0 right-0 bg-white text-gray-700 p-1 rounded-full shadow-md hover:bg-gray-100 transition">
-                        <Camera size={12} />
-                      </button>
-                    </div>
-
-                    <div>
-                      <h2 className="text-xl font-bold">
-                        {((profileData?.role === "repair_shop" && profileData?.business_name?.trim()) || profileData?.full_name || "Repair Shop")}
-                      </h2>
-
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <Shield size={10} />
-                          {verificationStatus === "verified"
-                            ? (isRepairShop ? "Verified Repair Shop" : "Verified Harvester")
-                            : (isRepairShop ? "Pending Verification" : "Account Verification")}
-                        </span>
-
-                        <span className="text-xs opacity-80">
-                          Active since {profileData?.joined_date || "2026"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1 mt-2 text-yellow-300">
-                        {/* <Award size={12} />
-                    <span className="text-xs font-bold text-white">
-                      Eco Partner
-                    </span> */}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CONTENT */}
-                <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6 bg-slate-50">
-                  {/* EDIT BUTTON */}
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => setIsEditingProfile(!isEditingProfile)}
-                      className="flex items-center gap-2 bg-[#769c2d] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-lime-700 transition shadow-sm"
-                    >
-                      <Settings size={14} />
-                      {isEditingProfile ? "Cancel" : "Edit Profile"}
-                    </button>
-                  </div>
-
-                  {/* STATS */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    {[
-                      {
-                        label: "Active Bids",
-                        val: profileData?.active_bids || 0,
-                        icon: <Gavel size={16} />,
-                        color: "text-[#527a24]",
-                        bg: "bg-lime-50",
-                      },
-                      {
-                        label: "Recovered",
-                        val: profileData?.completed_pickups || 0,
-                        icon: <Package size={16} />,
-                        color: "text-emerald-600",
-                        bg: "bg-emerald-50",
-                      },
-                      {
-                        label: "Rating",
-                        val: Number(profileData?.average_rating || 0).toFixed(
-                          1,
-                        ),
-                        icon: <Star size={16} />,
-                        color: "text-amber-500",
-                        bg: "bg-amber-50",
-                      },
-                      {
-                        label: "Reviews",
-                        val: profileData?.total_reviews || 0,
-                        icon: <MessageSquareText size={16} />,
-                        color: "text-sky-600",
-                        bg: "bg-sky-50",
-                      },
-                    ].map((stat, i) => (
-                      <div
-                        key={i}
-                        className={`${stat.bg} p-3 rounded-2xl border border-slate-200/70 shadow-sm flex flex-col items-center justify-center text-center min-h-[88px]`}
-                      >
-                        <div className={`${stat.color} mb-1`}>{stat.icon}</div>
-
-                        <div className="text-sm font-black text-gray-800">
-                          {stat.val}
-                        </div>
-
-                        <div className="text-xs text-gray-500 font-medium leading-tight">
-                          {stat.label}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* CO2 RECOVERY CONTRIBUTION */}
-                  <div className="mt-5 w-full">
-                    <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-sky-50 p-5 shadow-sm">
-                      {/* HEADER */}
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-                            <Leaf size={21} />
-                          </div>
-
-                          <div className="min-w-0">
-                            <h3 className="text-sm font-black uppercase text-[#145374]">
-                              CO₂ Recovery Contribution
-                            </h3>
-
-                            <p className="mt-1 text-xs text-[#3b91ad]">
-                              From harvesting & processing e-waste
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* TOTAL CO2 */}
-                        <div className="shrink-0 text-right">
-                          <div className="text-2xl font-black text-[#145374]">
-                            {Number(profileData?.co2_recovered_kg || 0).toFixed(
-                              2,
-                            )}
-                            <span className="ml-1 text-sm">kg</span>
-                          </div>
-
-                          <p className="text-xs text-[#3b91ad]">
-                            CO₂e recovered
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* DEVICE COUNT */}
-                      <div className="mt-4 flex items-center gap-3 border-t border-emerald-200 pt-4">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
-                          <Package size={17} />
-                        </div>
-
-                        <div>
-                          <span className="text-sm font-black text-[#145374]">
-                            {profileData?.recovered_devices || 0} devices
-                          </span>
-
-                          <span className="ml-2 text-xs text-[#3b91ad]">
-                            recovered & processed
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* TRUST TIER */}
-                  <div className="bg-gradient-to-br from-[#365c20] via-[#527a24] to-[#18351f] rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
-                    <Award
-                      className="absolute right-4 top-4 opacity-10"
-                      size={72}
-                    />
-
-                    <div className="relative z-10">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-200">
-                            Trust Tier
-                          </p>
-                          <h3 className="text-2xl font-black mt-1">
-                            {trustTierLoading
-                              ? "Loading..."
-                              : currentTrustTier?.name || "NEWCOMER"}
-                          </h3>
-                          <p className="text-xs text-white/70 mt-1">
-                            {((profileData?.role === "repair_shop" && profileData?.business_name?.trim()) || profileData?.full_name || "Repair Shop")}
-                          </p>
-                        </div>
-
-                        {!trustTierLoading && currentTrustTier && (
-                          <div className="px-3 py-1.5 rounded-full bg-white/15 border border-white/20 text-xs font-black uppercase">
-                            {currentTrustTier.name}
-                          </div>
-                        )}
-                      </div>
-
-                      {trustTierError ? (
-                        <div className="mt-4 rounded-2xl bg-red-500/15 border border-red-300/20 p-3 text-xs text-red-100">
-                          {trustTierError}
-                        </div>
-                      ) : (
-                        <>
-                          <div className="grid grid-cols-3 gap-2 mt-5">
-                            <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
-                              <p className="text-xs uppercase tracking-wider text-white/50">
-                                Completed
-                              </p>
-                              <p className="text-lg font-black mt-1">
-                                {userTrustStats.completedTransactions}
-                              </p>
-                            </div>
-                            <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
-                              <p className="text-xs uppercase tracking-wider text-white/50">
-                                Rating
-                              </p>
-                              <p className="text-lg font-black mt-1">
-                                {Number(userTrustStats.averageRating || 0).toFixed(1)}
-                              </p>
-                            </div>
-                            <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
-                              <p className="text-xs uppercase tracking-wider text-white/50">
-                                Reviews
-                              </p>
-                              <p className="text-lg font-black mt-1">
-                                {userTrustStats.totalReviews}
-                              </p>
-                            </div>
-                          </div>
-
-                          {nextTrustTier ? (
-                            <div className="mt-5">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-bold text-white/70">
-                                  Next Tier: {nextTrustTier.name}
-                                </span>
-                                <span className="text-xs font-black">
-                                  {trustTierProgress}%
-                                </span>
-                              </div>
-
-                              <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-white transition-all"
-                                  style={{ width: `${trustTierProgress}%` }}
-                                />
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-2 mt-3 text-xs text-white/65">
-                                <span>
-                                  Transactions: {userTrustStats.completedTransactions}/
-                                  {Number(nextTrustTier.min_transactions || 0)}
-                                </span>
-                                <span className="text-right">
-                                  Rating: {Number(userTrustStats.averageRating || 0).toFixed(1)}/
-                                  {Number(nextTrustTier.min_rating || 0).toFixed(1)}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="mt-5 rounded-2xl bg-emerald-400/15 border border-emerald-300/20 p-3 text-xs font-bold text-emerald-100">
-                              Maximum Trust Tier reached.
-                            </div>
-                          )}
-
-                          <div className="mt-5">
-                            <p className="text-xs font-black uppercase tracking-wider text-white/50 mb-2">
-                              Current Privileges
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {(currentTrustTier?.privileges || []).map((privilege, index) => (
-                                <span
-                                  key={`${privilege}-${index}`}
-                                  className="px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-xs font-semibold text-white/80"
-                                >
-                                  {privilege}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* COMMUNITY REPUTATION */}
-                  <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
-                    <Award
-                      className="absolute right-4 top-4 opacity-10"
-                      size={60}
-                    />
-
-                    <div className="relative z-10">
-                      <h3 className="font-bold text-lg">
-                        Community Reputation
-                      </h3>
-
-                      <p className="text-xs opacity-70 mb-4">
-                        Repair service feedback and completed performance
-                      </p>
-
-                      <div className="flex items-center gap-3 flex-wrap">
-                        {verificationStatus === "verified" && (
-                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                            <CheckCircle2 size={10} />
-                            VERIFIED
-                          </span>
-                        )}
-
-                        <span className="bg-white/10 text-lime-100 border border-white/15 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                          <Star size={10} />
-                          {Number(userTrustStats.averageRating || 0).toFixed(1)} Rating
-                        </span>
-
-                        <span className="bg-white/10 text-lime-100 border border-white/15 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                          <MessageSquareText size={10} />
-                          {userTrustStats.totalReviews} Reviews
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* PERSONAL INFO */}
-                  {/* PERSONAL INFO */}
-                  <div className="space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-200/80">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <h3 className="font-black text-slate-800 text-sm">
-                        Personal Information
-                      </h3>
-
-                      {isEditingProfile && (
-                        <span className="text-[10px] font-black uppercase tracking-wider text-[#527a24] bg-lime-50 border border-lime-100 px-2.5 py-1 rounded-full">
-                          Editing
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid gap-5">
-                      {/* BUSINESS NAME */}
-                      <div className="flex items-start gap-3">
-                        <Building2
-                          size={14}
-                          className="text-slate-400 mt-1 shrink-0"
-                        />
-
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-slate-400 uppercase">
-                            Business Name
-                          </p>
-                          <p className="text-sm font-semibold text-slate-700 mt-1">
-                            {profileData?.business_name || "No business name provided"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* ABOUT / SERVICES OFFERED */}
-                      {isRepairShop && (
-                        <div className="flex items-start gap-3">
-                          <Building2
-                            size={14}
-                            className="text-slate-400 mt-1 shrink-0"
-                          />
-
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-xs font-bold text-slate-400 uppercase">
-                                About / Services Offered
-                              </p>
-                              {isEditingProfile && (
-                                <span className="text-[10px] font-bold uppercase tracking-wide text-[#769c2d]">
-                                  Editable
-                                </span>
-                              )}
-                            </div>
-
-                            {isEditingProfile ? (
-                              <textarea
-                                value={profileData?.business_activity || ""}
-                                onChange={(e) =>
-                                  setProfileData((prev) => ({
-                                    ...prev,
-                                    business_activity: e.target.value,
-                                  }))
-                                }
-                                rows={4}
-                                maxLength={500}
-                                placeholder="Tell customers what repair services you offer, such as phone repair, laptop repair, diagnostics, parts replacement, software troubleshooting, and other services."
-                                className="w-full mt-2 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none resize-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
-                              />
-                            ) : (
-                              <p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-line">
-                                {profileData?.business_activity?.trim() ||
-                                  "No services or business description provided yet."}
-                              </p>
-                            )}
-
-                            {isEditingProfile && (
-                              <p className="text-[11px] text-slate-400 mt-1.5">
-                                {String(profileData?.business_activity || "").length}/500 characters. This information can help customers understand your repair services.
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* TECHNICAL SPECIALIZATION */}
-                      {isRepairShop && (
-                        <div className="flex items-start gap-3">
-                          <Settings
-                            size={14}
-                            className="text-slate-400 mt-1 shrink-0"
-                          />
-
-                          <div className="flex-1">
-                            <p className="text-xs font-bold text-slate-400 uppercase">
-                              Technical Specialization
-                            </p>
-
-                            {isEditingProfile ? (
-                              <textarea
-                                value={profileData?.tech_specialization || ""}
-                                onChange={(e) =>
-                                  setProfileData((prev) => ({
-                                    ...prev,
-                                    tech_specialization: e.target.value,
-                                  }))
-                                }
-                                rows={3}
-                                maxLength={300}
-                                placeholder="Example: Smartphone diagnostics, iPhone repair, Android repair, laptop motherboard repair, data recovery..."
-                                className="w-full mt-2 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none resize-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
-                              />
-                            ) : (
-                              <p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-line">
-                                {profileData?.tech_specialization?.trim() ||
-                                  "No technical specialization provided yet."}
-                              </p>
-                            )}
-
-                            {isEditingProfile && (
-                              <p className="text-[11px] text-slate-400 mt-1.5">
-                                {String(profileData?.tech_specialization || "").length}/300 characters.
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* FULL NAME */}
-                      <div className="flex items-start gap-3">
-                        <User
-                          size={14}
-                          className="text-slate-400 mt-1 shrink-0"
-                        />
-
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-slate-400 uppercase">
-                            Full Name
-                          </p>
-
-                          {isEditingProfile ? (
-                            <input
-                              type="text"
-                              value={profileData?.full_name || ""}
-                              onChange={(e) =>
-                                setProfileData((prev) => ({
-                                  ...prev,
-                                  full_name: e.target.value,
-                                }))
-                              }
-                              placeholder="Enter your full name"
-                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 bg-slate-50/60 rounded-xl text-sm text-slate-700 outline-none transition-all focus:bg-white focus:border-[#769c2d] focus:ring-4 focus:ring-lime-100"
-                            />
-                          ) : (
-                            <p className="text-sm font-semibold text-slate-700">
-                              {profileData?.full_name || "No name provided"}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* EMAIL */}
-                      <div className="flex items-start gap-3">
-                        <Mail
-                          size={14}
-                          className="text-slate-400 mt-1 shrink-0"
-                        />
-
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-slate-400 uppercase">
-                            Email Address
-                          </p>
-
-                          {isEditingProfile ? (
-                            <div>
-                              <input
-                                type="email"
-                                value={profileData?.email || ""}
-                                readOnly
-                                disabled
-                                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-2xl text-sm text-slate-500 bg-slate-100 cursor-not-allowed outline-none"
-                              />
-                              <p className="text-xs text-slate-400 mt-1.5">
-                                Email address cannot be changed from Edit Profile.
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="text-sm font-semibold text-slate-700">
-                              {profileData?.email || "No email provided"}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* PHONE */}
-                      <div className="flex items-start gap-3">
-                        <Phone
-                          size={14}
-                          className="text-slate-400 mt-1 shrink-0"
-                        />
-
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-slate-400 uppercase">
-                            Phone Number
-                          </p>
-
-                          {isEditingProfile ? (
-                            <input
-                              type="tel"
-                              value={profileData?.contact_number || ""}
-                              onChange={(e) =>
-                                setProfileData((prev) => ({
-                                  ...prev,
-                                  contact_number: e.target.value,
-                                }))
-                              }
-                              placeholder="Enter your phone number"
-                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 bg-slate-50/60 rounded-xl text-sm text-slate-700 outline-none transition-all focus:bg-white focus:border-[#769c2d] focus:ring-4 focus:ring-lime-100"
-                            />
-                          ) : (
-                            <p className="text-sm font-semibold text-slate-700">
-                              {profileData?.contact_number || "No phone number"}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* BARANGAY / ASSIGNED AREA */}
-                      <div className="flex items-start gap-3">
-                        <MapPin
-                          size={14}
-                          className="text-slate-400 mt-1 shrink-0"
-                        />
-
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-slate-400 uppercase">
-                            Assigned Area / Barangay
-                          </p>
-
-                          {isEditingProfile ? (
-                            <input
-                              type="text"
-                              value={profileData?.assigned_area || ""}
-                              onChange={(e) =>
-                                setProfileData((prev) => ({
-                                  ...prev,
-                                  assigned_area: e.target.value,
-                                }))
-                              }
-                              placeholder="Enter your barangay"
-                              className="w-full mt-1 px-3 py-2.5 border border-slate-200 bg-slate-50/60 rounded-xl text-sm text-slate-700 outline-none transition-all focus:bg-white focus:border-[#769c2d] focus:ring-4 focus:ring-lime-100"
-                            />
-                          ) : (
-                            <p className="text-sm font-semibold text-slate-700">
-                              {profileData?.assigned_area || "Not assigned"}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* ROLE - DISPLAY ONLY */}
-                      <div className="flex items-start gap-3">
-                        <Shield
-                          size={14}
-                          className="text-slate-400 mt-1 shrink-0"
-                        />
-
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-slate-400 uppercase">
-                            Account Role
-                          </p>
-
-                          <div className="mt-1">
-                            <span className="inline-flex items-center gap-1 bg-lime-50 border border-lime-100 text-[#527a24] px-3 py-1.5 rounded-full text-xs font-black">
-                              <Shield size={11} />
-                              {profileData?.role || "Harvester"}
-                            </span>
-
-                            <p className="text-xs text-slate-400 mt-1">
-                              Account role cannot be changed by the user.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* JOINED DATE - DISPLAY ONLY */}
-                      <div className="flex items-start gap-3">
-                        <CalendarDays
-                          size={14}
-                          className="text-slate-400 mt-1 shrink-0"
-                        />
-
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-slate-400 uppercase">
-                            Active Since
-                          </p>
-
-                          <p className="text-sm font-semibold text-slate-700 mt-1">
-                            {profileData?.joined_date || "2026"}
-                          </p>
-
-                          <p className="text-xs text-slate-400 mt-1">
-                            Automatically based on your account creation date.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* VERIFICATION DOCUMENTS / RESUBMISSION */}
-                {isEditingProfile && (
-                  <div className="mx-6 mb-6 space-y-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-start justify-between gap-4 border-b pb-3">
-                      <div>
-                        <h3 className="font-black text-slate-800 text-sm">
-                          Verification Documents
-                        </h3>
-                        <p className="text-xs text-slate-400 mt-1">
-                          {verificationStatus === "rejected" || verificationStatus === "expired"
-                            ? "Upload corrected documents to request another administrator review."
-                            : "Document replacement is available when your account is rejected or expired."}
-                        </p>
-                      </div>
-                      <span className={`text-xs font-black uppercase px-2 py-1 rounded-full ${
-                        verificationStatus === "rejected"
-                          ? "bg-red-50 text-red-600"
-                          : verificationStatus === "expired"
-                            ? "bg-orange-50 text-orange-600"
-                            : "bg-slate-50 text-slate-500"
-                      }`}>
-                        {verificationStatus}
-                      </span>
-                    </div>
-
-                    {(verificationStatus === "rejected" || verificationStatus === "expired") ? (
-                      <>
-                        <div className="rounded-2xl bg-amber-50 border border-amber-100 p-3">
-                          <p className="text-xs text-amber-800 leading-relaxed">
-                            <strong>Resubmission:</strong> You do not need a Verified Repair Shop status to resubmit. This action is specifically available after rejection or expiration.
-                          </p>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-black text-slate-500 uppercase tracking-wider block mb-2">
-                            Corrected Business Permit / DTI Registration <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            ref={resubmissionPermitRef}
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
-                            onChange={(e) => setResubmissionPermitFile(e.target.files?.[0] || null)}
-                            className="hidden"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => resubmissionPermitRef.current?.click()}
-                            className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-4 text-left hover:border-[#769c2d] hover:bg-lime-50/30 transition"
-                          >
-                            <span className="flex items-center gap-3">
-                              <span className="w-10 h-10 rounded-xl bg-lime-50 text-[#769c2d] flex items-center justify-center">
-                                <Upload size={18} />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-xs font-bold text-slate-700 truncate">
-                                  {resubmissionPermitFile?.name || "Choose corrected permit"}
-                                </span>
-                                <span className="block text-xs text-slate-400 mt-1">
-                                  PDF, JPEG, PNG, or WebP • maximum 5MB
-                                </span>
-                              </span>
-                            </span>
-                          </button>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-black text-slate-500 uppercase tracking-wider block mb-2">
-                            Corrected Technical Certification <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            ref={resubmissionTechCertRef}
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
-                            onChange={(e) => setResubmissionTechCertFile(e.target.files?.[0] || null)}
-                            className="hidden"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => resubmissionTechCertRef.current?.click()}
-                            className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-4 text-left hover:border-[#769c2d] hover:bg-lime-50/30 transition"
-                          >
-                            <span className="flex items-center gap-3">
-                              <span className="w-10 h-10 rounded-xl bg-lime-50 text-[#769c2d] flex items-center justify-center">
-                                <Upload size={18} />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-xs font-bold text-slate-700 truncate">
-                                  {resubmissionTechCertFile?.name || "Choose corrected certification"}
-                                </span>
-                                <span className="block text-xs text-slate-400 mt-1">
-                                  PDF, JPEG, PNG, or WebP • maximum 5MB
-                                </span>
-                              </span>
-                            </span>
-                          </button>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={handleResubmitVerification}
-                          disabled={resubmittingVerification}
-                          className="w-full bg-[#527a24] text-white py-3 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-[#3f611c] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
-                        >
-                          {resubmittingVerification ? "Resubmitting Documents..." : "Resubmit for Verification"}
-                        </button>
-                      </>
-                    ) : (
-                      <p className="text-xs text-slate-400 bg-slate-50 rounded-2xl p-4">
-                        Document resubmission is available when the verification status is <strong>Rejected</strong> or <strong>Expired</strong>.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* FOOTER */}
-                {isEditingProfile && (
-                  <div className="p-4 sm:p-5 border-t border-slate-200 flex gap-3 bg-white">
-                    <button
-                      onClick={() => setIsEditingProfile(false)}
-                      className="flex-1 py-3 text-xs font-black text-slate-500 rounded-xl hover:bg-slate-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      onClick={async () => {
-                        try {
-                          if (!session?.user?.id) {
-                            alert("User session not found.");
-                            return;
-                          }
-
-                          console.log("Saving profile:", {
-                            id: session.user.id,
-                            full_name: profileData.full_name,
-                            email: profileData.email,
-                            contact_number: profileData.contact_number,
-                            barangay: profileData.assigned_area,
-                            business_activity: profileData.business_activity,
-                            tech_specialization: profileData.tech_specialization,
-                          });
-
-                          const { data, error } = await supabase
-                            .from("profiles")
-                            .update({
-                              full_name: profileData.full_name?.trim(),
-                              // Email is intentionally excluded from profile edits.
-                              // The user's existing email remains unchanged.
-                              contact_number: profileData.contact_number?.trim() || null,
-                              barangay:
-                                profileData.assigned_area?.trim() || null,
-                              business_activity:
-                                profileData.business_activity?.trim() || null,
-                              tech_specialization:
-                                profileData.tech_specialization?.trim() || null,
-                            })
-                            .eq("id", session.user.id)
-                            .select()
-                            .single();
-
-                          if (error) {
-                            console.error("PROFILE UPDATE ERROR:", error);
-                            alert(`Failed to update profile: ${error.message}`);
-                            return;
-                          }
-
-                          console.log("PROFILE UPDATED:", data);
-
-                          // Update the displayed profile immediately
-                          setProfileData((prev) => ({
-                            ...prev,
-                            full_name: data.full_name,
-                            email: data.email,
-                            contact_number: data.contact_number || "",
-                            assigned_area: data.barangay || "",
-                            business_activity: data.business_activity || "",
-                            tech_specialization: data.tech_specialization || "",
-                          }));
-
-                          setIsEditingProfile(false);
-
-                          alert("Profile updated successfully!");
-                        } catch (err) {
-                          console.error(
-                            "Unexpected profile update error:",
-                            err,
-                          );
-                          alert(`Error: ${err.message}`);
-                        }
-                      }}
-                      className="flex-1 bg-[#769c2d] text-white py-3 rounded-2xl font-black text-xs uppercase"
-                    >
-                      Save Changes
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+            <RepairShopProfileDrawer
+              profileData={profileData}
+              verificationStatus={verificationStatus}
+              isRepairShop={isRepairShop}
+              profilePanelTab={profilePanelTab}
+              setProfilePanelTab={setProfilePanelTab}
+              isEditingProfile={isEditingProfile}
+              setIsEditingProfile={setIsEditingProfile}
+              setShowProfileModal={setShowProfileModal}
+              passwordForm={passwordForm}
+              setPasswordForm={setPasswordForm}
+              changingPassword={changingPassword}
+              handleChangePassword={handleChangePassword}
+              handleDeactivateAccount={handleDeactivateAccount}
+              handleReverify={handleReverify}
+              userTrustStats={userTrustStats}
+              currentTrustTier={currentTrustTier}
+              nextTrustTier={nextTrustTier}
+              trustTierLoading={trustTierLoading}
+              trustTierProgress={trustTierProgress}
+              dashboardStats={dashboardStats}
+              session={session}
+            />
           )}
           {(verificationStatus === "rejected" || verificationStatus === "expired") && (
             <div className={`mb-8 p-6 border-2 rounded-[2rem] flex items-center gap-6 animate-in slide-in-from-top duration-500 ${
@@ -3142,6 +2446,607 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     </div>
   );
 };
+const RepairShopProfileDrawer = ({
+  profileData,
+  verificationStatus,
+  isRepairShop,
+  profilePanelTab,
+  setProfilePanelTab,
+  isEditingProfile,
+  setIsEditingProfile,
+  setShowProfileModal,
+  passwordForm,
+  setPasswordForm,
+  changingPassword,
+  handleChangePassword,
+  handleDeactivateAccount,
+  handleReverify,
+  userTrustStats,
+  currentTrustTier,
+  nextTrustTier,
+  trustTierLoading,
+  trustTierProgress,
+  dashboardStats,
+  session,
+}) => (
+            <div
+              className="fixed inset-0 z-[100] bg-slate-950/45 backdrop-blur-[2px]"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) {
+                  setShowProfileModal(false);
+                  setIsEditingProfile(false);
+                }
+              }}
+            >
+              <aside
+                className="absolute right-0 top-0 h-full w-full max-w-[390px] bg-white shadow-2xl flex flex-col overflow-hidden"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Repair Shop profile"
+              >
+                {/* Drawer top bar */}
+                <div className="h-[62px] shrink-0 bg-slate-900 flex items-center justify-end px-3">
+                  <button
+                    type="button"
+                    aria-label="Close profile"
+                    onClick={() => {
+                      setShowProfileModal(false);
+                      setIsEditingProfile(false);
+                      setProfilePanelTab("profile");
+                    }}
+                    className="w-8 h-8 rounded-lg bg-slate-700 text-white/80 hover:bg-slate-600 hover:text-white flex items-center justify-center transition"
+                  >
+                    <XCircle size={18} />
+                  </button>
+                </div>
+
+                {/* Profile identity */}
+                <div className="px-4 pt-5 pb-3 bg-white shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#5d963d] to-[#2b8c91] text-white flex items-center justify-center text-sm font-bold shadow-sm">
+                      {profileData?.initials || "RS"}
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-[15px] font-black text-slate-800 truncate">
+                          {profileData?.full_name || "Repair Shop"}
+                        </h2>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lime-50 text-[#5d963d] text-[9px] font-bold border border-lime-100 shrink-0">
+                          <CheckCircle2 size={10} />
+                          {verificationStatus === "verified" ? "Verified" : "Pending"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Repair Shop · {profileData?.barangay || profileData?.assigned_area || "Valenzuela"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tabs */}
+                  <div className="mt-4 grid grid-cols-3 rounded-xl bg-slate-100 p-0.5">
+                    {[
+                      { id: "profile", label: "View Profile" },
+                      { id: "security", label: "Account & Security" },
+                      { id: "trust", label: "Trust Tier" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => {
+                          setProfilePanelTab(tab.id);
+                          setIsEditingProfile(false);
+                        }}
+                        className={`min-w-0 px-2 py-2 rounded-lg text-[9px] font-bold transition ${
+                          profilePanelTab === tab.id
+                            ? "bg-white text-[#527a24] shadow-sm"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto bg-white">
+                  {/* ================= VIEW PROFILE ================= */}
+                  {profilePanelTab === "profile" && (
+                    <div className="px-4 pb-7 pt-2 space-y-5">
+                      {!isEditingProfile ? (
+                        <>
+                          <section>
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                              Shop Information
+                            </p>
+
+                            <div className="space-y-2">
+                              {[
+                                {
+                                  icon: <User size={14} />,
+                                  label: "Full Name",
+                                  value: profileData?.full_name || "No name provided",
+                                },
+                                {
+                                  icon: <Mail size={14} />,
+                                  label: "Email",
+                                  value: profileData?.email || "No email provided",
+                                },
+                                {
+                                  icon: <Phone size={14} />,
+                                  label: "Phone Number",
+                                  value: profileData?.contact_number || "No phone number",
+                                },
+                                {
+                                  icon: <MapPin size={14} />,
+                                  label: "Barangay",
+                                  value:
+                                    profileData?.barangay ||
+                                    profileData?.assigned_area ||
+                                    "Not assigned",
+                                },
+                              ].map((item) => (
+                                <div
+                                  key={item.label}
+                                  className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5"
+                                >
+                                  <span className="text-slate-400 shrink-0">{item.icon}</span>
+                                  <div className="min-w-0">
+                                    <p className="text-[9px] text-slate-400">{item.label}</p>
+                                    <p className="text-[11px] font-semibold text-slate-700 truncate">
+                                      {item.value}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </section>
+
+                          <section>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                                About the Shop
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setIsEditingProfile(true)}
+                                className="text-[10px] font-bold text-[#5d963d] hover:text-[#3f7126] flex items-center gap-1"
+                              >
+                                <Settings size={11} />
+                                Edit
+                              </button>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 px-3 py-3">
+                              <p className="text-[11px] leading-relaxed text-slate-500">
+                                {profileData?.business_activity?.trim() ||
+                                  "No shop description has been provided yet."}
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                              Services Offered
+                            </p>
+
+                            <div className="flex flex-wrap gap-1.5">
+                              {String(profileData?.tech_specialization || "")
+                                .split(/[,;\n|]+/)
+                                .map((service) => service.trim())
+                                .filter(Boolean)
+                                .map((service, index) => (
+                                  <span
+                                    key={`${service}-${index}`}
+                                    className="px-2.5 py-1 rounded-full border border-lime-200 bg-lime-50 text-[#5d7f3b] text-[9px] font-medium"
+                                  >
+                                    {service}
+                                  </span>
+                                ))}
+
+                              {!String(profileData?.tech_specialization || "").trim() && (
+                                <span className="text-[10px] text-slate-400">
+                                  No services listed yet.
+                                </span>
+                              )}
+                            </div>
+                          </section>
+
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingProfile(true)}
+                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-2.5 text-[10px] font-black flex items-center justify-center gap-2 transition shadow-sm"
+                          >
+                            <Settings size={13} />
+                            Edit Contact Info
+                          </button>
+                        </>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-black text-slate-800">Edit Contact Info</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                Update your repair shop profile details.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingProfile(false)}
+                              className="text-[10px] font-bold text-slate-400 hover:text-slate-600"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+
+                          {[
+                            ["Full Name", "full_name", "text", "Enter your full name"],
+                            ["Phone Number", "contact_number", "tel", "Enter your phone number"],
+                            ["Barangay", "assigned_area", "text", "Enter your barangay"],
+                          ].map(([label, key, type, placeholder]) => (
+                            <label key={key} className="block">
+                              <span className="text-[10px] font-bold text-slate-500">{label}</span>
+                              <input
+                                type={type}
+                                value={profileData?.[key] || ""}
+                                onChange={(e) =>
+                                  setProfileData((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.value,
+                                  }))
+                                }
+                                placeholder={placeholder}
+                                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              />
+                            </label>
+                          ))}
+
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-slate-500">About the Shop</span>
+                            <textarea
+                              rows={4}
+                              value={profileData?.business_activity || ""}
+                              onChange={(e) =>
+                                setProfileData((prev) => ({
+                                  ...prev,
+                                  business_activity: e.target.value,
+                                }))
+                              }
+                              placeholder="Describe your repair shop and services."
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                            />
+                          </label>
+
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-slate-500">
+                              Services Offered
+                            </span>
+                            <textarea
+                              rows={3}
+                              value={profileData?.tech_specialization || ""}
+                              onChange={(e) =>
+                                setProfileData((prev) => ({
+                                  ...prev,
+                                  tech_specialization: e.target.value,
+                                }))
+                              }
+                              placeholder="Screen Replacement, Battery Replacement, Data Recovery..."
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                if (!session?.user?.id) {
+                                  alert("User session not found. Please log in again.");
+                                  return;
+                                }
+
+                                const { data, error } = await supabase
+                                  .from("profiles")
+                                  .update({
+                                    full_name: profileData?.full_name?.trim() || null,
+                                    contact_number: profileData?.contact_number?.trim() || null,
+                                    barangay:
+                                      profileData?.assigned_area?.trim() ||
+                                      profileData?.barangay?.trim() ||
+                                      null,
+                                    business_activity:
+                                      profileData?.business_activity?.trim() || null,
+                                    tech_specialization:
+                                      profileData?.tech_specialization?.trim() || null,
+                                  })
+                                  .eq("id", session.user.id)
+                                  .select(
+                                    "full_name,contact_number,barangay,business_activity,tech_specialization",
+                                  )
+                                  .single();
+
+                                if (error) throw error;
+
+                                setProfileData((prev) => ({
+                                  ...prev,
+                                  ...data,
+                                  assigned_area: data?.barangay || "",
+                                }));
+                                setIsEditingProfile(false);
+                                alert("Profile updated successfully!");
+                              } catch (error) {
+                                console.error("PROFILE UPDATE ERROR:", error);
+                                alert(`Failed to update profile: ${error.message}`);
+                              }
+                            }}
+                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-2.5 text-[10px] font-black transition"
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      )}
+
+                      {(verificationStatus === "rejected" || verificationStatus === "expired") && (
+                        <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                          <p className="text-[10px] font-bold text-amber-800">
+                            Verification needs attention.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleReverify}
+                            className="mt-2 text-[10px] font-black text-amber-700 hover:text-amber-900"
+                          >
+                            Update verification documents →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ================= ACCOUNT & SECURITY ================= */}
+                  {profilePanelTab === "security" && (
+                    <div className="px-4 pb-8 pt-6">
+                      <section>
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-3">
+                          Change Password
+                        </p>
+
+                        <div className="space-y-3">
+                          {[
+                            ["Current Password", "current", passwordForm.current],
+                            ["New Password", "next", passwordForm.next],
+                            ["Confirm New Password", "confirm", passwordForm.confirm],
+                          ].map(([label, key, value]) => (
+                            <label key={key} className="block">
+                              <span className="text-[10px] font-medium text-slate-500">{label}</span>
+                              <input
+                                type="password"
+                                value={value}
+                                onChange={(e) =>
+                                  setPasswordForm((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.value,
+                                  }))
+                                }
+                                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-[11px] outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              />
+                            </label>
+                          ))}
+
+                          <button
+                            type="button"
+                            onClick={handleChangePassword}
+                            disabled={changingPassword}
+                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-2.5 text-[10px] font-black transition disabled:opacity-50"
+                          >
+                            {changingPassword ? "Updating Password..." : "Update Password"}
+                          </button>
+                        </div>
+                      </section>
+
+                      <div className="my-6 border-t border-slate-100" />
+
+                      <section>
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-3">
+                          Danger Zone
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={handleDeactivateAccount}
+                          className="w-full rounded-xl border border-red-300 text-red-600 hover:bg-red-50 py-3 text-[10px] font-bold flex items-center justify-center gap-2 transition"
+                        >
+                          <XCircle size={13} />
+                          Deactivate Account
+                        </button>
+                      </section>
+                    </div>
+                  )}
+
+                  {/* ================= TRUST TIER ================= */}
+                  {profilePanelTab === "trust" && (
+                    <div className="px-3 pb-8 pt-3 space-y-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {[
+                          {
+                            label: "Total Bids",
+                            value: dashboardStats?.pendingBids || profileData?.active_bids || 0,
+                          },
+                          {
+                            label: "Items Bought",
+                            value: userTrustStats.completedTransactions,
+                          },
+                          {
+                            label: "Purchase Rating",
+                            value: userTrustStats.purchaseTransactionReviews > 0
+                              ? Number(userTrustStats.purchaseTransactionRating || 0).toFixed(1)
+                              : "—",
+                            suffix: userTrustStats.purchaseTransactionReviews > 0 ? "★" : "",
+                          },
+                          {
+                            label: "Repair Service Rating",
+                            value: userTrustStats.repairServiceReviews > 0
+                              ? Number(userTrustStats.repairServiceRating || 0).toFixed(1)
+                              : "—",
+                            suffix: userTrustStats.repairServiceReviews > 0 ? "★" : "",
+                          },
+                        ].map((stat) => (
+                          <div
+                            key={stat.label}
+                            className="rounded-xl bg-slate-50 border border-slate-100 px-1.5 py-2 text-center"
+                          >
+                            <p className="text-[11px] font-black text-slate-800">
+                              {stat.value}{stat.suffix ? ` ${stat.suffix}` : ""}
+                            </p>
+                            <p className="text-[8px] text-slate-400 mt-0.5 leading-tight">
+                              {stat.label}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                            Purchase Transaction Reviews
+                          </p>
+                          <p className="mt-0.5 text-sm font-black text-slate-700">
+                            {userTrustStats.purchaseTransactionReviews}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                            Repair Service Reviews
+                          </p>
+                          <p className="mt-0.5 text-sm font-black text-slate-700">
+                            {userTrustStats.repairServiceReviews}
+                          </p>
+                        </div>
+                      </div>
+
+                      {userTrustStats.purchaseTransactionReviews === 0 &&
+                        userTrustStats.repairServiceReviews === 0 && (
+                          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-center text-[9px] font-medium text-slate-400">
+                            No ratings available
+                          </p>
+                        )}
+
+                      <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 p-3.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-medium text-slate-400 uppercase tracking-wide">
+                              Current Tier
+                            </p>
+                            <p className="text-base font-black text-amber-500 mt-0.5">
+                              {trustTierLoading
+                                ? "Loading..."
+                                : currentTrustTier?.name || "NEWCOMER"}
+                            </p>
+                          </div>
+
+                          <div className="text-right text-[9px] text-slate-400">
+                            <p>
+                              {userTrustStats.completedTransactions} transactions
+                            </p>
+                            {nextTrustTier ? (
+                              <p>
+                                {Math.max(
+                                  0,
+                                  Number(nextTrustTier.min_transactions || 0) -
+                                    userTrustStats.completedTransactions,
+                                )}{" "}
+                                more to {nextTrustTier.name}
+                              </p>
+                            ) : (
+                              <p>Maximum tier reached</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-amber-500 transition-all"
+                              style={{ width: `${trustTierProgress}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-1 text-[8px] text-slate-400">
+                            <span>{currentTrustTier?.name || "Current"}</span>
+                            <span>{nextTrustTier?.name || "Maximum"}</span>
+                          </div>
+                        </div>
+                      </section>
+
+                      <section className="rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border border-emerald-100 p-3.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                              <Leaf size={16} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-[#145374]">
+                                CO₂ Recovery Contribution
+                              </p>
+                              <p className="text-[8px] text-[#3b91ad]">
+                                From harvesting & processing e-waste
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <p className="text-lg font-black text-[#145374]">
+                              {Number(profileData?.co2_recovered_kg || 0).toFixed(2)}
+                              <span className="text-[9px] ml-0.5">kg</span>
+                            </p>
+                            <p className="text-[8px] text-[#3b91ad]">CO₂e recovered</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 border-t border-emerald-100 pt-3 flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-white text-emerald-600 flex items-center justify-center shadow-sm">
+                            <Package size={13} />
+                          </div>
+                          <p className="text-[9px] text-[#145374]">
+                            <span className="font-black">
+                              {profileData?.recovered_devices || 0} devices
+                            </span>{" "}
+                            recovered & processed
+                          </p>
+                        </div>
+                      </section>
+
+                      <section>
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                          Current Privileges
+                        </p>
+
+                        <div className="space-y-1">
+                          {(currentTrustTier?.privileges || []).map((privilege, index) => (
+                            <div
+                              key={`${privilege}-${index}`}
+                              className="flex items-center gap-2 rounded-lg bg-emerald-50 px-2.5 py-1.5"
+                            >
+                              <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
+                              <span className="text-[9px] font-medium text-emerald-700">
+                                {privilege}
+                              </span>
+                            </div>
+                          ))}
+
+                          {!currentTrustTier?.privileges?.length && (
+                            <p className="text-[10px] text-slate-400 rounded-lg bg-slate-50 p-3">
+                              No privileges are configured for this tier yet.
+                            </p>
+                          )}
+                        </div>
+                      </section>
+                    </div>
+                  )}
+                </div>
+              </aside>
+            </div>
+
+);
+
 const MyBidsView = ({ bids, onContactSeller }) => {
   const stats = {
     pending: bids.filter((b) => b.status === "pending").length,

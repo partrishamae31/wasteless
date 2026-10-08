@@ -324,7 +324,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] p-6">
+    <div className="min-h-screen bg-[#ffffff] p-6">
       {selectedAlertForMatches ? (
         <MatchingListingsView
           alerts={selectedAlertForMatches}
@@ -333,30 +333,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
       ) : (
         <div className="max-w-5xl mx-auto">
           {/* HEADER */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-[22px] font-bold text-gray-800">
-                Component Alerts
-              </h1>
-
-              <p className="text-sm text-gray-400 mt-1">
-                Get notified when matching Working or Not Working
-                components are posted
-              </p>
-            </div>
-
-            <button
-              onClick={openCreateModal}
-              className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
-                isVerified
-                  ? "bg-[#78A22F] hover:bg-[#6d9328] text-white shadow-md"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
-              }`}
-            >
-              <Plus size={16} />
-              Create Alert
-            </button>
-          </div>
+          
 
           {/* SUMMARY CARD */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-6 shadow-sm">
@@ -376,7 +353,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                 onClick={openCreateModal}
                 className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all"
               >
-                Create New
+                Create Alert
               </button>
             </div>
 
