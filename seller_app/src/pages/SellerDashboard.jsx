@@ -886,6 +886,177 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
     </div>
   );
 };
+
+const DonationReceiptModal = ({ receipt, onClose }) => {
+  if (!receipt) return null;
+
+  const completedAt = receipt.completed_at
+    ? new Date(receipt.completed_at)
+    : new Date();
+
+  const referenceNumber =
+    receipt.reference_number ||
+    `EWD-${String(receipt.listing_id || "DONATION")
+      .replace(/-/g, "")
+      .slice(0, 8)
+      .toUpperCase()}`;
+
+  const formattedDate = completedAt.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const formattedTime = completedAt.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const handleDownload = () => {
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      doc.setFillColor(50, 133, 161);
+      doc.rect(0, 0, pageWidth, 50, "F");
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      doc.text("WASTELESS", pageWidth / 2, 20, { align: "center" });
+      doc.setFontSize(14);
+      doc.text("Digital Drop-off Receipt", pageWidth / 2, 35, {
+        align: "center",
+      });
+
+      let y = 70;
+      const addRow = (label, value) => {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text(label, 25, y);
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(30, 41, 59);
+        const wrapped = doc.splitTextToSize(String(value || "-"), pageWidth - 115);
+        doc.text(wrapped, pageWidth - 25, y, { align: "right" });
+
+        y += Math.max(18, wrapped.length * 5 + 8);
+        doc.setDrawColor(226, 232, 240);
+        doc.line(25, y - 5, pageWidth - 25, y - 5);
+      };
+
+      addRow("Receipt No.", referenceNumber);
+      addRow("Date", formattedDate);
+      addRow("Time", formattedTime);
+      addRow("Item", receipt.device_model || "Electronic Device");
+      addRow("Category", receipt.category || "Electronic Device");
+      addRow("Barangay", receipt.barangay || "Not specified");
+      addRow("Drop-off Location", receipt.drop_off_name || "E-waste Drop-off Point");
+      addRow("Address", receipt.drop_off_address || "Not provided");
+      addRow("Partner", receipt.drop_off_partner || "Not provided");
+      addRow("Status", "For Donation");
+
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text(
+        "WasteLess - Official Digital Drop-off Receipt",
+        pageWidth / 2,
+        280,
+        { align: "center" }
+      );
+
+      doc.save(`WasteLess-Dropoff-Receipt-${referenceNumber}.pdf`);
+    } catch (error) {
+      console.error("Failed to generate donation receipt:", error);
+      alert("Unable to generate the donation receipt. Please try again.");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[360] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden">
+        <div className="bg-gradient-to-r from-[#3285a1] to-[#14516d] p-7 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-white/70">
+                WasteLess
+              </p>
+              <h2 className="text-2xl font-black mt-2">
+                Digital Drop-off Receipt
+              </h2>
+              <p className="text-xs text-white/80 mt-1">
+                Your donation has been recorded for drop-off coordination.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-3">
+          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-center gap-3">
+            <CheckCircle2 className="text-emerald-600" size={22} />
+            <div>
+              <p className="text-sm font-black text-emerald-800">
+                For Donation
+              </p>
+              <p className="text-xs text-emerald-700">
+                Keep this receipt for your drop-off.
+              </p>
+            </div>
+          </div>
+
+          {[
+            ["Receipt No.", referenceNumber],
+            ["Date", formattedDate],
+            ["Time", formattedTime],
+            ["Item", receipt.device_model || "Electronic Device"],
+            ["Category", receipt.category || "Electronic Device"],
+            ["Barangay", receipt.barangay || "Not specified"],
+            ["Drop-off Location", receipt.drop_off_name || "E-waste Drop-off Point"],
+            ["Address", receipt.drop_off_address || "Not provided"],
+            ["Partner", receipt.drop_off_partner || "Not provided"],
+          ].map(([label, value]) => (
+            <div
+              key={label}
+              className="flex justify-between gap-4 py-3 border-b border-dashed border-slate-200"
+            >
+              <span className="text-xs text-slate-400">{label}</span>
+              <span className="text-xs font-bold text-slate-700 text-right max-w-[62%]">
+                {value}
+              </span>
+            </div>
+          ))}
+
+          <div className="grid grid-cols-2 gap-3 pt-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-3 rounded-xl border border-slate-200 text-xs font-black text-slate-500"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="py-3 rounded-xl bg-[#3285a1] text-white text-xs font-black flex items-center justify-center gap-2"
+            >
+              <Download size={15} />
+              Download Receipt
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SellerDashboard = ({ session }) => {
   const [activeTab, setActiveTab] = useState("listings");
   const [listings, setListings] = useState([]);
@@ -952,11 +1123,28 @@ const SellerDashboard = ({ session }) => {
     firstReminder: 7,
     secondReminder: 3,
     autoSuggest: 14,
+    safeStorageDurations: {
+      Smartphone: 60,
+      Laptop: 60,
+      Tablet: 60,
+      Monitor: 60,
+      Parts: 60,
+      Others: 60,
+      Desktop: 60,
+      Phone: 60,
+      Printer: 60,
+      TV: 60,
+      Router: 60,
+      Keyboard: 60,
+      Mouse: 60,
+      Other: 60,
+    },
   });
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [transactions, setTransactions] = useState([]);
   const [selectedReceiptTransaction, setSelectedReceiptTransaction] = useState(null);
+  const [donationReceipt, setDonationReceipt] = useState(null);
 
   // Trust Tier data is loaded from the same trust_tiers table used by Admin.
   const [trustTiers, setTrustTiers] = useState([]);
@@ -971,6 +1159,7 @@ const SellerDashboard = ({ session }) => {
   });
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [listingToDonate, setListingToDonate] = useState(null);
+  const [availableDropOffPoints, setAvailableDropOffPoints] = useState([]);
   const [showRateModal, setShowRateModal] = useState(false);
   const [ratingRole, setRatingRole] = useState(null); // "buyer" or "seller"
   const [reviewedMarketplaceTransactions, setReviewedMarketplaceTransactions] = useState(new Set());
@@ -1145,9 +1334,72 @@ const SellerDashboard = ({ session }) => {
   };
 
   const handleOpenDonation = (listing) => {
+    const status = String(listing?.status || "").trim().toLowerCase();
+
+    if (
+      status === "donated" ||
+      status === "for_donation" ||
+      status === "for donation" ||
+      status === "drop_off_assigned" ||
+      status === "processed"
+    ) {
+      setDonationReminder((prev) =>
+        prev?.id === listing?.id ? null : prev
+      );
+      setExpiredListingAction((prev) =>
+        prev?.id === listing?.id ? null : prev
+      );
+      return;
+    }
+
     setListingToDonate(listing);
     setIsDonationModalOpen(true);
   };
+
+  // Load active administrator-managed drop-off points directly from Supabase.
+  // The DonationModal must use the database records rather than assuming that
+  // a barangay has a hard-coded/default location.
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchAvailableDropOffPoints = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("drop_off_points")
+          .select(`
+            id,
+            name,
+            partner,
+            address,
+            barangay,
+            city,
+            operating_hours,
+            is_active
+          `)
+          .eq("is_active", true)
+          .order("barangay", { ascending: true })
+          .order("name", { ascending: true });
+
+        if (error) throw error;
+
+        if (!cancelled) {
+          setAvailableDropOffPoints(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error("Failed to load active drop-off points:", error);
+        if (!cancelled) {
+          setAvailableDropOffPoints([]);
+        }
+      } finally {
+      }
+    };
+
+    fetchAvailableDropOffPoints();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
 
   // Hazardous/Not Working and Parts listings cannot remain bid-eligible after
   // their safe-storage period. Once expired, the owner must resolve the listing
@@ -1225,7 +1477,7 @@ const SellerDashboard = ({ session }) => {
     const { data, error } = await supabase
       .from("listings")
       .update({
-        status: "donated",
+        status: "for_donation",
         drop_off_point_id: selectedDropOffPointId,
       })
       .eq("id", listingId)
@@ -1252,6 +1504,44 @@ const SellerDashboard = ({ session }) => {
 
     console.log("Donation saved successfully:", data);
 
+    const chosenDropOffPoint =
+      availableDropOffPoints.find(
+        (point) => String(point.id) === String(data.drop_off_point_id)
+      ) || null;
+
+    const sourceListing =
+      listingToDonate ||
+      myListings.find((item) => item.id === listingId) ||
+      {};
+
+    const receiptData = {
+      listing_id: data.id,
+      device_model: data.device_model || sourceListing.device_model,
+      category: data.category || sourceListing.category,
+      barangay:
+        chosenDropOffPoint?.barangay ||
+        sourceListing.barangay ||
+        currentProfileBarangay ||
+        "",
+      drop_off_name:
+        chosenDropOffPoint?.name ||
+        sourceListing.saved_drop_off_point_name ||
+        "E-waste Drop-off Point",
+      drop_off_address:
+        chosenDropOffPoint?.address ||
+        sourceListing.saved_drop_off_point_address ||
+        "",
+      drop_off_partner: chosenDropOffPoint?.partner || "",
+      status: "for_donation",
+      completed_at: new Date().toISOString(),
+      reference_number: `EWD-${String(data.id || "DONATION")
+        .replace(/-/g, "")
+        .slice(0, 8)
+        .toUpperCase()}`,
+    };
+
+    setDonationReceipt(receiptData);
+
     // Preserve the complete listing information in local state.
     setMyListings((prev) =>
       prev.map((listing) =>
@@ -1259,7 +1549,7 @@ const SellerDashboard = ({ session }) => {
           ? {
               ...listing,
               ...data,
-              status: "donated",
+              status: "for_donation",
               drop_off_point_id: data.drop_off_point_id,
             }
           : listing
@@ -1273,7 +1563,7 @@ const SellerDashboard = ({ session }) => {
       const updatedDonation = {
         ...(existing || listingToDonate || {}),
         ...data,
-        status: "donated",
+        status: "for_donation",
         drop_off_point_id: data.drop_off_point_id,
       };
 
@@ -1281,6 +1571,26 @@ const SellerDashboard = ({ session }) => {
 
       return [updatedDonation, ...filtered];
     });
+
+    // A completed donation must no longer have actionable donation reminders.
+    setDonationReminder((prev) =>
+      prev?.id === listingId ? null : prev
+    );
+    setExpiredListingAction((prev) =>
+      prev?.id === listingId ? null : prev
+    );
+    setNotifications((prev) =>
+      prev.map((notification) =>
+        notification.related_listing_id === listingId &&
+        [
+          "listing_expired",
+          "donation_safe_storage",
+          "donation_safe_storage_reminder",
+        ].includes(notification.type)
+          ? { ...notification, is_read: true }
+          : notification
+      )
+    );
 
     // Close donation modal if it is open.
     setIsDonationModalOpen(false);
@@ -2837,32 +3147,68 @@ const SellerDashboard = ({ session }) => {
     if (!myListings || myListings.length === 0) return;
 
     const now = Date.now();
-    const SAFE_STORAGE_DAYS = 60;
-    const safeStorageMs = SAFE_STORAGE_DAYS * 24 * 60 * 60 * 1000;
+    let safeStorageDurations = {
+      Smartphone: 60,
+      Laptop: 60,
+      Tablet: 60,
+      Monitor: 60,
+      Parts: 60,
+      Others: 60,
+      Desktop: 60,
+      Phone: 60,
+      Printer: 60,
+      TV: 60,
+      Router: 60,
+      Keyboard: 60,
+      Mouse: 60,
+      Other: 60,
+    };
+
+    try {
+      const savedConfig = localStorage.getItem("wasteless_donation_configuration");
+      if (savedConfig) {
+        const parsedConfig = JSON.parse(savedConfig);
+        safeStorageDurations = {
+          ...safeStorageDurations,
+          ...(parsedConfig.safeStorageDurations || {}),
+        };
+      }
+    } catch (configError) {
+      console.warn("Unable to load safe-storage configuration:", configError);
+    }
 
     const getSafeStorageExpiry = (listing) => {
       const condition = String(listing?.condition || "").trim().toLowerCase();
-      const category = String(listing?.category || "").trim().toLowerCase();
+      const category = String(listing?.category || "Others").trim();
+      const normalizedCategory = category.toLowerCase();
 
       // TC_HAZ_03 applies to Not Working / For Parts inventory.
       const isNotWorkingOrParts =
         condition === "not working" ||
         condition.includes("not working") ||
-        category === "parts" ||
-        category.includes("for parts");
+        normalizedCategory === "parts" ||
+        normalizedCategory.includes("for parts");
 
       if (!isNotWorkingOrParts) return null;
 
-      if (listing?.expires_at) {
-        const expiry = new Date(listing.expires_at);
-        if (!Number.isNaN(expiry.getTime())) return expiry;
-      }
+      const configuredDays = Number(
+        safeStorageDurations[category] ??
+          safeStorageDurations[normalizedCategory] ??
+          safeStorageDurations.Others ??
+          60,
+      );
+      const safeStorageDays =
+        Number.isFinite(configuredDays) && configuredDays > 0
+          ? configuredDays
+          : 60;
 
       const baseDateValue = listing?.last_working_date || listing?.created_at;
       const baseDate = new Date(baseDateValue);
       if (Number.isNaN(baseDate.getTime())) return null;
 
-      return new Date(baseDate.getTime() + safeStorageMs);
+      return new Date(
+        baseDate.getTime() + safeStorageDays * 24 * 60 * 60 * 1000,
+      );
     };
 
     const expiredActiveListings = myListings.filter((listing) => {
@@ -2964,7 +3310,9 @@ const SellerDashboard = ({ session }) => {
       return;
     }
 
-    // Load the same configuration used by Donation Management
+    // Load the same configuration used by Donation Management.
+    // Safe-storage duration is category-specific and is counted from the
+    // listing's last-working date for Not Working / For Parts inventory.
     const savedConfig = localStorage.getItem(
       "wasteless_donation_configuration",
     );
@@ -2973,6 +3321,22 @@ const SellerDashboard = ({ session }) => {
       firstReminder: 7,
       secondReminder: 3,
       autoSuggest: 14,
+      safeStorageDurations: {
+        Smartphone: 60,
+        Laptop: 60,
+        Tablet: 60,
+        Monitor: 60,
+        Parts: 60,
+        Others: 60,
+        Desktop: 60,
+        Phone: 60,
+        Printer: 60,
+        TV: 60,
+        Router: 60,
+        Keyboard: 60,
+        Mouse: 60,
+        Other: 60,
+      },
     };
 
     if (savedConfig) {
@@ -2980,9 +3344,14 @@ const SellerDashboard = ({ session }) => {
         const parsed = JSON.parse(savedConfig);
 
         config = {
+          ...config,
           firstReminder: Number(parsed.firstReminder) || 7,
           secondReminder: Number(parsed.secondReminder) || 3,
           autoSuggest: Number(parsed.autoSuggest) || 14,
+          safeStorageDurations: {
+            ...config.safeStorageDurations,
+            ...(parsed.safeStorageDurations || {}),
+          },
         };
       } catch (error) {
         console.error("Failed to read donation configuration:", error);
@@ -2991,22 +3360,57 @@ const SellerDashboard = ({ session }) => {
 
     setDonationConfig(config);
 
-    const now = new Date();
+    const now = Date.now();
+    const getSafeStorageDays = (listing) => {
+      const category = String(listing?.category || "Others").trim();
+      const durations = config.safeStorageDurations || {};
+      const configured = Number(
+        durations[category] ??
+          durations[category.toLowerCase()] ??
+          durations.Others ??
+          60,
+      );
+      return Number.isFinite(configured) && configured > 0 ? configured : 60;
+    };
+
+    const getSafeStorageExpiry = (listing) => {
+      const condition = String(listing?.condition || "").trim().toLowerCase();
+      const category = String(listing?.category || "").trim().toLowerCase();
+      const isNotWorkingOrParts =
+        condition === "not working" ||
+        condition.includes("not working") ||
+        category === "parts" ||
+        category.includes("for parts");
+
+      if (!isNotWorkingOrParts) return null;
+
+      const baseDateValue = listing?.last_working_date || listing?.created_at;
+      const baseDate = new Date(baseDateValue);
+      if (Number.isNaN(baseDate.getTime())) return null;
+
+      return new Date(
+        baseDate.getTime() + getSafeStorageDays(listing) * 24 * 60 * 60 * 1000,
+      );
+    };
 
     // Expired listings immediately surface the Donate action/reminder.
-    // This is based on the database status so the owner is prompted as soon
-    // as the database expiration worker marks the listing expired.
     const expiredListings = myListings
       .filter((listing) => {
         const status = String(listing.status || "").toLowerCase();
         return status === "expired";
       })
       .map((listing) => {
-        const createdDate = new Date(listing.created_at);
-        const ageInDays = Number.isNaN(createdDate.getTime())
+        const baseDate = new Date(listing.last_working_date || listing.created_at);
+        const ageInDays = Number.isNaN(baseDate.getTime())
           ? 0
-          : Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
-        return { ...listing, ageInDays, isExpired: true, isStrongSuggestion: true };
+          : Math.floor((now - baseDate.getTime()) / 86400000);
+        return {
+          ...listing,
+          ageInDays,
+          safeStorageDays: getSafeStorageDays(listing),
+          isExpired: true,
+          isStrongSuggestion: true,
+        };
       });
 
     if (expiredListings.length > 0) {
@@ -3015,34 +3419,59 @@ const SellerDashboard = ({ session }) => {
       return;
     }
 
-    // Normal donation reminders continue to use the existing configuration.
+    // Normal donation reminders continue to use the existing configuration,
+    // while the safe-storage calculation uses the administrator's category
+    // duration rather than a dashboard-only hardcoded 60-day value.
     const eligibleListings = myListings
       .filter((listing) => {
         const status = String(listing.status || "").toLowerCase();
-        if (["donated", "drop_off_assigned", "processed", "expired"].includes(status)) return false;
+        if ([
+          "for_donation",
+          "donated",
+          "drop_off_assigned",
+          "processed",
+          "expired",
+        ].includes(status)) return false;
         if (["inactive", "sold", "completed", "cancelled"].includes(status)) return false;
 
-        const createdDate = new Date(listing.created_at);
-        if (Number.isNaN(createdDate.getTime())) return false;
+        const expiry = getSafeStorageExpiry(listing);
+        const condition = String(listing?.condition || "").trim().toLowerCase();
+        const category = String(listing?.category || "").trim().toLowerCase();
+        const isNotWorkingOrParts =
+          condition === "not working" ||
+          condition.includes("not working") ||
+          category === "parts" ||
+          category.includes("for parts");
 
-        const ageInDays =
-          (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
-        if (ageInDays < config.firstReminder) return false;
+        if (isNotWorkingOrParts) {
+          if (!expiry || expiry.getTime() > now) return false;
+        } else {
+          const createdDate = new Date(listing.created_at);
+          if (Number.isNaN(createdDate.getTime())) return false;
+          const ageInDays = (now - createdDate.getTime()) / 86400000;
+          if (ageInDays < config.firstReminder) return false;
+        }
 
         const activeBids =
-          listing.bids?.filter((bid) => bid.status !== "declined") || [];
+          listing.bids?.filter((bid) => !["declined", "cancelled"].includes(String(bid.status || "").toLowerCase())) || [];
         return activeBids.length === 0;
       })
       .map((listing) => {
-        const createdDate = new Date(listing.created_at);
-        const ageInDays = Math.floor(
-          (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24),
-        );
-        return { ...listing, ageInDays, isExpired: false, isStrongSuggestion: ageInDays >= config.autoSuggest };
+        const baseDate = new Date(listing.last_working_date || listing.created_at);
+        const ageInDays = Number.isNaN(baseDate.getTime())
+          ? 0
+          : Math.floor((now - baseDate.getTime()) / 86400000);
+        const safeStorageDays = getSafeStorageDays(listing);
+        return {
+          ...listing,
+          ageInDays,
+          safeStorageDays,
+          isExpired: false,
+          isStrongSuggestion: ageInDays >= safeStorageDays || ageInDays >= config.autoSuggest,
+        };
       })
       .sort((a, b) => b.ageInDays - a.ageInDays);
 
-    // Show the oldest eligible listing
     setDonationReminder(eligibleListings[0] || null);
   }, [myListings]);
 
@@ -3603,17 +4032,101 @@ const SellerDashboard = ({ session }) => {
                             <CheckCircle2 />
                           )
                         }
-                        onClick={() => {
-                          if (notif.type === "listing_expired") {
-                            const expiredListing = (myListings || []).find(
-                              (listing) => listing.id === notif.related_listing_id,
-                            );
-                            if (expiredListing) {
-                              setShowNotifications(false);
+                        onClick={async () => {
+                          // Opening a donation notification counts as dismissing/
+                          // acknowledging the reminder. Persist that state so
+                          // the Donation Tab can start the configured secondary
+                          // reminder interval.
+                          if (notif.id && !notif.is_read) {
+                            try {
+                              await supabase
+                                .from("notifications")
+                                .update({ is_read: true })
+                                .eq("id", notif.id)
+                                .eq("user_id", session.user.id);
+
+                              setNotifications((prev) =>
+                                prev.map((item) =>
+                                  item.id === notif.id
+                                    ? { ...item, is_read: true }
+                                    : item,
+                                ),
+                              );
+                            } catch (readError) {
+                              console.warn(
+                                "Unable to mark notification as read:",
+                                readError,
+                              );
+                            }
+                          }
+
+                          const relatedListing = (myListings || []).find(
+                            (listing) => listing.id === notif.related_listing_id,
+                          );
+
+                          if (relatedListing) {
+                            setShowNotifications(false);
+
+                            const relatedStatus = String(
+                              relatedListing.status || ""
+                            ).toLowerCase();
+
+                            // Donation notifications can remain in the notification
+                            // history after the listing has already been donated.
+                            // Never reopen the donation flow for a completed donation.
+                            if (
+                              relatedStatus === "donated" ||
+                              relatedStatus === "for_donation" ||
+                              relatedStatus === "for donation" ||
+                              relatedStatus === "drop_off_assigned" ||
+                              relatedStatus === "processed"
+                            ) {
+                              setExpiredListingAction(null);
+                              setDonationReminder((prev) =>
+                                prev?.id === relatedListing.id ? null : prev
+                              );
+
+                              // Keep the notification as history, but acknowledge it
+                              // so it cannot continue to behave like an actionable alert.
+                              if (
+                                notif.type === "listing_expired" ||
+                                notif.type === "donation_safe_storage" ||
+                                notif.type === "donation_safe_storage_reminder"
+                              ) {
+                                setNotifications((prev) =>
+                                  prev.map((item) =>
+                                    item.id === notif.id
+                                      ? { ...item, is_read: true }
+                                      : item
+                                  )
+                                );
+                              }
+
+                              return;
+                            }
+
+                            if (
+                              notif.type === "listing_expired" ||
+                              notif.type === "donation_safe_storage" ||
+                              notif.type === "donation_safe_storage_reminder"
+                            ) {
                               setExpiredListingAction({
-                                ...expiredListing,
+                                ...relatedListing,
                                 isExpired: true,
                               });
+
+                              // Donation notifications should take the owner
+                              // directly to the donation action only while the
+                              // listing still needs donation.
+                              if (
+                                notif.type === "donation_safe_storage" ||
+                                notif.type === "donation_safe_storage_reminder"
+                              ) {
+                                handleOpenDonation({
+                                  ...relatedListing,
+                                  isExpired: true,
+                                });
+                              }
                             }
                           }
                         }}
@@ -5307,6 +5820,11 @@ const SellerDashboard = ({ session }) => {
           </div>
         )}
 
+        <DonationReceiptModal
+          receipt={donationReceipt}
+          onClose={() => setDonationReceipt(null)}
+        />
+
         <DonationModal
           isOpen={isDonationModalOpen}
           onClose={() => {
@@ -5315,7 +5833,16 @@ const SellerDashboard = ({ session }) => {
           }}
           onConfirm={handleConfirmDonation}
           listing={listingToDonate}
-          barangay={currentProfileBarangay === "Not set" ? "" : currentProfileBarangay}
+          barangay={
+            listingToDonate?.barangay ||
+            (currentProfileBarangay === "Not set" ? "" : currentProfileBarangay)
+          }
+          availableDropOffPoints={availableDropOffPoints}
+          dropOffPoint={
+            availableDropOffPoints.find(
+              (point) => point?.id === listingToDonate?.drop_off_point_id
+            ) || null
+          }
         />
         <div className="space-y-4">
           {/* FULL NAME */}

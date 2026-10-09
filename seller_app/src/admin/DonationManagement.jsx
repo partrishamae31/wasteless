@@ -22,6 +22,26 @@ const DEFAULT_CONFIG = {
   firstReminder: 7,
   secondReminder: 3,
   autoSuggest: 14,
+  // Maximum safe-storage duration (in days) counted from
+  // the device's last-working date. These values are shared
+  // with the Owner/Seller donation workflow through the same
+  // persisted configuration object.
+  safeStorageDurations: {
+    Smartphone: 60,
+    Laptop: 60,
+    Tablet: 60,
+    Monitor: 60,
+    Parts: 60,
+    Others: 60,
+    Desktop: 60,
+    Phone: 60,
+    Printer: 60,
+    TV: 60,
+    Router: 60,
+    Keyboard: 60,
+    Mouse: 60,
+    Other: 60,
+  },
 };
 
 const EMPTY_DROP_OFF_FORM = {
@@ -29,6 +49,7 @@ const EMPTY_DROP_OFF_FORM = {
   barangay: "",
   city: "",
   operating_hours: "",
+  status: "available",
 };
 
 const DonationManagement = ({ adminBarangay }) => {
@@ -42,6 +63,7 @@ const DonationManagement = ({ adminBarangay }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [savingPoint, setSavingPoint] = useState(false);
   const [updatingPointId, setUpdatingPointId] = useState(null);
+  const [editingPointId, setEditingPointId] = useState(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [pointSearchTerm, setPointSearchTerm] = useState("");
@@ -72,6 +94,10 @@ const DonationManagement = ({ adminBarangay }) => {
           parsedConfig.secondReminder ?? DEFAULT_CONFIG.secondReminder,
         autoSuggest:
           parsedConfig.autoSuggest ?? DEFAULT_CONFIG.autoSuggest,
+        safeStorageDurations: {
+          ...DEFAULT_CONFIG.safeStorageDurations,
+          ...(parsedConfig.safeStorageDurations || {}),
+        },
       });
     } catch (error) {
       console.error("Failed to load donation configuration:", error);
@@ -97,6 +123,7 @@ const DonationManagement = ({ adminBarangay }) => {
           scrap_value,
           status,
           created_at,
+          last_working_date,
           drop_off_point_id,
           profiles:seller_id (
             id,
@@ -113,7 +140,7 @@ const DonationManagement = ({ adminBarangay }) => {
   operating_hours
 )
         `)
-        .in("status", ["donated", "drop_off_assigned", "processed"])
+        .in("status", ["for_donation", "donated", "drop_off_assigned", "processed"])
         .order("created_at", { ascending: false });
 
       // BARANGAY COORDINATOR SCOPE: donations are matched to the admin's
@@ -152,9 +179,9 @@ const DonationManagement = ({ adminBarangay }) => {
   barangay,
   city,
   operating_hours,
-  is_active
+  is_active,
+  status
 `)
-        .eq("is_active", true)
         .order("city", { ascending: true })
         .order("barangay", { ascending: true });
 
@@ -212,6 +239,20 @@ const DonationManagement = ({ adminBarangay }) => {
     const second = Number(config.secondReminder);
     const autoSuggest = Number(config.autoSuggest);
 
+    const safeStorageDurations = Object.entries(
+      config.safeStorageDurations || DEFAULT_CONFIG.safeStorageDurations,
+    ).reduce((result, [category, value]) => {
+      const days = Number(value);
+
+      if (!Number.isFinite(days) || days <= 0) {
+        result.__invalid = category;
+      } else {
+        result[category] = days;
+      }
+
+      return result;
+    }, {});
+
     if (
       !Number.isFinite(first) ||
       !Number.isFinite(second) ||
@@ -226,6 +267,15 @@ const DonationManagement = ({ adminBarangay }) => {
       return;
     }
 
+    if (safeStorageDurations.__invalid) {
+      alert(
+        `Safe-storage duration for ${safeStorageDurations.__invalid} must be greater than 0.`,
+      );
+      return;
+    }
+
+    delete safeStorageDurations.__invalid;
+
     if (autoSuggest < first) {
       alert(
         "Auto-suggest donation days should be greater than or equal to the first reminder.",
@@ -237,6 +287,7 @@ const DonationManagement = ({ adminBarangay }) => {
       firstReminder: first,
       secondReminder: second,
       autoSuggest,
+      safeStorageDurations,
     };
 
     localStorage.setItem(
@@ -254,11 +305,18 @@ const DonationManagement = ({ adminBarangay }) => {
    * ---------------------------------------------------------
    */
   const handleResetConfiguration = () => {
-    setConfig(DEFAULT_CONFIG);
+    const resetConfig = {
+      ...DEFAULT_CONFIG,
+      safeStorageDurations: {
+        ...DEFAULT_CONFIG.safeStorageDurations,
+      },
+    };
+
+    setConfig(resetConfig);
 
     localStorage.setItem(
       "wasteless_donation_configuration",
-      JSON.stringify(DEFAULT_CONFIG),
+      JSON.stringify(resetConfig),
     );
   };
 
@@ -276,6 +334,7 @@ const DonationManagement = ({ adminBarangay }) => {
     const barangay = (adminBarangay || pointForm.barangay).trim();
     const city = pointForm.city.trim();
     const operatingHours = pointForm.operating_hours.trim();
+    const status = pointForm.status || "available";
 
     if (!partner || !address || !barangay || !city) {
       alert("Please enter the drop-off point name, full address, barangay, and city.");
@@ -294,6 +353,7 @@ const DonationManagement = ({ adminBarangay }) => {
           barangay,
           city,
           operating_hours: operatingHours || null,
+          status,
           is_active: true,
         })
         .select(`
@@ -335,6 +395,81 @@ const DonationManagement = ({ adminBarangay }) => {
 
   /*
    * ---------------------------------------------------------
+   * UPDATE DROP-OFF POINT
+   * ---------------------------------------------------------
+   */
+  const handleUpdateDropOffPoint = async (event) => {
+    event.preventDefault();
+
+    if (!editingPointId) return;
+
+    const partner = pointForm.partner.trim();
+    const address = pointForm.address.trim();
+    const barangay = (adminBarangay || pointForm.barangay).trim();
+    const city = pointForm.city.trim();
+    const operatingHours = pointForm.operating_hours.trim();
+    const status = pointForm.status || "available";
+
+    if (!partner || !address || !barangay || !city) {
+      alert("Please enter the drop-off point name, full address, barangay, and city.");
+      return;
+    }
+
+    try {
+      setSavingPoint(true);
+
+      const { data, error } = await supabase
+        .from("drop_off_points")
+        .update({
+          name: partner,
+          partner,
+          address,
+          barangay,
+          city,
+          operating_hours: operatingHours || null,
+          status,
+          is_active: true,
+        })
+        .eq("id", editingPointId)
+        .select(`
+          id, name, partner, address, barangay, city, operating_hours, is_active, status
+        `)
+        .single();
+
+      if (error) throw error;
+
+      setDropOffPoints((previous) =>
+        previous.map((item) => item.id === editingPointId ? data : item)
+      );
+      setPointForm(EMPTY_DROP_OFF_FORM);
+      setEditingPointId(null);
+      alert("Drop-off point updated successfully.");
+    } catch (error) {
+      console.error("Error updating drop-off point:", error);
+      alert("Failed to update drop-off point: " + (error?.message || "Unknown error"));
+    } finally {
+      setSavingPoint(false);
+    }
+  };
+
+  const handleEditDropOffPoint = (point) => {
+    setEditingPointId(point.id);
+    setPointForm({
+      partner: point.partner || point.name || "",
+      barangay: point.barangay || "",
+      city: point.city || "",
+      operating_hours: point.operating_hours || "",
+      status: point.status || "available",
+    });
+  };
+
+  const handleCancelEditDropOffPoint = () => {
+    setEditingPointId(null);
+    setPointForm(EMPTY_DROP_OFF_FORM);
+  };
+
+  /*
+   * ---------------------------------------------------------
    * DEACTIVATE DROP-OFF POINT
    * ---------------------------------------------------------
    *
@@ -359,10 +494,12 @@ const DonationManagement = ({ adminBarangay }) => {
       if (error) throw error;
 
       setDropOffPoints((previous) =>
-        previous.filter((item) => item.id !== point.id),
+        previous.map((item) =>
+          item.id === point.id ? { ...item, is_active: false } : item
+        ),
       );
 
-      alert("Drop-off point deactivated.");
+      alert("Drop-off point removed from the active donation flow.");
     } catch (error) {
       console.error("Error deactivating drop-off point:", error);
       alert(
@@ -720,6 +857,59 @@ const DonationManagement = ({ adminBarangay }) => {
                 </p>
               </div>
 
+              <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 sm:p-5">
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold text-slate-700">
+                    Maximum Safe-Storage Duration
+                  </h4>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Configure the maximum safe-storage period for each device
+                    category. The Owner/Seller donation workflow counts this
+                    duration from the device&apos;s last-working date.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {Object.keys(DEFAULT_CONFIG.safeStorageDurations).map(
+                    (category) => (
+                      <div key={category}>
+                        <label className="mb-2 block text-xs font-semibold text-slate-600">
+                          {category}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            value={
+                              config.safeStorageDurations?.[category] ??
+                              DEFAULT_CONFIG.safeStorageDurations[category]
+                            }
+                            onChange={(event) =>
+                              setConfig((previous) => ({
+                                ...previous,
+                                safeStorageDurations: {
+                                  ...(previous.safeStorageDurations ||
+                                    DEFAULT_CONFIG.safeStorageDurations),
+                                  [category]: event.target.value,
+                                },
+                              }))
+                            }
+                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                          />
+                          <span className="text-xs text-slate-400">days</span>
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+
+                <p className="mt-4 text-xs text-slate-400">
+                  When the configured limit is reached and the listing has no
+                  completed sale, the Seller donation workflow can unlock the
+                  Donate action and issue the safe-storage warning.
+                </p>
+              </div>
+
               <div>
                 <label className="mb-2 block text-sm text-slate-600">
                   Auto-suggest Donation (total days)
@@ -813,7 +1003,7 @@ const DonationManagement = ({ adminBarangay }) => {
           <div className="p-4 sm:p-6">
             <div className="mb-6">
               <h3 className="text-lg font-semibold text-slate-700">
-                Create Drop-off Point
+                {editingPointId ? "Update Drop-off Point" : "Create Drop-off Point"}
               </h3>
               <p className="mt-1 text-sm text-slate-400">
                 Add a donation location. Active locations will be available for
@@ -923,6 +1113,24 @@ const DonationManagement = ({ adminBarangay }) => {
               </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-600">
+                  Operational Status *
+                </label>
+                <select
+                  required
+                  value={pointForm.status || "available"}
+                  onChange={(event) =>
+                    setPointForm((previous) => ({ ...previous, status: event.target.value }))
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                >
+                  <option value="available">Available</option>
+                  <option value="full">Full</option>
+                  <option value="temporarily_closed">Temporarily Closed</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-600">
                   Full Address *
                 </label>
                 <input
@@ -952,8 +1160,19 @@ const DonationManagement = ({ adminBarangay }) => {
                   ) : (
                     <Plus size={16} />
                   )}
-                  {savingPoint ? "Creating..." : "Create Drop-off Point"}
+                  {savingPoint
+                    ? (editingPointId ? "Updating..." : "Creating...")
+                    : (editingPointId ? "Update Drop-off Point" : "Create Drop-off Point")}
                 </button>
+                {editingPointId && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEditDropOffPoint}
+                    className="ml-2 h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-500 hover:bg-slate-50"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
               </div>
 
 
@@ -964,10 +1183,10 @@ const DonationManagement = ({ adminBarangay }) => {
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="font-semibold text-slate-700">
-                    Active Drop-off Locations
+                    Drop-off Locations
                   </h3>
                   <p className="mt-1 text-xs text-slate-400">
-                    {dropOffPoints.length} active location
+                    {dropOffPoints.length} location
                     {dropOffPoints.length === 1 ? "" : "s"}
                   </p>
                 </div>
@@ -1020,8 +1239,22 @@ const DonationManagement = ({ adminBarangay }) => {
                             <h4 className="font-semibold text-slate-700">
                               {point.partner || "Drop-off Center"}
                             </h4>
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
-                              Active
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              !point.is_active
+                                ? "bg-slate-100 text-slate-500"
+                                : point.status === "full"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : point.status === "temporarily_closed"
+                                    ? "bg-red-50 text-red-700"
+                                    : "bg-emerald-50 text-emerald-600"
+                            }`}>
+                              {!point.is_active
+                                ? "Removed"
+                                : point.status === "full"
+                                  ? "Full"
+                                  : point.status === "temporarily_closed"
+                                    ? "Temporarily Closed"
+                                    : "Available"}
                             </span>
                           </div>
 
@@ -1037,19 +1270,28 @@ const DonationManagement = ({ adminBarangay }) => {
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeactivateDropOffPoint(point)}
-                        disabled={updatingPointId === point.id}
-                        className="flex shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-red-100 px-3 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
+                      <div className="flex shrink-0 flex-wrap gap-2 self-start">
+                        <button
+                          type="button"
+                          onClick={() => handleEditDropOffPoint(point)}
+                          className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeactivateDropOffPoint(point)}
+                          disabled={updatingPointId === point.id || !point.is_active}
+                          className="flex items-center justify-center gap-2 rounded-xl border border-red-100 px-3 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
                         {updatingPointId === point.id ? (
                           <RefreshCw size={14} className="animate-spin" />
                         ) : (
                           <Power size={14} />
                         )}
-                        Deactivate
-                      </button>
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -1,8 +1,67 @@
 import React, { useState } from "react";
 import { X, Info, MapPin, Navigation, CheckCircle2, ChevronLeft, Circle, MoreVertical } from "lucide-react";
 
-const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
+const DonationModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  listing,
+  barangay,
+  dropOffPoint = null,
+  availableDropOffPoints = [],
+}) => {
+  const normalizedBarangay = barangay || listing?.barangay || "";
+
+  const activeDropOffPoints = Array.isArray(availableDropOffPoints)
+    ? availableDropOffPoints.filter((point) => point?.is_active !== false)
+    : [];
+
+  const matchingDropOffPoints = activeDropOffPoints.filter(
+    (point) =>
+      !normalizedBarangay ||
+      String(point?.barangay || "").trim().toLowerCase() ===
+        String(normalizedBarangay).trim().toLowerCase()
+  );
+
+  const selectedPoint =
+    dropOffPoint ||
+    matchingDropOffPoints[0] ||
+    null;
+
+  // The drop-off point's location/name is the destination label.
+  // `partner` identifies the organization/operator (e.g. WMO), not the location.
+  const pointName =
+    selectedPoint?.name ||
+    selectedPoint?.location ||
+    selectedPoint?.address ||
+    "E-waste Drop-off Point";
+
+  const pointBarangay =
+    selectedPoint?.barangay ||
+    normalizedBarangay ||
+    "Selected barangay";
+
+  const pointCity = selectedPoint?.city || "";
+
+  const pointAddress =
+    selectedPoint?.address ||
+    selectedPoint?.location ||
+    selectedPoint?.full_address ||
+    [pointBarangay, pointCity].filter(Boolean).join(", ");
+
+  const pointHours =
+    selectedPoint?.operating_hours ||
+    selectedPoint?.hours ||
+    "Operating hours not provided";
+
+  const hasMappedPoint = Boolean(selectedPoint?.id);
+
   const [view, setView] = useState("details");
+
+  const handleConfirm = () => {
+    if (!hasMappedPoint) return;
+    onConfirm(listing?.id, selectedPoint.id, selectedPoint);
+  };
 
   if (!isOpen) return null;
 
@@ -34,7 +93,7 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
               <p className="text-xs opacity-90 uppercase tracking-wider font-medium">
                 {view === "details"
                   ? "Select your barangay's e-waste center"
-                  : `Barangay ${barangay || "Gen. T. de Leon"} Drop-off Point`}
+                  : `Barangay ${pointBarangay} Drop-off Point`}
               </p>
             </div>
           </div>
@@ -58,7 +117,7 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
                 Based on your registered address in
                 <span className="font-bold">
                   {" "}
-                  {barangay || "Gen. T. de Leon"}
+                  {pointBarangay}
                 </span>
                 , you will bring your device to your designated center.
               </p>
@@ -75,14 +134,13 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-slate-800 italic">
-                      Barangay {barangay || "Gen. T. de Leon"} E-waste Center
+                      {pointName}
                     </h4>
                     <p className="text-xs text-slate-500 mt-1">
-                      {barangay || "Gen. T. de Leon"} Public Market, Valenzuela
-                      City
+                      {pointAddress}
                     </p>
                     <p className="text-xs text-slate-400 mt-1 font-medium">
-                      Mon-Fri, 8:00 AM - 5:00 PM
+                      {pointHours}
                     </p>
                   </div>
                 </div>
@@ -94,6 +152,18 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
                 </button>
               </div>
             </div>
+
+            {!hasMappedPoint && (
+              <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex gap-3">
+                <Info className="text-red-500 shrink-0 mt-0.5" size={18} />
+                <p className="text-xs text-red-700 leading-relaxed text-left">
+                  <span className="font-bold">No mapped drop-off point:</span>{" "}
+                  There is no active administrator-mapped e-waste drop-off point
+                  for {pointBarangay}. Please choose another barangay or contact
+                  the administrator for disposal coordination.
+                </p>
+              </div>
+            )}
 
             <div className="text-left space-y-2">
               <label className="text-xs font-black text-slate-400 uppercase tracking-[0.15em] block">
@@ -160,10 +230,10 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
                     Destination
                   </p>
                   <p className="text-sm font-extrabold text-slate-800 italic">
-                    Barangay {barangay || "Gen. T. de Leon"} E-waste Center
+                    {pointName}
                   </p>
                   <p className="text-xs text-slate-400 font-medium">
-                    {barangay || "Gen. T. de Leon"} Public Market
+                    {pointAddress}
                   </p>
                 </div>
               </div>
@@ -193,10 +263,16 @@ const DonationModal = ({ isOpen, onClose, onConfirm, listing, barangay }) => {
             {view === "details" ? "Back" : "Return"}
           </button>
           <button
-            onClick={() => onConfirm(listing?.id)}
-            className="flex-[1.5] py-4 bg-[#f97316] text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#ea580c] transition shadow-lg shadow-orange-100 active:scale-95"
+            onClick={handleConfirm}
+            disabled={!hasMappedPoint}
+            className={`flex-[1.5] py-4 text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition shadow-lg active:scale-95 ${
+              hasMappedPoint
+                ? "bg-[#f97316] hover:bg-[#ea580c] shadow-orange-100"
+                : "bg-slate-300 cursor-not-allowed shadow-slate-100"
+            }`}
           >
-            <CheckCircle2 size={18} /> Confirm Donation
+            <CheckCircle2 size={18} />{" "}
+            {hasMappedPoint ? "Confirm Donation" : "Drop-off Required"}
           </button>
         </div>
       </div>

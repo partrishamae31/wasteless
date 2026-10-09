@@ -7,6 +7,13 @@ import {
   Package,
   CheckCircle,
   Store,
+  Leaf,
+  Droplets,
+  Trees,
+  Trash2,
+  Filter,
+  CalendarDays,
+  Info as InfoIcon,
   Loader2,
   AlertCircle,
 } from "lucide-react";
@@ -32,6 +39,12 @@ const OfficerDashboard = () => {
   const [transactions, setTransactions] = useState([]);
   const [dropOffPoints, setDropOffPoints] = useState([]);
 
+  // Recovery Metrics / Environmental Analytics filters.
+  const [selectedBarangay, setSelectedBarangay] = useState("all");
+  const [selectedStartDate, setSelectedStartDate] = useState("");
+  const [selectedEndDate, setSelectedEndDate] = useState("");
+  const [currentProfile, setCurrentProfile] = useState(null);
+
   const loadDashboard = async (isRefresh = false) => {
     try {
       if (isRefresh) {
@@ -42,6 +55,11 @@ const OfficerDashboard = () => {
 
       setError("");
 
+      // The profile is also used to enforce the coordinator's assigned
+      // barangay scope. The profile table remains the source of truth.
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id || null;
+
       const [
         profilesResult,
         listingsResult,
@@ -49,7 +67,7 @@ const OfficerDashboard = () => {
         dropOffResult,
       ] = await Promise.all([
         // USERS
-        supabase.from("profiles").select("id, role, is_verified, created_at"),
+        supabase.from("profiles").select("id, role, is_verified, created_at, full_name, barangay"),
 
         // LISTINGS
         supabase.from("listings").select(`
@@ -57,6 +75,8 @@ const OfficerDashboard = () => {
           status,
           barangay,
           category,
+          condition,
+          drop_off_point_id,
           created_at
         `),
 
@@ -76,6 +96,7 @@ const OfficerDashboard = () => {
           meetup_time,
           notes,
           listing_id,
+          drop_off_point_id,
           cancel_reason,
           updated_at
         `,
@@ -127,7 +148,13 @@ const OfficerDashboard = () => {
       // SAVE DATA
       // -----------------------------
 
-      setUsers(profilesResult.data || []);
+      const loadedProfiles = profilesResult.data || [];
+      const loadedCurrentProfile = currentUserId
+        ? loadedProfiles.find((profile) => profile.id === currentUserId) || null
+        : null;
+
+      setUsers(loadedProfiles);
+      setCurrentProfile(loadedCurrentProfile);
       setListings(listingsResult.data || []);
       setTransactions(transactionsResult.data || []);
       setDropOffPoints(dropOffResult.data || []);
@@ -483,6 +510,170 @@ const OfficerDashboard = () => {
     totalListings;
 
   /* =========================================================
+     RECOVERY METRICS / ENVIRONMENTAL ANALYTICS
+  ========================================================= */
+
+  // Keep the same environmental basis used by the EnvironmentalImpact
+  // component: 4.2 kg CO₂ saved for every completed recovery device.
+  const CO2_PER_RECOVERED_DEVICE = 4.2;
+  const ENERGY_PER_RECOVERED_DEVICE = 78;
+  const WATER_PER_RECOVERED_DEVICE = 3800;
+  const WEIGHT_PER_RECOVERED_DEVICE = 2.3;
+
+  const normalizedProfileRole = String(currentProfile?.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+  const isBarangayCoordinator = [
+    "barangay_coordinator",
+    "coordinator",
+    "barangaycoord",
+  ].includes(normalizedProfileRole);
+
+  const assignedBarangay = String(currentProfile?.barangay || "").trim();
+
+  const recoveryBarangays = useMemo(() => {
+    const values = new Set();
+
+    listings.forEach((listing) => {
+      if (listing.barangay) values.add(String(listing.barangay).trim());
+    });
+
+    transactions.forEach((transaction) => {
+      if (transaction.barangay) values.add(String(transaction.barangay).trim());
+    });
+
+    dropOffPoints.forEach((point) => {
+      if (point.barangay) values.add(String(point.barangay).trim());
+    });
+
+    return Array.from(values).filter(Boolean).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [listings, transactions, dropOffPoints]);
+
+  // A coordinator cannot broaden the scope beyond the barangay stored on
+  // their profile. WMO/environment officers retain the All Barangays view.
+  useEffect(() => {
+    if (isBarangayCoordinator && assignedBarangay) {
+      setSelectedBarangay(assignedBarangay);
+    }
+  }, [isBarangayCoordinator, assignedBarangay]);
+
+  const effectiveRecoveryBarangay = isBarangayCoordinator
+    ? (assignedBarangay || "__unassigned_coordinator__")
+    : selectedBarangay;
+
+  const recoveryDateInRange = (dateValue) => {
+    if (!dateValue) return false;
+
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return false;
+
+    if (selectedStartDate) {
+      const start = new Date(`${selectedStartDate}T00:00:00`);
+      if (date < start) return false;
+    }
+
+    if (selectedEndDate) {
+      const end = new Date(`${selectedEndDate}T23:59:59.999`);
+      if (date > end) return false;
+    }
+
+    return true;
+  };
+
+  const recoveryData = useMemo(() => {
+    const barangayMatches = (barangay) => {
+      if (!effectiveRecoveryBarangay || effectiveRecoveryBarangay === "all") {
+        return true;
+      }
+
+      return (
+        String(barangay || "").trim().toLowerCase() ===
+        String(effectiveRecoveryBarangay).trim().toLowerCase()
+      );
+    };
+
+    const completed = normalizedTransactions.filter((transaction) => {
+      if (transaction.normalizedStatus !== "completed") return false;
+      if (!barangayMatches(transaction.barangay)) return false;
+      return recoveryDateInRange(transaction.created_at);
+    });
+
+    const donated = listings.filter((listing) => {
+      const status = String(listing.status || "").trim().toLowerCase();
+      if (status !== "donated") return false;
+      if (!barangayMatches(listing.barangay)) return false;
+      return recoveryDateInRange(listing.created_at);
+    });
+
+    const filteredDropOffPoints = dropOffPoints.filter((point) =>
+      barangayMatches(point.barangay),
+    );
+
+    const usedDropOffIds = new Set();
+    const dropOffUsage = {};
+
+    donated.forEach((listing) => {
+      if (!listing.drop_off_point_id) return;
+      usedDropOffIds.add(listing.drop_off_point_id);
+      dropOffUsage[listing.drop_off_point_id] =
+        (dropOffUsage[listing.drop_off_point_id] || 0) + 1;
+    });
+
+    completed.forEach((transaction) => {
+      if (!transaction.drop_off_point_id) return;
+      usedDropOffIds.add(transaction.drop_off_point_id);
+      dropOffUsage[transaction.drop_off_point_id] =
+        (dropOffUsage[transaction.drop_off_point_id] || 0) + 1;
+    });
+
+    const recoveredDevices = completed.length;
+    const co2Saved = recoveredDevices * CO2_PER_RECOVERED_DEVICE;
+    const energySaved = recoveredDevices * ENERGY_PER_RECOVERED_DEVICE;
+    const waterSaved = recoveredDevices * WATER_PER_RECOVERED_DEVICE;
+    const weightDiverted = recoveredDevices * WEIGHT_PER_RECOVERED_DEVICE;
+
+    const barangayMap = {};
+    completed.forEach((transaction) => {
+      const barangay = String(transaction.barangay || "Unassigned").trim() || "Unassigned";
+      if (!barangayMap[barangay]) {
+        barangayMap[barangay] = { barangay, recovered: 0, co2: 0 };
+      }
+      barangayMap[barangay].recovered += 1;
+      barangayMap[barangay].co2 += CO2_PER_RECOVERED_DEVICE;
+    });
+
+    return {
+      completed,
+      donated,
+      filteredDropOffPoints,
+      usedDropOffIds,
+      dropOffUsage,
+      recoveredDevices,
+      co2Saved,
+      energySaved,
+      waterSaved,
+      weightDiverted,
+      barangayBreakdown: Object.values(barangayMap).sort(
+        (a, b) => b.recovered - a.recovered,
+      ),
+    };
+  }, [
+    normalizedTransactions,
+    listings,
+    dropOffPoints,
+    effectiveRecoveryBarangay,
+    selectedStartDate,
+    selectedEndDate,
+  ]);
+
+  const recoveryIsEmpty = recoveryData.recoveredDevices === 0 &&
+    recoveryData.donated.length === 0;
+
+  /* =========================================================
      UI
   ========================================================= */
 
@@ -778,6 +969,261 @@ const OfficerDashboard = () => {
             </ResponsiveContainer>
           </div>
         </div>
+
+        {/* RECOVERY METRICS / ENVIRONMENTAL ANALYTICS */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-6">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                  <Leaf size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">
+                    Recovery Metrics & Environmental Analytics
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isBarangayCoordinator && assignedBarangay
+                      ? `Assigned barangay: ${assignedBarangay}`
+                      : "Platform-wide recovery performance and environmental impact"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                <Filter size={15} className="text-slate-400" />
+                <select
+                  value={effectiveRecoveryBarangay || "all"}
+                  onChange={(e) => setSelectedBarangay(e.target.value)}
+                  disabled={isBarangayCoordinator}
+                  className="bg-transparent text-xs font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                  aria-label="Filter recovery metrics by barangay"
+                >
+                  {!isBarangayCoordinator && <option value="all">All Barangays</option>}
+                  {recoveryBarangays.map((barangay) => (
+                    <option key={barangay} value={barangay}>{barangay}</option>
+                  ))}
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                <CalendarDays size={15} className="text-slate-400" />
+                <input
+                  type="date"
+                  value={selectedStartDate}
+                  onChange={(e) => setSelectedStartDate(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                  aria-label="Recovery metrics start date"
+                />
+              </label>
+
+              <label className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                <CalendarDays size={15} className="text-slate-400" />
+                <input
+                  type="date"
+                  value={selectedEndDate}
+                  onChange={(e) => setSelectedEndDate(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                  aria-label="Recovery metrics end date"
+                />
+              </label>
+
+              {(selectedBarangay !== "all" || selectedStartDate || selectedEndDate) && !isBarangayCoordinator && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBarangay("all");
+                    setSelectedStartDate("");
+                    setSelectedEndDate("");
+                  }}
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          </div>
+
+          {isBarangayCoordinator && !assignedBarangay && (
+            <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+              No barangay is assigned to this coordinator profile. Recovery metrics are therefore not displayed until an assigned barangay is available.
+            </div>
+          )}
+
+          {recoveryIsEmpty ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+              <Leaf size={30} className="mx-auto text-slate-300" />
+              <h4 className="mt-3 text-sm font-bold text-slate-700">
+                No recovery data available
+              </h4>
+              <p className="mt-1 text-xs text-slate-500">
+                There is no completed recovery or donation activity for the selected filters.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+                <MetricCard
+                  label="Recovered Devices"
+                  value={recoveryData.recoveredDevices}
+                  trend="Completed recovery"
+                  color="text-emerald-600"
+                />
+                <MetricCard
+                  label="CO₂ Savings"
+                  value={`${recoveryData.co2Saved.toFixed(2)} kg`}
+                  trend="4.2 kg/device"
+                  color="text-emerald-600"
+                />
+                <MetricCard
+                  label="Energy Saved"
+                  value={`${recoveryData.energySaved.toLocaleString()} kWh`}
+                  trend="Estimated"
+                  color="text-amber-600"
+                />
+                <MetricCard
+                  label="Water Saved"
+                  value={`${recoveryData.waterSaved.toLocaleString()} L`}
+                  trend="Estimated"
+                  color="text-blue-600"
+                />
+                <MetricCard
+                  label="Landfill Diversion"
+                  value={`${recoveryData.weightDiverted.toFixed(1)} kg`}
+                  trend="Estimated"
+                  color="text-violet-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-5">
+                <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center">
+                      <Leaf size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider font-bold text-emerald-700">Environmental Impact</p>
+                      <p className="text-xs text-emerald-600 mt-1">CO₂ savings from completed recoveries</p>
+                    </div>
+                  </div>
+                  <p className="text-3xl font-black text-slate-800 mt-4">{recoveryData.co2Saved.toFixed(2)} kg</p>
+                  <p className="text-xs text-slate-500 mt-1">CO₂e estimated savings</p>
+                </div>
+
+                <div className="rounded-2xl bg-sky-50 border border-sky-100 p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-sky-500 text-white flex items-center justify-center">
+                      <Droplets size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider font-bold text-sky-700">Water Conservation</p>
+                      <p className="text-xs text-sky-600 mt-1">Estimated freshwater savings</p>
+                    </div>
+                  </div>
+                  <p className="text-3xl font-black text-slate-800 mt-4">{recoveryData.waterSaved.toLocaleString()} L</p>
+                  <p className="text-xs text-slate-500 mt-1">Based on completed recovery devices</p>
+                </div>
+
+                <div className="rounded-2xl bg-violet-50 border border-violet-100 p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-violet-500 text-white flex items-center justify-center">
+                      <Trash2 size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider font-bold text-violet-700">Donation Activity</p>
+                      <p className="text-xs text-violet-600 mt-1">Devices marked as donated</p>
+                    </div>
+                  </div>
+                  <p className="text-3xl font-black text-slate-800 mt-4">{recoveryData.donated.length.toLocaleString()}</p>
+                  <p className="text-xs text-slate-500 mt-1">Within the selected filters</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
+                <div className="border border-slate-100 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-800">Recovery by Barangay</h4>
+                      <p className="text-xs text-slate-500 mt-1">Completed recovery and CO₂ contribution</p>
+                    </div>
+                    <Trees size={18} className="text-emerald-500" />
+                  </div>
+                  {recoveryData.barangayBreakdown.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-5">No completed recovery data for this filter.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {recoveryData.barangayBreakdown.slice(0, 8).map((item) => {
+                        const max = recoveryData.barangayBreakdown[0]?.recovered || 1;
+                        const width = (item.recovered / max) * 100;
+                        return (
+                          <div key={item.barangay}>
+                            <div className="flex justify-between text-xs mb-2">
+                              <span className="font-semibold text-slate-600">{item.barangay}</span>
+                              <span className="font-bold text-slate-700">{item.recovered} · {item.co2.toFixed(1)} kg CO₂</span>
+                            </div>
+                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(width, 100)}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-slate-100 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-800">Drop-off Utilization</h4>
+                      <p className="text-xs text-slate-500 mt-1">Recovery and donation activity recorded per active point</p>
+                    </div>
+                    <MapPin size={18} className="text-sky-500" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-slate-50 rounded-xl p-4">
+                      <p className="text-[10px] uppercase font-bold text-slate-400">Active Points</p>
+                      <p className="text-2xl font-black text-slate-800 mt-1">{recoveryData.filteredDropOffPoints.length}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-4">
+                      <p className="text-[10px] uppercase font-bold text-slate-400">Utilized Points</p>
+                      <p className="text-2xl font-black text-slate-800 mt-1">{recoveryData.usedDropOffIds.size}</p>
+                    </div>
+                  </div>
+
+                  {recoveryData.filteredDropOffPoints.length === 0 ? (
+                    <p className="text-xs text-slate-400">No active drop-off points for the selected barangay.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {recoveryData.filteredDropOffPoints.map((point) => (
+                        <div key={point.id} className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-700">Drop-off point {String(point.id).slice(0, 8)}</p>
+                            <p className="text-[10px] text-slate-400">{point.barangay || "Barangay not set"}</p>
+                          </div>
+                          <span className="text-xs font-bold text-slate-600">{recoveryData.dropOffUsage[point.id] || 0} activities</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-xl bg-slate-50 border border-slate-200 p-4 flex items-start gap-3">
+                <InfoIcon size={18} className="text-slate-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">Recovery calculation basis</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    CO₂ savings use 4.2 kg/device, energy 78 kWh/device, water 3,800 L/device, and landfill diversion 2.3 kg/device, matching the Environmental Impact dashboard.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
 
         {/* LISTING STATUS */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
