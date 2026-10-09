@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "../supabaseClient";
 import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import CreateListingModal from "./CreateListingModal"; // Adjust path as needed
@@ -49,6 +49,7 @@ import {
   Gavel,
   Download,
   Lock,
+  Share2,
 } from "lucide-react";
 const isRepairTransaction = (transaction) => {
   const type = String(transaction?.transaction_type || "").trim().toLowerCase();
@@ -625,9 +626,37 @@ const MarketplaceRatingModal = ({
   );
 };
 
-const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
-  if (!transaction) return null;
+// ---------------------------------------------------------------------------
+// Receipt helpers (TC_RCT_01 / 03 / 05)
+// ---------------------------------------------------------------------------
+const RECEIPT_FAILURE_MESSAGE =
+  "Receipt generation failed. Please contact support.";
 
+const copyTextToClipboard = async (text) => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch (error) {
+    console.error("Clipboard copy failed:", error);
+    return false;
+  }
+};
+
+// Pure function: derives everything the receipt UI / PDF / share text needs.
+// Throws on malformed data so the modal can show the failure state.
+const buildReceiptData = (transaction, currentUserId) => {
   const isRepair = isRepairTransaction(transaction);
   const itemName = isRepair
     ? getRepairDevice(transaction)
@@ -654,6 +683,10 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
       ? new Date(transaction.updated_at)
       : new Date();
 
+  if (Number.isNaN(completedDate.getTime())) {
+    throw new Error("Receipt has an invalid completion date.");
+  }
+
   const referenceNumber = `${isRepair ? "EWS-R" : "EWM-"}${String(transaction.id || "TRANSACTION")
     .replace(/-/g, "")
     .slice(0, 8)
@@ -676,98 +709,6 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
   const repairCategory = getRepairCategory(transaction);
   const repairIssue = getRepairIssue(transaction);
   const repairNotes = getRepairNotes(transaction);
-
-  const handleSaveReceipt = () => {
-    try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-
-      doc.setFillColor(50, 133, 161);
-      doc.rect(0, 0, pageWidth, 48, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "normal");
-      doc.text("WASTELESS", pageWidth / 2, 15, { align: "center" });
-      doc.setFontSize(21);
-      doc.setFont("helvetica", "bold");
-      doc.text(isRepair ? "Repair Service Record" : "Transaction Receipt", pageWidth / 2, 29, {
-        align: "center",
-      });
-      doc.setFontSize(10);
-      doc.text(isRepair ? "Repair Service Completed" : "Transaction Successful", pageWidth / 2, 40, {
-        align: "center",
-      });
-
-      doc.setTextColor(30, 41, 59);
-      let y = 67;
-      const addRow = (label, value) => {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(148, 163, 184);
-        doc.text(label, 25, y);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(30, 41, 59);
-        const safeValue = String(value || "-");
-        const maxWidth = pageWidth - 90;
-        const wrapped = doc.splitTextToSize(safeValue, maxWidth);
-        doc.text(wrapped, pageWidth - 25, y, { align: "right" });
-        const rowHeight = Math.max(18, wrapped.length * 5 + 8);
-        doc.setDrawColor(226, 232, 240);
-        doc.line(25, y + rowHeight - 4, pageWidth - 25, y + rowHeight - 4);
-        y += rowHeight;
-      };
-
-      addRow("Reference No.", referenceNumber);
-      addRow("Date", formattedDate);
-      addRow("Time", formattedTime);
-
-      if (isRepair) {
-        addRow("Device", itemName);
-        addRow("Category", repairCategory);
-        addRow("Customer", sellerName);
-        addRow("Repair Shop", repairShopName);
-        addRow("Issue", repairIssue);
-        addRow("Appointment Date", transaction.meetup_date || "Not set");
-        addRow("Appointment Time", transaction.meetup_time || "Not set");
-        if (repairNotes) addRow("Service Notes", repairNotes);
-        addRow("Payment", "No payment required");
-      } else {
-        addRow("Item", itemName);
-        addRow("Seller", sellerName);
-        addRow("Buyer", buyerName);
-        addRow("Your Role", yourRole);
-        addRow("Amount", `PHP ${amount.toLocaleString()}`);
-      }
-
-      if (!isRepair && carbonSaved > 0) {
-        y += 8;
-        doc.setFillColor(89, 203, 163);
-        doc.roundedRect(25, y, pageWidth - 50, 35, 5, 5, "F");
-        doc.setTextColor(20, 83, 45);
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "bold");
-        doc.text(`${carbonSaved} kg CO₂ saved`, 35, y + 15);
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.text("Thank you for helping extend the useful life of electronics.", 35, y + 25);
-      }
-
-      doc.setFontSize(8);
-      doc.setTextColor(148, 163, 184);
-      doc.text(
-        isRepair
-          ? "WasteLess - Official Repair Service Record"
-          : "WasteLess Marketplace - Official Transaction Record",
-        pageWidth / 2,
-        280,
-        { align: "center" }
-      );
-      doc.save(`WasteLess-${isRepair ? "Repair-Record" : "Receipt"}-${referenceNumber}.pdf`);
-    } catch (error) {
-      console.error("Failed to generate record:", error);
-      alert("Unable to generate the record. Please try again.");
-    }
-  };
 
   const rows = isRepair
     ? [
@@ -794,6 +735,225 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
         ["Your Role", yourRole],
       ];
 
+  const title = isRepair ? "Repair Service Record" : "Transaction Receipt";
+
+  const shareLines = [
+    `WasteLess ${title}`,
+    `Reference No.: ${referenceNumber}`,
+    `Date: ${formattedDate} ${formattedTime}`,
+    ...(isRepair
+      ? [
+          `Device: ${itemName}`,
+          `Repair Shop: ${repairShopName}`,
+          `Customer: ${sellerName}`,
+          "Payment: No payment required",
+        ]
+      : [
+          `Item: ${itemName}`,
+          `Seller: ${sellerName}`,
+          `Buyer: ${buyerName}`,
+          `Amount: PHP ${amount.toLocaleString()}`,
+          ...(carbonSaved > 0 ? [`CO2 saved: ${carbonSaved} kg`] : []),
+        ]),
+  ];
+
+  return {
+    isRepair,
+    title,
+    itemName,
+    sellerName,
+    buyerName,
+    repairShopName,
+    amount,
+    formattedDate,
+    formattedTime,
+    referenceNumber,
+    yourRole,
+    carbonSaved,
+    repairCategory,
+    repairIssue,
+    repairNotes,
+    meetupDate: transaction.meetup_date,
+    meetupTime: transaction.meetup_time,
+    rows,
+    fileName: `WasteLess-${isRepair ? "Repair-Record" : "Receipt"}-${referenceNumber}.pdf`,
+    shareTitle: `WasteLess ${title} ${referenceNumber}`,
+    shareText: shareLines.join("\n"),
+  };
+};
+
+// Builds the jsPDF document. Used by both Save and Share.
+const createReceiptPdf = (data) => {
+  const {
+    isRepair, itemName, sellerName, buyerName, repairShopName, amount,
+    formattedDate, formattedTime, referenceNumber, yourRole, carbonSaved,
+    repairCategory, repairIssue, repairNotes, meetupDate, meetupTime,
+  } = data;
+
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(50, 133, 161);
+  doc.rect(0, 0, pageWidth, 48, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  doc.text("WASTELESS", pageWidth / 2, 15, { align: "center" });
+  doc.setFontSize(21);
+  doc.setFont("helvetica", "bold");
+  doc.text(isRepair ? "Repair Service Record" : "Transaction Receipt", pageWidth / 2, 29, {
+    align: "center",
+  });
+  doc.setFontSize(10);
+  doc.text(isRepair ? "Repair Service Completed" : "Transaction Successful", pageWidth / 2, 40, {
+    align: "center",
+  });
+
+  doc.setTextColor(30, 41, 59);
+  let y = 67;
+  const addRow = (label, value) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(148, 163, 184);
+    doc.text(label, 25, y);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    const safeValue = String(value || "-");
+    const maxWidth = pageWidth - 90;
+    const wrapped = doc.splitTextToSize(safeValue, maxWidth);
+    doc.text(wrapped, pageWidth - 25, y, { align: "right" });
+    const rowHeight = Math.max(18, wrapped.length * 5 + 8);
+    doc.setDrawColor(226, 232, 240);
+    doc.line(25, y + rowHeight - 4, pageWidth - 25, y + rowHeight - 4);
+    y += rowHeight;
+  };
+
+  addRow("Reference No.", referenceNumber);
+  addRow("Date", formattedDate);
+  addRow("Time", formattedTime);
+
+  if (isRepair) {
+    addRow("Device", itemName);
+    addRow("Category", repairCategory);
+    addRow("Customer", sellerName);
+    addRow("Repair Shop", repairShopName);
+    addRow("Issue", repairIssue);
+    addRow("Appointment Date", meetupDate || "Not set");
+    addRow("Appointment Time", meetupTime || "Not set");
+    if (repairNotes) addRow("Service Notes", repairNotes);
+    addRow("Payment", "No payment required");
+  } else {
+    addRow("Item", itemName);
+    addRow("Seller", sellerName);
+    addRow("Buyer", buyerName);
+    addRow("Your Role", yourRole);
+    addRow("Amount", `PHP ${amount.toLocaleString()}`);
+  }
+
+  if (!isRepair && carbonSaved > 0) {
+    y += 8;
+    doc.setFillColor(89, 203, 163);
+    doc.roundedRect(25, y, pageWidth - 50, 35, 5, 5, "F");
+    doc.setTextColor(20, 83, 45);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${carbonSaved} kg CO₂ saved`, 35, y + 15);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text("Thank you for helping extend the useful life of electronics.", 35, y + 25);
+  }
+
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    isRepair
+      ? "WasteLess - Official Repair Service Record"
+      : "WasteLess Marketplace - Official Transaction Record",
+    pageWidth / 2,
+    280,
+    { align: "center" }
+  );
+
+  return doc;
+};
+
+const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
+  const [generationFailed, setGenerationFailed] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareNotice, setShareNotice] = useState(null);
+
+  // Receipt generation is isolated here: if anything throws, we show the
+  // failure state instead of crashing. The transaction itself is untouched.
+  const { data, error: buildError } = useMemo(() => {
+    if (!transaction) return { data: null, error: null };
+    try {
+      return { data: buildReceiptData(transaction, currentUserId), error: null };
+    } catch (error) {
+      console.error("Receipt generation failed:", error);
+      return { data: null, error };
+    }
+  }, [transaction, currentUserId]);
+
+  if (!transaction) return null;
+
+  const failed = generationFailed || Boolean(buildError) || !data;
+
+  const handleSaveReceipt = () => {
+    try {
+      createReceiptPdf(data).save(data.fileName);
+    } catch (error) {
+      console.error("Receipt generation failed:", error);
+      setGenerationFailed(true);
+    }
+  };
+
+  const handleShareReceipt = async () => {
+    setShareNotice(null);
+
+    let file;
+    try {
+      const blob = createReceiptPdf(data).output("blob");
+      file = new File([blob], data.fileName, { type: "application/pdf" });
+    } catch (error) {
+      console.error("Receipt generation failed:", error);
+      setGenerationFailed(true);
+      return;
+    }
+
+    const shareData = { title: data.shareTitle, text: data.shareText };
+    setIsSharing(true);
+    try {
+      if (typeof navigator.share === "function") {
+        try {
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ ...shareData, files: [file] });
+          } else {
+            await navigator.share(shareData);
+          }
+          return;
+        } catch (error) {
+          if (error?.name === "AbortError") return; // user dismissed the sheet
+          console.error("Native share failed, falling back to clipboard:", error);
+        }
+      }
+
+      const copied = await copyTextToClipboard(data.shareText);
+      setShareNotice(
+        copied
+          ? { type: "success", text: "Receipt details copied to clipboard." }
+          : {
+              type: "error",
+              text: "Sharing isn't available on this device. Use Save to download the receipt.",
+            }
+      );
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const isRepair = data?.isRepair ?? false;
+  const title = data?.title ?? "Transaction Receipt";
+
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-[2rem] shadow-2xl">
@@ -803,9 +963,7 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
               <CheckCircle size={25} className="text-[#769c2d]" />
             </div>
             <div>
-              <h2 className="text-xl md:text-2xl font-black text-slate-700">
-                {isRepair ? "Repair Service Record" : "Transaction Receipt"}
-              </h2>
+              <h2 className="text-xl md:text-2xl font-black text-slate-700">{title}</h2>
               <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
                 Official {isRepair ? "repair service" : "transaction"} record
               </p>
@@ -820,67 +978,110 @@ const ReceiptModal = ({ transaction, currentUserId, onClose }) => {
         </div>
 
         <div className="px-6 md:px-8 pb-6">
-          <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-lg">
-            <div className="bg-gradient-to-r from-[#3285a1] to-[#14516d] text-white text-center p-8">
-              <p className="text-xs tracking-[0.3em] text-white/70 font-medium">
-                WASTELESS {isRepair ? "REPAIR SERVICE" : "MARKETPLACE"}
-              </p>
-              <h3 className="text-2xl md:text-3xl font-black mt-2">
-                {isRepair ? "Repair Service Completed" : "Transaction Successful"}
-              </h3>
-              <div className="flex items-center justify-center gap-2 mt-3 text-[#a8d129]">
-                <CheckCircle size={20} />
-                <span className="font-bold">Completed</span>
+          {failed ? (
+            <>
+              <div
+                role="alert"
+                className="rounded-[1.5rem] border border-red-100 bg-red-50 p-8 text-center"
+              >
+                <AlertCircle size={36} className="mx-auto text-red-500" />
+                <p className="mt-3 font-black text-red-700">{RECEIPT_FAILURE_MESSAGE}</p>
+                <p className="mt-2 text-xs text-red-600/80">
+                  Your transaction was completed and remains in your history.
+                </p>
               </div>
-            </div>
-
-            <div className="p-6 md:p-8">
-              {rows.map(([label, value]) => (
-                <div key={label} className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
-                  <span className="text-sm text-slate-400">{label}</span>
-                  <span className="text-sm font-bold text-slate-700 text-right max-w-[65%]">{value}</span>
-                </div>
-              ))}
-
-              {!isRepair && (
-                <div className="flex justify-between gap-6 py-5">
-                  <span className="text-sm text-slate-400">Amount</span>
-                  <span className="text-xl font-black text-[#3285a1] text-right">₱{amount.toLocaleString()}</span>
-                </div>
-              )}
-
-              {!isRepair && carbonSaved > 0 && (
-                <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-                  <div className="flex items-center gap-2 text-emerald-800">
-                    <Leaf size={18} />
-                    <span className="font-black text-sm">{carbonSaved} kg CO₂ saved</span>
-                  </div>
-                  <p className="text-xs text-emerald-700 mt-2">Thank you for helping extend the useful life of electronics.</p>
-                </div>
-              )}
-
-              {isRepair && (
-                <div className="mt-4 bg-purple-50 border border-purple-100 rounded-2xl p-4">
-                  <div className="flex items-center gap-2 text-purple-800">
-                    <Wrench size={18} />
-                    <span className="font-black text-sm">Repair service completed</span>
-                  </div>
-                  <p className="text-xs text-purple-700 mt-2">
-                    This record confirms the completed repair appointment. No marketplace payment was required.
+              <div className="mt-5">
+                <button
+                  onClick={onClose}
+                  className="w-full py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition"
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-lg">
+                <div className="bg-gradient-to-r from-[#3285a1] to-[#14516d] text-white text-center p-8">
+                  <p className="text-xs tracking-[0.3em] text-white/70 font-medium">
+                    WASTELESS {isRepair ? "REPAIR SERVICE" : "MARKETPLACE"}
                   </p>
+                  <h3 className="text-2xl md:text-3xl font-black mt-2">
+                    {isRepair ? "Repair Service Completed" : "Transaction Successful"}
+                  </h3>
+                  <div className="flex items-center justify-center gap-2 mt-3 text-[#a8d129]">
+                    <CheckCircle size={20} />
+                    <span className="font-bold">Completed</span>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 mt-5">
-            <button onClick={onClose} className="py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition">
-              Close
-            </button>
-            <button onClick={handleSaveReceipt} className="py-3 bg-[#3285a1] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-[#276b82] transition">
-              <Download size={15} /> {isRepair ? "Save Service Record" : "Save Receipt"}
-            </button>
-          </div>
+                <div className="p-6 md:p-8">
+                  {data.rows.map(([label, value]) => (
+                    <div key={label} className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
+                      <span className="text-sm text-slate-400">{label}</span>
+                      <span className="text-sm font-bold text-slate-700 text-right max-w-[65%]">{value}</span>
+                    </div>
+                  ))}
+
+                  {!isRepair && (
+                    <div className="flex justify-between gap-6 py-5">
+                      <span className="text-sm text-slate-400">Amount</span>
+                      <span className="text-xl font-black text-[#3285a1] text-right">₱{data.amount.toLocaleString()}</span>
+                    </div>
+                  )}
+
+                  {!isRepair && data.carbonSaved > 0 && (
+                    <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                      <div className="flex items-center gap-2 text-emerald-800">
+                        <Leaf size={18} />
+                        <span className="font-black text-sm">{data.carbonSaved} kg CO₂ saved</span>
+                      </div>
+                      <p className="text-xs text-emerald-700 mt-2">Thank you for helping extend the useful life of electronics.</p>
+                    </div>
+                  )}
+
+                  {isRepair && (
+                    <div className="mt-4 bg-purple-50 border border-purple-100 rounded-2xl p-4">
+                      <div className="flex items-center gap-2 text-purple-800">
+                        <Wrench size={18} />
+                        <span className="font-black text-sm">Repair service completed</span>
+                      </div>
+                      <p className="text-xs text-purple-700 mt-2">
+                        This record confirms the completed repair appointment. No marketplace payment was required.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {shareNotice && (
+                <p
+                  role="status"
+                  className={`mt-4 text-xs font-bold text-center ${
+                    shareNotice.type === "success" ? "text-emerald-700" : "text-red-600"
+                  }`}
+                >
+                  {shareNotice.text}
+                </p>
+              )}
+
+              <div className="grid grid-cols-3 gap-3 mt-5">
+                <button onClick={onClose} className="py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition">
+                  Close
+                </button>
+                <button
+                  onClick={handleShareReceipt}
+                  disabled={isSharing}
+                  className="py-3 bg-white border border-[#3285a1] text-[#3285a1] rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-[#3285a1]/5 transition disabled:opacity-60"
+                >
+                  <Share2 size={15} /> Share
+                </button>
+                <button onClick={handleSaveReceipt} className="py-3 bg-[#3285a1] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-[#276b82] transition">
+                  <Download size={15} /> {isRepair ? "Save Record" : "Save Receipt"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

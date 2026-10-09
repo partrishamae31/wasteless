@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import jsPDF from "jspdf";
 import { recordTransactionStatusHistory } from "../utils/transactionHistory";
@@ -16,7 +16,470 @@ import {
   Download,
   Leaf,
   FileText,
+  Share2,
+  AlertCircle,
 } from "lucide-react";
+
+// ---------------------------------------------------------------------------
+// Receipt helpers (TC_RCT_01 / 03 / 05)
+// ---------------------------------------------------------------------------
+const RECEIPT_FAILURE_MESSAGE =
+  "Receipt generation failed. Please contact support.";
+
+const copyTextToClipboard = async (text) => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch (error) {
+    console.error("Clipboard copy failed:", error);
+    return false;
+  }
+};
+
+// Pure function: derives everything the receipt UI / PDF / share text needs.
+// Throws on malformed data so the modal can show the failure state.
+const buildReceiptData = (transaction, session) => {
+  const itemName =
+    transaction.listing?.device_model ||
+    transaction.device_model ||
+    "Electronic Device";
+
+  const sellerName =
+    transaction.seller?.full_name || transaction.seller_name || "Seller";
+
+  const buyerName =
+    transaction.buyer?.full_name ||
+    transaction.buyer_name ||
+    session?.user?.user_metadata?.full_name ||
+    "Buyer";
+
+  const amount = Number(transaction.amount || 0);
+
+  const completedDate = transaction.completed_at
+    ? new Date(transaction.completed_at)
+    : new Date();
+
+  if (Number.isNaN(completedDate.getTime())) {
+    throw new Error("Receipt has an invalid completion date.");
+  }
+
+  const referenceNumber = `EWM-${String(transaction.id || "TRANSACTION")
+    .replace(/-/g, "")
+    .slice(0, 8)
+    .toUpperCase()}`;
+
+  const formattedDate = completedDate.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const formattedTime = completedDate.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  // Real value from the transactions table only; 0 when it hasn't been recorded.
+  const carbonSaved = Number(transaction.carbon_saved) || 0;
+
+  const shareLines = [
+    "WasteLess Transaction Receipt",
+    `Reference No.: ${referenceNumber}`,
+    `Date: ${formattedDate} ${formattedTime}`,
+    `Item: ${itemName}`,
+    `Seller: ${sellerName}`,
+    `Buyer: ${buyerName}`,
+    `Amount: PHP ${amount.toLocaleString()}`,
+    ...(carbonSaved > 0 ? [`CO2 saved: ${carbonSaved}g (gCO2e)`] : []),
+  ];
+
+  return {
+    itemName,
+    sellerName,
+    buyerName,
+    amount,
+    formattedDate,
+    formattedTime,
+    referenceNumber,
+    carbonSaved,
+    fileName: `WasteLess-Receipt-${referenceNumber}.pdf`,
+    shareTitle: `WasteLess Transaction Receipt ${referenceNumber}`,
+    shareText: shareLines.join("\n"),
+  };
+};
+
+// Builds the jsPDF document. Used by both Save and Share.
+const createReceiptPdf = (data) => {
+  const {
+    itemName, sellerName, buyerName, amount, formattedDate, formattedTime,
+    referenceNumber, carbonSaved,
+  } = data;
+
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Header
+  doc.setFillColor(50, 133, 161);
+  doc.rect(0, 0, pageWidth, 45, "F");
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  doc.text("WASTELESS MARKETPLACE", pageWidth / 2, 15, { align: "center" });
+
+  doc.setFontSize(22);
+  doc.setFont("helvetica", "bold");
+  doc.text("Transaction Receipt", pageWidth / 2, 28, { align: "center" });
+
+  doc.setFontSize(11);
+  doc.text("Transaction Successful", pageWidth / 2, 38, { align: "center" });
+
+  // Reset text color
+  doc.setTextColor(30, 41, 59);
+
+  let y = 65;
+
+  const addRow = (label, value) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(148, 163, 184);
+    doc.text(label, 25, y);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text(String(value), pageWidth - 25, y, { align: "right" });
+
+    doc.setDrawColor(226, 232, 240);
+    doc.line(25, y + 6, pageWidth - 25, y + 6);
+
+    y += 18;
+  };
+
+  addRow("Reference No.", referenceNumber);
+  addRow("Date", formattedDate);
+  addRow("Time", formattedTime);
+  addRow("Item", itemName);
+  addRow("Seller", sellerName);
+  addRow("Buyer", buyerName);
+
+  // Amount
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(148, 163, 184);
+  doc.text("Amount", 25, y);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(50, 133, 161);
+  doc.text(`PHP ${amount.toLocaleString()}`, pageWidth - 25, y, {
+    align: "right",
+  });
+
+  y += 30;
+
+  // Eco section (only when a real value is recorded)
+  if (carbonSaved > 0) {
+    doc.setFillColor(89, 203, 163);
+    doc.roundedRect(25, y, pageWidth - 50, 45, 5, 5, "F");
+
+    doc.setTextColor(20, 83, 45);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${carbonSaved}g (gCO2e)`, 35, y + 15);
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+
+    const ecoText =
+      "By going digital, you reduce your carbon footprint from transportation, paper, and plastic.";
+    const lines = doc.splitTextToSize(ecoText, pageWidth - 70);
+    doc.text(lines, 35, y + 25);
+  }
+
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    "WasteLess Marketplace - Official Transaction Record",
+    pageWidth / 2,
+    275,
+    { align: "center" }
+  );
+
+  return doc;
+};
+
+// Defined at module scope (not inside TransactionsView) so its state isn't
+// reset every time the parent re-renders (e.g. on realtime refreshes).
+const ReceiptModal = ({ transaction, session, onClose }) => {
+  const [generationFailed, setGenerationFailed] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareNotice, setShareNotice] = useState(null);
+
+  // If anything throws while building the receipt we show the failure state.
+  // Nothing here touches selectedTransaction or the transaction list.
+  const { data, error: buildError } = useMemo(() => {
+    if (!transaction) return { data: null, error: null };
+    try {
+      return { data: buildReceiptData(transaction, session), error: null };
+    } catch (error) {
+      console.error("Receipt generation failed:", error);
+      return { data: null, error };
+    }
+  }, [transaction, session]);
+
+  if (!transaction) return null;
+
+  const failed = generationFailed || Boolean(buildError) || !data;
+
+  const handleSaveReceipt = () => {
+    try {
+      createReceiptPdf(data).save(data.fileName);
+    } catch (error) {
+      console.error("Receipt generation failed:", error);
+      setGenerationFailed(true);
+    }
+  };
+
+  const handleShareReceipt = async () => {
+    setShareNotice(null);
+
+    let file;
+    try {
+      const blob = createReceiptPdf(data).output("blob");
+      file = new File([blob], data.fileName, { type: "application/pdf" });
+    } catch (error) {
+      console.error("Receipt generation failed:", error);
+      setGenerationFailed(true);
+      return;
+    }
+
+    const shareData = { title: data.shareTitle, text: data.shareText };
+    setIsSharing(true);
+    try {
+      if (typeof navigator.share === "function") {
+        try {
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ ...shareData, files: [file] });
+          } else {
+            await navigator.share(shareData);
+          }
+          return;
+        } catch (error) {
+          if (error?.name === "AbortError") return; // user dismissed the sheet
+          console.error("Native share failed, falling back to clipboard:", error);
+        }
+      }
+
+      const copied = await copyTextToClipboard(data.shareText);
+      setShareNotice(
+        copied
+          ? { type: "success", text: "Receipt details copied to clipboard." }
+          : {
+              type: "error",
+              text: "Sharing isn't available on this device. Use Save to download the receipt.",
+            }
+      );
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-[2rem] shadow-2xl">
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-6 md:p-8">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-[#eaf4df] flex items-center justify-center">
+              <CheckCircle size={25} className="text-[#769c2d]" />
+            </div>
+
+            <div>
+              <h2 className="text-xl md:text-2xl font-black text-slate-700">
+                Transaction Receipt
+              </h2>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+                Official transaction record
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition"
+          >
+            <XCircle size={24} />
+          </button>
+        </div>
+
+        <div className="px-6 md:px-8 pb-6">
+          {failed ? (
+            <>
+              <div
+                role="alert"
+                className="rounded-[1.5rem] border border-red-100 bg-red-50 p-8 text-center"
+              >
+                <AlertCircle size={36} className="mx-auto text-red-500" />
+                <p className="mt-3 font-black text-red-700">
+                  {RECEIPT_FAILURE_MESSAGE}
+                </p>
+                <p className="mt-2 text-xs text-red-600/80">
+                  Your transaction was completed and remains in your history.
+                </p>
+              </div>
+
+              <div className="mt-6">
+                <button
+                  onClick={onClose}
+                  className="w-full py-4 rounded-2xl bg-slate-100 text-slate-600 font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition"
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-lg">
+                {/* Receipt Brand Header */}
+                <div className="bg-gradient-to-r from-[#3285a1] to-[#14516d] text-white text-center p-8">
+                  <p className="text-xs tracking-[0.3em] text-white/70 font-medium">
+                    WASTELESS MARKETPLACE
+                  </p>
+
+                  <h3 className="text-2xl md:text-3xl font-black mt-2">
+                    Transaction Successful
+                  </h3>
+
+                  <div className="flex items-center justify-center gap-2 mt-3 text-[#a8d129]">
+                    <CheckCircle size={20} />
+                    <span className="font-bold">Completed</span>
+                  </div>
+                </div>
+
+                {/* Receipt Information */}
+                <div className="p-6 md:p-8">
+                  <div className="space-y-0">
+                    <div className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
+                      <span className="text-sm text-slate-400">Reference No.</span>
+                      <span className="text-sm font-black text-[#14516d] text-right">
+                        {data.referenceNumber}
+                      </span>
+                    </div>
+
+                    {[
+                      ["Date", data.formattedDate],
+                      ["Time", data.formattedTime],
+                      ["Item", data.itemName],
+                      ["Seller", data.sellerName],
+                      ["Buyer", data.buyerName],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200"
+                      >
+                        <span className="text-sm text-slate-400">{label}</span>
+                        <span className="text-sm font-bold text-slate-700 text-right">
+                          {value}
+                        </span>
+                      </div>
+                    ))}
+
+                    <div className="flex justify-between gap-6 py-5">
+                      <span className="text-sm text-slate-400">Amount</span>
+                      <span className="text-xl font-black text-[#3285a1]">
+                        ₱{data.amount.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Eco Section (real recorded value only) */}
+                  {data.carbonSaved > 0 && (
+                    <div className="mt-5 rounded-2xl bg-[#59cba3] p-5 md:p-6">
+                      <div className="flex items-start gap-4">
+                        <Leaf
+                          size={38}
+                          className="text-emerald-800 flex-shrink-0"
+                        />
+
+                        <div>
+                          <p className="text-xl font-black text-emerald-900">
+                            {data.carbonSaved}g
+                            <span className="text-sm font-medium ml-1">
+                              (gCO₂e)
+                            </span>
+                          </p>
+
+                          <p className="text-sm text-emerald-900/80 leading-relaxed mt-1">
+                            By going digital, you reduce your carbon footprint
+                            from transportation, paper, and plastic.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {shareNotice && (
+                <p
+                  role="status"
+                  className={`mt-4 text-xs font-bold text-center ${
+                    shareNotice.type === "success"
+                      ? "text-emerald-700"
+                      : "text-red-600"
+                  }`}
+                >
+                  {shareNotice.text}
+                </p>
+              )}
+
+              {/* Buttons */}
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={onClose}
+                  className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition"
+                >
+                  Close
+                </button>
+
+                <button
+                  onClick={handleShareReceipt}
+                  disabled={isSharing}
+                  className="flex-1 py-4 rounded-2xl bg-white border-2 border-[#3285a1] text-[#3285a1] font-black text-xs uppercase tracking-widest hover:bg-[#3285a1]/5 transition flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  <Share2 size={16} />
+                  Share
+                </button>
+
+                <button
+                  onClick={handleSaveReceipt}
+                  className="flex-1 py-4 rounded-2xl bg-[#3285a1] text-white font-black text-xs uppercase tracking-widest hover:bg-[#286f88] transition flex items-center justify-center gap-2 shadow-lg shadow-blue-900/10"
+                >
+                  <Download size={16} />
+                  Save Receipt
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const TransactionsView = ({
   transactions = [],
@@ -1019,320 +1482,6 @@ const TransactionsView = ({
     );
   };
 
-  const ReceiptModal = ({ transaction, onClose }) => {
-    if (!transaction) return null;
-
-    const itemName =
-      transaction.listing?.device_model ||
-      transaction.device_model ||
-      "Electronic Device";
-
-    const sellerName =
-      transaction.seller?.full_name || transaction.seller_name || "Seller";
-
-    const buyerName =
-      transaction.buyer?.full_name ||
-      transaction.buyer_name ||
-      session?.user?.user_metadata?.full_name ||
-      "Buyer";
-
-    const amount = transaction.amount || 0;
-
-    const completedDate = transaction.completed_at
-      ? new Date(transaction.completed_at)
-      : new Date();
-
-    const referenceNumber = `EWM-${String(transaction.id || "TRANSACTION")
-      .replace(/-/g, "")
-      .slice(0, 8)
-      .toUpperCase()}`;
-
-    const formattedDate = completedDate.toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-
-    const formattedTime = completedDate.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-
-    // Estimated digital transaction carbon reduction.
-    // You can replace this with a value stored in Supabase later.
-    const carbonSaved = transaction.carbon_saved || 165;
-
-    const handleSaveReceipt = () => {
-      try {
-        const doc = new jsPDF();
-
-        const pageWidth = doc.internal.pageSize.getWidth();
-
-        // Header
-        doc.setFillColor(50, 133, 161);
-        doc.rect(0, 0, pageWidth, 45, "F");
-
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "normal");
-        doc.text("WASTELESS MARKETPLACE", pageWidth / 2, 15, {
-          align: "center",
-        });
-
-        doc.setFontSize(22);
-        doc.setFont("helvetica", "bold");
-        doc.text("Transaction Receipt", pageWidth / 2, 28, {
-          align: "center",
-        });
-
-        doc.setFontSize(11);
-        doc.text("Transaction Successful", pageWidth / 2, 38, {
-          align: "center",
-        });
-
-        // Reset text color
-        doc.setTextColor(30, 41, 59);
-
-        let y = 65;
-
-        const addRow = (label, value) => {
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(10);
-          doc.setTextColor(148, 163, 184);
-          doc.text(label, 25, y);
-
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(30, 41, 59);
-          doc.text(String(value), pageWidth - 25, y, {
-            align: "right",
-          });
-
-          doc.setDrawColor(226, 232, 240);
-          doc.line(25, y + 6, pageWidth - 25, y + 6);
-
-          y += 18;
-        };
-
-        addRow("Reference No.", referenceNumber);
-        addRow("Date", formattedDate);
-        addRow("Time", formattedTime);
-        addRow("Item", itemName);
-        addRow("Seller", sellerName);
-        addRow("Buyer", buyerName);
-
-        // Amount
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(148, 163, 184);
-        doc.text("Amount", 25, y);
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
-        doc.setTextColor(50, 133, 161);
-        doc.text(
-          `PHP ${Number(amount).toLocaleString()}`,
-          pageWidth - 25,
-          y,
-          { align: "right" }
-        );
-
-        y += 30;
-
-        // Eco section
-        doc.setFillColor(89, 203, 163);
-        doc.roundedRect(25, y, pageWidth - 50, 45, 5, 5, "F");
-
-        doc.setTextColor(20, 83, 45);
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text(`${carbonSaved}g (gCO2e)`, 35, y + 15);
-
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-
-        const ecoText =
-          "By going digital, you reduce your carbon footprint from transportation, paper, and plastic.";
-
-        const lines = doc.splitTextToSize(ecoText, pageWidth - 70);
-
-        doc.text(lines, 35, y + 25);
-
-        // Footer
-        doc.setFontSize(8);
-        doc.setTextColor(148, 163, 184);
-        doc.text(
-          "WasteLess Marketplace - Official Transaction Record",
-          pageWidth / 2,
-          275,
-          { align: "center" }
-        );
-
-        // ACTUAL DOWNLOAD
-        doc.save(`WasteLess-Receipt-${referenceNumber}.pdf`);
-      } catch (error) {
-        console.error("Failed to generate receipt:", error);
-        alert("Unable to download the receipt. Please try again.");
-      }
-    };
-
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
-        <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-[2rem] shadow-2xl">
-          {/* Modal Header */}
-          <div className="flex items-center justify-between p-6 md:p-8">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-full bg-[#eaf4df] flex items-center justify-center">
-                <CheckCircle size={25} className="text-[#769c2d]" />
-              </div>
-
-              <div>
-                <h2 className="text-xl md:text-2xl font-black text-slate-700">
-                  Transaction Receipt
-                </h2>
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
-                  Official transaction record
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={onClose}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition"
-            >
-              <XCircle size={24} />
-            </button>
-          </div>
-
-          {/* Receipt */}
-          <div className="px-6 md:px-8 pb-6">
-            <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 shadow-lg">
-              {/* Receipt Brand Header */}
-              <div className="bg-gradient-to-r from-[#3285a1] to-[#14516d] text-white text-center p-8">
-                <p className="text-xs tracking-[0.3em] text-white/70 font-medium">
-                  WASTELESS MARKETPLACE
-                </p>
-
-                <h3 className="text-2xl md:text-3xl font-black mt-2">
-                  Transaction Successful
-                </h3>
-
-                <div className="flex items-center justify-center gap-2 mt-3 text-[#a8d129]">
-                  <CheckCircle size={20} />
-                  <span className="font-bold">Completed</span>
-                </div>
-              </div>
-
-              {/* Receipt Information */}
-              <div className="p-6 md:p-8">
-                <div className="space-y-0">
-                  <div className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
-                    <span className="text-sm text-slate-400">
-                      Reference No.
-                    </span>
-
-                    <span className="text-sm font-black text-[#14516d] text-right">
-                      {referenceNumber}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
-                    <span className="text-sm text-slate-400">Date</span>
-
-                    <span className="text-sm font-bold text-slate-700 text-right">
-                      {formattedDate}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
-                    <span className="text-sm text-slate-400">Time</span>
-
-                    <span className="text-sm font-bold text-slate-700 text-right">
-                      {formattedTime}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
-                    <span className="text-sm text-slate-400">Item</span>
-
-                    <span className="text-sm font-bold text-slate-700 text-right">
-                      {itemName}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
-                    <span className="text-sm text-slate-400">Seller</span>
-
-                    <span className="text-sm font-bold text-slate-700 text-right">
-                      {sellerName}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-6 py-4 border-b border-dashed border-slate-200">
-                    <span className="text-sm text-slate-400">Buyer</span>
-
-                    <span className="text-sm font-bold text-slate-700 text-right">
-                      {buyerName}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-6 py-5">
-                    <span className="text-sm text-slate-400">Amount</span>
-
-                    <span className="text-xl font-black text-[#3285a1]">
-                      ₱{Number(amount).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Eco Section */}
-                <div className="mt-5 rounded-2xl bg-[#59cba3] p-5 md:p-6">
-                  <div className="flex items-start gap-4">
-                    <Leaf
-                      size={38}
-                      className="text-emerald-800 flex-shrink-0"
-                    />
-
-                    <div>
-                      <p className="text-xl font-black text-emerald-900">
-                        {carbonSaved}g
-                        <span className="text-sm font-medium ml-1">
-                          (gCO₂e)
-                        </span>
-                      </p>
-
-                      <p className="text-sm text-emerald-900/80 leading-relaxed mt-1">
-                        By going digital, you reduce your carbon footprint from
-                        transportation, paper, and plastic.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={onClose}
-                className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition"
-              >
-                Close
-              </button>
-
-              <button
-                onClick={handleSaveReceipt}
-                className="flex-1 py-4 rounded-2xl bg-[#3285a1] text-white font-black text-xs uppercase tracking-widest hover:bg-[#286f88] transition flex items-center justify-center gap-2 shadow-lg shadow-blue-900/10"
-              >
-                <Download size={16} />
-                Save Receipt
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
   return (
     <div className="flex gap-8 h-[800px] animate-in fade-in duration-500 bg-transparent">
       {/* Left Sidebar */}
@@ -2279,6 +2428,7 @@ const TransactionsView = ({
       {isReceiptModalOpen && (
         <ReceiptModal
           transaction={selectedTransaction}
+          session={session}
           onClose={() => setIsReceiptModalOpen(false)}
         />
       )}
