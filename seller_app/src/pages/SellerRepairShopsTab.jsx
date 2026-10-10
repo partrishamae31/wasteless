@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import {
@@ -6,6 +6,7 @@ import {
   TileLayer,
   Marker,
   Popup,
+  Tooltip,
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
@@ -31,6 +32,7 @@ import {
   RefreshCw,
   Calendar,
   Clock,
+  Navigation,
   ClipboardList,
   AlertCircle,
   Check,
@@ -69,6 +71,76 @@ const BARANGAY_COORDINATES = {
 };
 
 const VALENZUELA_CENTER = [14.676, 120.983];
+
+/* =========================================================
+   LOCATION / DISTANCE / DIRECTIONS HELPERS
+   ========================================================= */
+
+// Exact pin if the shop saved coordinates, otherwise its barangay centroid.
+const getShopCoordinates = (shop) => {
+  const lat = Number(shop?.latitude);
+  const lng = Number(shop?.longitude);
+
+  if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+    return { lat, lng, exact: true };
+  }
+
+  const centroid = BARANGAY_COORDINATES[shop?.barangay];
+  return centroid ? { lat: centroid[0], lng: centroid[1], exact: false } : null;
+};
+
+// Where the marker is drawn (matches the previous fallback behaviour).
+const getMarkerPosition = (shop) => {
+  const coords = getShopCoordinates(shop);
+  return coords ? [coords.lat, coords.lng] : VALENZUELA_CENTER;
+};
+
+const haversineKm = (lat1, lng1, lat2, lng2) => {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(a));
+};
+
+// Returns km, or null when either side has no usable location.
+const getShopDistanceKm = (shop, userLocation) => {
+  if (!userLocation) return null;
+  const coords = getShopCoordinates(shop);
+  if (!coords) return null;
+  return haversineKm(userLocation.lat, userLocation.lng, coords.lat, coords.lng);
+};
+
+const formatDistance = (km) =>
+  km < 1 ? `${Math.max(10, Math.round(km * 100) * 10)} m` : `${km.toFixed(1)} km`;
+
+const getShopAddress = (shop) =>
+  shop?.address ||
+  (shop?.barangay
+    ? `Brgy. ${shop.barangay}, Valenzuela City`
+    : "Valenzuela City");
+
+// Google Maps directions: exact coordinates when known, else the street
+// address, else the barangay centroid.
+const getShopDirectionsUrl = (shop) => {
+  const coords = getShopCoordinates(shop);
+  let destination = null;
+
+  if (coords?.exact) {
+    destination = `${coords.lat},${coords.lng}`;
+  } else if (shop?.address) {
+    destination = encodeURIComponent(`${shop.address}, Valenzuela City`);
+  } else if (coords) {
+    destination = `${coords.lat},${coords.lng}`;
+  }
+
+  return destination
+    ? `https://www.google.com/maps/dir/?api=1&destination=${destination}`
+    : null;
+};
 
 /* =========================================================
    LEAFLET ICONS
@@ -118,13 +190,45 @@ const MapResizeFix = () => {
 };
 
 /* =========================================================
+   VISIBLE SHOP WATCHER
+   Reports how many shop markers are inside the current map view.
+   ========================================================= */
+
+const MapVisibleShopsWatcher = ({ positions, onChange }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    const evaluate = () => {
+      const bounds = map.getBounds();
+      onChange(positions.filter((position) => bounds.contains(position)).length);
+    };
+
+    const timer = setTimeout(evaluate, 300);
+    map.on("moveend", evaluate);
+    map.on("zoomend", evaluate);
+
+    return () => {
+      clearTimeout(timer);
+      map.off("moveend", evaluate);
+      map.off("zoomend", evaluate);
+    };
+  }, [map, positions, onChange]);
+
+  return null;
+};
+
+/* =========================================================
    REPAIR SHOP MAP
    ========================================================= */
+
+const MAP_FAILURE_MESSAGE =
+  "Map failed to load. Please check your internet connection and try again.";
 
 const RepairShopMap = ({
   shops,
   barangay,
   sellerBarangay,
+  userLocation,
   onShopClick,
 }) => {
   const isAllBarangays = barangay === "Valenzuela City";
@@ -135,17 +239,76 @@ const RepairShopMap = ({
       BARANGAY_COORDINATES[sellerBarangay] ||
       VALENZUELA_CENTER;
 
-  const hasExactLocation = (shop) => {
-    const lat = Number(shop.latitude);
-    const lng = Number(shop.longitude);
+  /* ---------- map load failure (TC_RSM_05) ---------- */
+  const [isOffline, setIsOffline] = useState(
+    typeof navigator !== "undefined" && navigator.onLine === false
+  );
+  const [tilesFailed, setTilesFailed] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const tileStats = useRef({ loaded: 0, failed: 0 });
 
-    return (
-      Number.isFinite(lat) &&
-      Number.isFinite(lng) &&
-      lat !== 0 &&
-      lng !== 0
+  useEffect(() => {
+    const handleOffline = () => setIsOffline(true);
+    const handleOnline = () => {
+      setIsOffline(false);
+      setTilesFailed(false);
+      tileStats.current = { loaded: 0, failed: 0 };
+      setRetryKey((key) => key + 1); // remount to re-request tiles
+    };
+
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, []);
+
+  // A single missing tile is normal; we only treat the map as failed when a
+  // load cycle finishes with errors and not one tile succeeded.
+  const tileHandlers = useMemo(
+    () => ({
+      loading: () => {
+        tileStats.current = { loaded: 0, failed: 0 };
+      },
+      tileload: () => {
+        tileStats.current.loaded += 1;
+      },
+      tileerror: () => {
+        tileStats.current.failed += 1;
+      },
+      load: () => {
+        const { loaded, failed } = tileStats.current;
+        if (failed > 0 && loaded === 0) {
+          console.warn("Map tiles failed to load.");
+          setTilesFailed(true);
+        } else if (loaded > 0) {
+          setTilesFailed(false);
+        }
+      },
+    }),
+    []
+  );
+
+  const handleRetry = () => {
+    tileStats.current = { loaded: 0, failed: 0 };
+    setTilesFailed(false);
+    setIsOffline(
+      typeof navigator !== "undefined" && navigator.onLine === false
     );
+    setRetryKey((key) => key + 1);
   };
+
+  const mapFailed = isOffline || tilesFailed;
+
+  /* ---------- no shops in view (TC_RSM_06) ---------- */
+  const [visibleShopCount, setVisibleShopCount] = useState(null);
+  const markerPositions = useMemo(
+    () => shops.map(getMarkerPosition),
+    [shops]
+  );
+  const showEmptyOverlay =
+    !mapFailed && (shops.length === 0 || visibleShopCount === 0);
 
   return (
     <div className="relative z-0 isolate w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -159,52 +322,76 @@ const RepairShopMap = ({
       </div>
 
       <div className="absolute right-4 top-4 z-[1000] rounded-xl bg-[#3285a1] px-3 py-2 text-white shadow-lg">
-        <p className="text-xs font-black">{shops.length} Repair Shops</p>
+        <p className="text-xs font-black">
+          {shops.length} Repair {shops.length === 1 ? "Shop" : "Shops"}
+        </p>
         <p className="mt-0.5 text-xs text-white/70">
-          Click a pin for details
+          Hover a pin for name &amp; rating
         </p>
       </div>
 
       <MapContainer
         className="repair-shop-map"
-        key={`${barangay}-${coordinates[0]}-${coordinates[1]}`}
+        key={`${barangay}-${coordinates[0]}-${coordinates[1]}-${retryKey}`}
         center={coordinates}
         zoom={isAllBarangays ? 13 : 15}
         scrollWheelZoom
         style={{ height: "350px", width: "100%" }}
       >
         <MapResizeFix />
+        <MapVisibleShopsWatcher
+          positions={markerPositions}
+          onChange={setVisibleShopCount}
+        />
 
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          eventHandlers={tileHandlers}
         />
 
         {shops.map((shop) => {
           const shopName =
             shop.business_name || shop.full_name || "Repair Shop";
           const shopBarangay = shop.barangay || "Unknown";
-          const exactLocation = hasExactLocation(shop);
+          const exactLocation = Boolean(getShopCoordinates(shop)?.exact);
+          const markerPosition = getMarkerPosition(shop);
 
-          const fallbackCoordinates =
-            BARANGAY_COORDINATES[shopBarangay] || VALENZUELA_CENTER;
-
-          const markerPosition = exactLocation
-            ? [Number(shop.latitude), Number(shop.longitude)]
-            : fallbackCoordinates;
+          const reviewTotal =
+            Number(shop.repairReviewCount || 0) +
+            Number(shop.saleReviewCount || 0);
+          const distanceKm = getShopDistanceKm(shop, userLocation);
+          const directionsUrl = getShopDirectionsUrl(shop);
 
           return (
             <Marker
               key={shop.id}
               position={markerPosition}
               icon={repairShopIcon}
-              eventHandlers={{ click: () => onShopClick(shop) }}
             >
+              {/* Hover: name + rating (TC_RSM_01) */}
+              <Tooltip direction="top" offset={[0, -18]}>
+                <div className="text-xs">
+                  <p className="font-black text-slate-800">{shopName}</p>
+                  <p className="mt-0.5 flex items-center gap-1 text-slate-500">
+                    <Star
+                      size={11}
+                      className="text-amber-400"
+                      fill="currentColor"
+                    />
+                    {reviewTotal > 0
+                      ? Number(shop.combinedRating || 0).toFixed(1)
+                      : "No reviews available"}
+                  </p>
+                </div>
+              </Tooltip>
+
+              {/* Click: full details (TC_RSM_03) + directions (TC_RSM_04) */}
               <Popup>
-                <div className="min-w-[210px]">
+                <div className="min-w-[220px]">
                   <p className="font-black text-slate-800">{shopName}</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Brgy. {shopBarangay}
+                    {getShopAddress(shop)}
                   </p>
 
                   <div className="mt-2">
@@ -227,9 +414,7 @@ const RepairShopMap = ({
                       className="text-amber-400"
                       fill="currentColor"
                     />
-                    {Number(shop.repairReviewCount || 0) +
-                      Number(shop.saleReviewCount || 0) >
-                    0 ? (
+                    {reviewTotal > 0 ? (
                       <span className="text-xs font-bold">
                         {Number(shop.combinedRating || 0).toFixed(1)}
                       </span>
@@ -240,13 +425,50 @@ const RepairShopMap = ({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onShopClick(shop)}
-                    className="mt-3 w-full rounded-lg bg-[#3285a1] px-3 py-2 text-xs font-bold text-white"
-                  >
-                    View Shop
-                  </button>
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                    <Navigation size={12} />
+                    {distanceKm !== null ? (
+                      <span>
+                        <span className="font-bold text-slate-700">
+                          {formatDistance(distanceKm)}
+                        </span>{" "}
+                        away
+                        {userLocation?.source === "barangay" &&
+                          " (from your barangay)"}
+                        {!exactLocation && " · approx."}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">
+                        Distance unavailable
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onShopClick(shop)}
+                      className="rounded-lg bg-[#3285a1] px-3 py-2 text-xs font-bold text-white"
+                    >
+                      View Shop
+                    </button>
+                    {directionsUrl ? (
+                      <a
+                        href={directionsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: "#fff" }}
+                        className="flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold"
+                      >
+                        <Navigation size={12} />
+                        Directions
+                      </a>
+                    ) : (
+                      <span className="flex items-center justify-center rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400">
+                        No directions
+                      </span>
+                    )}
+                  </div>
                 </div>
               </Popup>
             </Marker>
@@ -264,6 +486,49 @@ const RepairShopMap = ({
           </Marker>
         )}
       </MapContainer>
+
+      {/* In-map empty state (TC_RSM_06) */}
+      {showEmptyOverlay && (
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 z-[1000] flex -translate-y-1/2 justify-center px-4">
+          <div
+            role="status"
+            className="max-w-xs rounded-xl bg-white/95 px-4 py-3 text-center shadow-lg"
+          >
+            <MapPin className="mx-auto mb-1 text-slate-300" size={22} />
+            <p className="text-sm font-black text-slate-700">
+              No repair shops available in this area.
+            </p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {shops.length === 0
+                ? "Try another barangay or clear your filters."
+                : "Pan or zoom out to find nearby shops."}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Map load failure (TC_RSM_05) */}
+      {mapFailed && (
+        <div
+          role="alert"
+          className="absolute inset-0 z-[1100] flex items-center justify-center bg-white/95 p-6"
+        >
+          <div className="max-w-sm text-center">
+            <AlertCircle className="mx-auto mb-2 text-red-500" size={30} />
+            <p className="text-sm font-black text-slate-700">
+              {MAP_FAILURE_MESSAGE}
+            </p>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#3285a1] px-4 py-2 text-xs font-black text-white"
+            >
+              <RefreshCw size={12} />
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-4 right-4 z-[1000] rounded-xl bg-white p-3 shadow-lg">
         <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -445,6 +710,62 @@ const SellerRepairShopsTab = ({
   const [verifiedOnly, setVerifiedOnly] = useState(true);
   const [viewMode, setViewMode] = useState("list");
 
+  /* =========================================================
+     USER LOCATION (Nearby sort + map distances)
+     GPS via the browser; falls back to the seller's barangay centroid.
+     ========================================================= */
+
+  const [userLocation, setUserLocation] = useState(null); // {lat, lng, source}
+  const [locationStatus, setLocationStatus] = useState("idle");
+  // idle | requesting | granted | denied | unavailable
+
+  const requestUserLocation = () => {
+    const centroid = BARANGAY_COORDINATES[sellerBarangay];
+    const applyBarangayFallback = (status) => {
+      if (centroid) {
+        setUserLocation({
+          lat: centroid[0],
+          lng: centroid[1],
+          source: "barangay",
+        });
+      }
+      setLocationStatus(status);
+    };
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      applyBarangayFallback("unavailable");
+      return;
+    }
+
+    setLocationStatus("requesting");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          source: "gps",
+        });
+        setLocationStatus("granted");
+      },
+      (error) => {
+        console.warn("Geolocation unavailable:", error?.message);
+        applyBarangayFallback(error?.code === 1 ? "denied" : "unavailable");
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
+  };
+
+  // Ask once, only when the person actually needs distance (Nearby sort or map).
+  useEffect(() => {
+    if (
+      (sortBy === "nearby" || viewMode === "map") &&
+      locationStatus === "idle"
+    ) {
+      requestUserLocation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy, viewMode, locationStatus]);
+
   const [selectedShop, setSelectedShop] = useState(null);
   const [shopTransactions, setShopTransactions] = useState([]);
   const [shopReviews, setShopReviews] = useState([]);
@@ -489,12 +810,6 @@ const SellerRepairShopsTab = ({
 
   const getShopName = (shop) =>
     shop?.business_name || shop?.full_name || "Repair Shop";
-
-  const getShopAddress = (shop) =>
-    shop?.address ||
-    (shop?.barangay
-      ? `Brgy. ${shop.barangay}, Valenzuela City`
-      : "Valenzuela City");
 
   const getShopContact = (shop) =>
     shop?.contact_number || "Contact number not provided";
@@ -550,9 +865,7 @@ const SellerRepairShopsTab = ({
     else setLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select(`
+      const baseColumns = `
           id,
           full_name,
           role,
@@ -572,8 +885,23 @@ const SellerRepairShopsTab = ({
           business_activity,
           tech_specialization,
           buyer_type
-        `)
+        `;
+
+      let { data, error } = await supabase
+        .from("profiles")
+        .select(`${baseColumns},\n          operating_hours`)
         .eq("role", "repair_shop");
+
+      // Until the operating_hours column exists, keep the directory working.
+      if (error && /operating_hours/i.test(error.message || "")) {
+        console.warn(
+          "profiles.operating_hours is missing; run the add_operating_hours migration."
+        );
+        ({ data, error } = await supabase
+          .from("profiles")
+          .select(baseColumns)
+          .eq("role", "repair_shop"));
+      }
 
       if (error) throw error;
 
@@ -836,6 +1164,25 @@ const SellerRepairShopsTab = ({
     });
 
     return [...result].sort((a, b) => {
+      if (sortBy === "nearby" && userLocation) {
+        const distanceA = getShopDistanceKm(a, userLocation);
+        const distanceB = getShopDistanceKm(b, userLocation);
+
+        if (distanceA === null && distanceB === null) {
+          return getShopRating(b) - getShopRating(a);
+        }
+        if (distanceA === null) return 1;
+        if (distanceB === null) return -1;
+        return distanceA - distanceB;
+      }
+
+      if (sortBy === "verified") {
+        const verifiedDiff = Number(isVerified(b)) - Number(isVerified(a));
+        return verifiedDiff !== 0
+          ? verifiedDiff
+          : getShopRating(b) - getShopRating(a);
+      }
+
       if (sortBy === "purchases") {
         return Number(b.purchaseCount || 0) - Number(a.purchaseCount || 0);
       }
@@ -857,6 +1204,7 @@ const SellerRepairShopsTab = ({
     barangayFilter,
     sortBy,
     verifiedOnly,
+    userLocation,
   ]);
 
   const totalShops = filteredShops.length;
@@ -1175,6 +1523,21 @@ const SellerRepairShopsTab = ({
       return;
     }
 
+    // Never allow a client to submit an appointment for a date that has
+    // already passed. The date input also has a minimum date, but this
+    // validation protects direct/programmatic submissions as well.
+    const today = new Date();
+    const todayKey = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    if (appointmentForm.preferredDate < todayKey) {
+      alert("Please select today or a future date.");
+      return;
+    }
+
     // REQ-4: these free-text fields are copied into a message, so they must
     // pass the restricted-content filter. Device terms like "phone" are
     // allowed here; phone numbers, emails and links are still blocked.
@@ -1196,20 +1559,69 @@ const SellerRepairShopsTab = ({
     setAppointmentLoading(true);
 
     try {
-      const { data: existingAppointments, error: existingError } =
+      /*
+        TC_SCH_03: availability is checked by REPAIR SHOP + DATE + TIME,
+        not by user. This allows one user to request different time slots
+        while preventing two active appointments from occupying the same
+        shop slot.
+
+        We intentionally check all active appointments for the selected day
+        and normalize the time because PostgreSQL `time` values may be
+        returned as HH:MM or HH:MM:SS depending on the schema/client.
+      */
+      const { data: bookedAppointments, error: availabilityError } =
         await supabase
           .from("repair_appointments")
-          .select("id,status")
-          .eq("harvester_id", userId)
+          .select("id,harvester_id,repair_shop_id,preferred_date,preferred_time,status")
           .eq("repair_shop_id", appointmentShop.id)
+          .eq("preferred_date", appointmentForm.preferredDate)
           .in("status", ["pending", "confirmed", "approved"]);
 
-      if (existingError) throw existingError;
+      if (availabilityError) throw availabilityError;
 
-      if (existingAppointments?.length > 0) {
-        alert(
-          "You already have an active repair appointment request with this shop."
-        );
+      const normalizeAppointmentTime = (value) =>
+        String(value || "")
+          .trim()
+          .slice(0, 5);
+
+      const requestedTime = normalizeAppointmentTime(
+        appointmentForm.preferredTime
+      );
+
+      const conflictingAppointment = (bookedAppointments || []).find(
+        (appointment) =>
+          normalizeAppointmentTime(appointment.preferred_time) === requestedTime
+      );
+
+      if (conflictingAppointment) {
+        alert("This slot is no longer available.");
+        setAppointmentLoading(false);
+        return;
+      }
+
+      /*
+        A second availability check immediately before INSERT reduces the
+        chance of a stale UI state allowing a slot that was booked while the
+        modal was open. A database unique/exclusion constraint is still the
+        authoritative protection against true concurrent writes.
+      */
+      const { data: latestBookedAppointments, error: latestError } =
+        await supabase
+          .from("repair_appointments")
+          .select("id,preferred_time,status")
+          .eq("repair_shop_id", appointmentShop.id)
+          .eq("preferred_date", appointmentForm.preferredDate)
+          .in("status", ["pending", "confirmed", "approved"]);
+
+      if (latestError) throw latestError;
+
+      const latestConflict = (latestBookedAppointments || []).some(
+        (appointment) =>
+          normalizeAppointmentTime(appointment.preferred_time) === requestedTime
+      );
+
+      if (latestConflict) {
+        alert("This slot is no longer available.");
         setAppointmentLoading(false);
         return;
       }
@@ -1230,26 +1642,43 @@ const SellerRepairShopsTab = ({
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // If a database constraint/RPC rejects the slot because another
+        // request won the race, expose the exact TC_SCH_03 message.
+        const databaseMessage = String(error.message || "").toLowerCase();
+        if (
+          databaseMessage.includes("repair_appointments") &&
+          (databaseMessage.includes("unique") ||
+            databaseMessage.includes("duplicate") ||
+            databaseMessage.includes("exclusion"))
+        ) {
+          alert("This slot is no longer available.");
+          return;
+        }
+        throw error;
+      }
 
       /*
         Also create a normal message so the request is visible
         in the existing Wasteless messaging system.
       */
-      const { error: requestMessageError } = await supabase.from("messages").insert({
-        sender_id: userId,
-        receiver_id: appointmentShop.id,
-        listing_id: null,
-        content:
-          `Repair Appointment Request\n` +
-          `Device: ${appointmentForm.deviceModel.trim()}\n` +
-          `Category: ${appointmentForm.category}\n` +
-          `Issue: ${appointmentForm.issueDescription.trim()}\n` +
-          `Preferred schedule: ${appointmentForm.preferredDate} at ${appointmentForm.preferredTime}` +
-          (appointmentForm.notes.trim()
-            ? `\nNotes: ${appointmentForm.notes.trim()}`
-            : ""),
-      });
+      const { error: requestMessageError } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: userId,
+          receiver_id: appointmentShop.id,
+          listing_id: null,
+          content:
+            `Repair Appointment Request\n` +
+            `Device: ${appointmentForm.deviceModel.trim()}\n` +
+            `Category: ${appointmentForm.category}\n` +
+            `Issue: ${appointmentForm.issueDescription.trim()}\n` +
+            `Preferred schedule: ${appointmentForm.preferredDate} at ${appointmentForm.preferredTime}` +
+            (appointmentForm.notes.trim()
+              ? `\nNotes: ${appointmentForm.notes.trim()}`
+              : ""),
+          is_read: false,
+        });
 
       if (requestMessageError) {
         console.warn(
@@ -1264,10 +1693,29 @@ const SellerRepairShopsTab = ({
         );
       }
 
-      setShopAppointments((previous) => [
-        appointment,
-        ...previous,
-      ]);
+      // Also create a dedicated appointment notification. The appointment
+      // remains pending until the Repair Shop confirms it.
+      const { error: appointmentNotificationError } = await supabase
+        .from("notifications")
+        .insert({
+          user_id: appointmentShop.id,
+          type: "repair_appointment",
+          title: "New Repair Appointment Request",
+          content: `A Tech Harvester requested ${appointmentForm.preferredDate} at ${appointmentForm.preferredTime}.`,
+          related_listing_id: null,
+          is_read: false,
+          description: `Repair appointment request for ${appointmentForm.deviceModel.trim()}.`,
+        });
+
+      if (appointmentNotificationError) {
+        // Notification failure must not undo a successfully saved appointment.
+        console.warn(
+          "Appointment notification could not be created:",
+          appointmentNotificationError.message
+        );
+      }
+
+      setShopAppointments((previous) => [appointment, ...previous]);
 
       setAppointmentShop(null);
       resetAppointmentForm();
@@ -1280,7 +1728,8 @@ const SellerRepairShopsTab = ({
     } catch (error) {
       console.error("Error requesting repair appointment:", error);
       alert(
-        "Unable to request the repair appointment. Make sure the repair appointment table has been created in Supabase."
+        error?.message ||
+          "Unable to request the repair appointment. Make sure the repair appointment table has been created in Supabase."
       );
     } finally {
       setAppointmentLoading(false);
@@ -1716,6 +2165,8 @@ const SellerRepairShopsTab = ({
           className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 outline-none"
         >
           <option value="rating">Top Rated</option>
+          <option value="verified">Verified First</option>
+          <option value="nearby">Nearby</option>
           <option value="purchases">Most Purchases</option>
           <option value="reviews">Most Reviews</option>
         </select>
@@ -1747,6 +2198,19 @@ const SellerRepairShopsTab = ({
           </button>
         )}
       </div>
+
+      {sortBy === "nearby" && (
+        <p className="text-xs text-slate-400">
+          {locationStatus === "requesting" && "Finding your location..."}
+          {locationStatus === "granted" &&
+            "Sorted by distance from your current location."}
+          {(locationStatus === "denied" ||
+            locationStatus === "unavailable") &&
+            (userLocation
+              ? "Location unavailable — sorted by distance from your barangay."
+              : "Location unavailable — showing top rated instead.")}
+        </p>
+      )}
 
       {/* OVERVIEW */}
       {!loading && filteredShops.length > 0 && (
@@ -1832,25 +2296,34 @@ const SellerRepairShopsTab = ({
             Loading repair shops...
           </p>
         </div>
-      ) : filteredShops.length === 0 ? (
+      ) : filteredShops.length === 0 && viewMode === "list" ? (
         <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
           <Building2 className="mx-auto mb-3 text-slate-200" size={34} />
           <h4 className="text-sm font-black text-slate-700">
-            User Profile not found
+            No repair shops currently available
           </h4>
           <p className="mt-1 text-xs text-slate-400">
-            Please check the username and try again.
+            {shops.length === 0
+              ? "There are no active repair shops in the directory yet."
+              : "No repair shops match your current search or filters."}
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              setSearch("");
-              setBarangayFilter("All Barangays");
-            }}
-            className="mt-4 rounded-lg bg-[#3285a1] px-4 py-2 text-xs font-black text-white"
-          >
-            Clear Filters
-          </button>
+          <p className="mx-auto mt-3 max-w-sm text-xs leading-relaxed text-slate-400">
+            Own a repair shop? Register a Repair Shop account and complete
+            verification to be listed in this directory.
+          </p>
+          {shops.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setBarangayFilter("All Barangays");
+                setVerifiedOnly(false);
+              }}
+              className="mt-4 rounded-lg bg-[#3285a1] px-4 py-2 text-xs font-black text-white"
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -1861,8 +2334,8 @@ const SellerRepairShopsTab = ({
                   Repair Shop Map — {currentBarangay}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Click a pin to open the shop profile and request an
-                  appointment.
+                  Hover a pin for name and rating, click it for details, then
+                  tap View Shop to open the profile and request an appointment.
                 </p>
               </div>
 
@@ -1870,6 +2343,7 @@ const SellerRepairShopsTab = ({
                 shops={filteredShops}
                 barangay={currentBarangay}
                 sellerBarangay={sellerBarangay}
+                userLocation={userLocation}
                 onShopClick={openShopProfile}
               />
             </div>
@@ -1973,6 +2447,20 @@ const SellerRepairShopsTab = ({
                             Brgy. {shop.barangay || "Not provided"}
                           </span>
                         </div>
+
+                        {getShopDistanceKm(shop, userLocation) !== null && (
+                          <div className="flex items-center gap-2 text-slate-400">
+                            <Navigation size={10} />
+                            <span>
+                              {formatDistance(
+                                getShopDistanceKm(shop, userLocation)
+                              )}{" "}
+                              away
+                              {userLocation?.source === "barangay" &&
+                                " (from your barangay)"}
+                            </span>
+                          </div>
+                        )}
 
                         <div className="flex items-center gap-2 text-slate-400">
                           <Wrench size={10} />
@@ -2134,6 +2622,51 @@ const SellerRepairShopsTab = ({
                       <p className="mt-1 text-sm font-bold text-slate-700">
                         {getShopContact(selectedShop)}
                       </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#3285a1] shadow-sm">
+                      <Clock size={19} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">
+                        Operating Hours
+                      </p>
+                      <p className="mt-1 whitespace-pre-line text-sm font-bold text-slate-700">
+                        {selectedShop.operating_hours?.trim() ||
+                          "Operating hours not provided"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#3285a1] shadow-sm">
+                      <Navigation size={19} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">
+                        Directions
+                        {getShopDistanceKm(selectedShop, userLocation) !==
+                          null &&
+                          ` · ${formatDistance(
+                            getShopDistanceKm(selectedShop, userLocation)
+                          )} away`}
+                      </p>
+                      {getShopDirectionsUrl(selectedShop) ? (
+                        <a
+                          href={getShopDirectionsUrl(selectedShop)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-block text-sm font-black text-[#3285a1] hover:underline"
+                        >
+                          Get Directions in Google Maps
+                        </a>
+                      ) : (
+                        <p className="mt-1 text-sm font-bold text-slate-400">
+                          Location not available
+                        </p>
+                      )}
                     </div>
                   </div>
 

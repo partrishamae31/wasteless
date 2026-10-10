@@ -97,6 +97,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [selectedListing, setSelectedListing] = useState(null);
   const [contactSellerChat, setContactSellerChat] = useState(null);
   const [selectedSellerId, setSelectedSellerId] = useState(null);
+  const [profileSearchResults, setProfileSearchResults] = useState([]);
+  const [profileSearchLoading, setProfileSearchLoading] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -138,6 +140,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     barangay: "",
     average_rating: 0,
     total_reviews: 0,
+    profile_photo: "",
+    active_created_listings: 0,
+    completed_created_listings: 0,
+    repair_reviews: [],
   });
   const [verificationStatus, setVerificationStatus] = useState("verified");
   const isVerified = verificationStatus === "verified";
@@ -307,7 +313,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   tech_certificate_expiry_date,
   tech_specialization,
   business_permit_url,
-  tech_cert_url
+  tech_cert_url,
+  profile_photo,
+  operating_hours
 `,
           )
           .eq("id", session.user.id)
@@ -349,6 +357,30 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             0,
           ) || 0;
 
+        // Profile-card activity for Tech Owner/Dealer and Repair Shop accounts.
+        const [{ count: activeCreatedListings }, { count: completedCreatedListings }, repairReviewsResult] =
+          await Promise.all([
+            supabase
+              .from("listings")
+              .select("id", { count: "exact", head: true })
+              .eq("seller_id", session.user.id)
+              .eq("status", "active"),
+            supabase
+              .from("listings")
+              .select("id", { count: "exact", head: true })
+              .eq("seller_id", session.user.id)
+              .in("status", ["sold", "completed", "meetup scheduled"]),
+            supabase
+              .from("repair_reviews")
+              .select("id,reviewer_id,communication_rating,service_rating,overall_rating,comment,created_at")
+              .eq("repair_shop_id", session.user.id)
+              .order("created_at", { ascending: false }),
+          ]);
+
+        const repairProfileReviews = repairReviewsResult.error
+          ? []
+          : repairReviewsResult.data || [];
+
         const name = profile?.full_name || "Harvester User";
 
         const initials = name
@@ -382,8 +414,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           tech_certificate_issue_date: profile?.tech_certificate_issue_date || "",
           tech_certificate_expiry_date: profile?.tech_certificate_expiry_date || "",
           tech_specialization: profile?.tech_specialization || "",
+          operating_hours: profile?.operating_hours || "",
           business_permit_url: profile?.business_permit_url || "",
           tech_cert_url: profile?.tech_cert_url || "",
+          profile_photo: profile?.profile_photo || "",
 
           joined_date: profile?.created_at
             ? new Date(profile.created_at).toLocaleDateString("en-US", {
@@ -403,6 +437,9 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           // RATINGS
           average_rating: Number(profile?.average_rating || 0),
           total_reviews: profile?.total_reviews || 0,
+          active_created_listings: activeCreatedListings || 0,
+          completed_created_listings: completedCreatedListings || 0,
+          repair_reviews: repairProfileReviews,
 
           // LOCATION
           barangay: profile?.barangay || "",
@@ -1631,6 +1668,49 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     }
   };
+  // TC_VUP_03: search the public user/shop directory by full name or business name.
+  useEffect(() => {
+    const term = searchTerm.trim();
+    if (activeTab !== "browse" || term.length < 2) {
+      setProfileSearchResults([]);
+      setProfileSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setProfileSearchLoading(true);
+      try {
+        const escaped = term.replace(/,/g, " ");
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id,full_name,business_name,barangay,role,verification_status,status,is_verified,profile_photo")
+          .or(`full_name.ilike.%${escaped}%,business_name.ilike.%${escaped}%`)
+          .limit(8);
+
+        if (error) throw error;
+        if (!cancelled) {
+          setProfileSearchResults(
+            (data || []).filter((profile) => {
+              const status = String(profile.status || "active").toLowerCase();
+              return !["inactive", "suspended", "blocked", "banned", "deactivated"].includes(status);
+            }),
+          );
+        }
+      } catch (error) {
+        console.error("Profile directory search failed:", error);
+        if (!cancelled) setProfileSearchResults([]);
+      } finally {
+        if (!cancelled) setProfileSearchLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchTerm, activeTab]);
+
   // Keep the condition filter valid while allowing both listing conditions.
   const effectiveConditionFilter =
     conditionFilter === "Working" || conditionFilter === "Not Working" || conditionFilter === "All Conditions"
@@ -2079,6 +2159,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           {showProfileModal && (
             <RepairShopProfileDrawer
               profileData={profileData}
+              setProfileData={setProfileData}
               verificationStatus={verificationStatus}
               isRepairShop={isRepairShop}
               profilePanelTab={profilePanelTab}
@@ -2289,6 +2370,52 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   )}
                 </div>
 
+                {/* PUBLIC USER / SHOP SEARCH — TC_VUP_03 */}
+                {searchTerm.trim().length >= 2 && (
+                  <div className="absolute z-30 mt-[60px] left-4 right-4 md:right-[calc(40%-0.75rem)] md:left-4">
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                      <div className="px-3 py-2 border-b border-slate-100 text-[9px] font-black uppercase tracking-wide text-slate-400">
+                        People &amp; Shops
+                      </div>
+                      {profileSearchLoading ? (
+                        <div className="px-3 py-4 text-xs text-slate-400">Searching profiles...</div>
+                      ) : profileSearchResults.length === 0 ? (
+                        <div className="px-3 py-4 text-xs text-slate-400">No matching user or shop profiles.</div>
+                      ) : (
+                        profileSearchResults.map((profile) => (
+                          <button
+                            key={profile.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSellerId(profile.id);
+                              setSearchTerm("");
+                              setProfileSearchResults([]);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 transition"
+                          >
+                            {profile.profile_photo ? (
+                              <img src={profile.profile_photo} alt="" className="w-8 h-8 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-black">
+                                {(profile.business_name || profile.full_name || "U").charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-xs font-black text-slate-700 truncate">
+                                {profile.business_name || profile.full_name || "User"}
+                              </p>
+                              <p className="text-[9px] text-slate-400 truncate">
+                                {profile.full_name && profile.business_name ? `${profile.full_name} · ` : ""}
+                                {profile.barangay || "Location not provided"}
+                              </p>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* CONDITION */}
                 <select
                   value={conditionFilter}
@@ -2468,7 +2595,65 @@ const RepairShopProfileDrawer = ({
   trustTierProgress,
   dashboardStats,
   session,
-}) => (
+  setProfileData,
+}) => {
+  const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
+
+  const handleProfilePhotoUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !session?.user?.id) return;
+
+    const maxFileSize = 5 * 1024 * 1024;
+    if (file.size > maxFileSize) {
+      alert("File size exceeds maximum limit. Please upload a photo under 5 MB.");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload a valid image file.");
+      return;
+    }
+
+    setProfilePhotoUploading(true);
+    try {
+      const extension = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `profile-photos/${session.user.id}/profile_${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("verifications")
+        .upload(path, file, { upsert: true, contentType: file.type });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("verifications")
+        .getPublicUrl(path);
+      const profilePhoto = publicUrlData?.publicUrl || "";
+      if (!profilePhoto) throw new Error("Could not create the profile photo URL.");
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ profile_photo: profilePhoto })
+        .eq("id", session.user.id);
+
+      if (profileError) throw profileError;
+      setProfileData((prev) => ({ ...prev, profile_photo: profilePhoto }));
+      alert("Profile photo updated successfully.");
+    } catch (error) {
+      console.error("PROFILE PHOTO UPLOAD ERROR:", error);
+      alert(`Could not update profile photo: ${error.message}`);
+    } finally {
+      setProfilePhotoUploading(false);
+    }
+  };
+
+  const validatePhone = (value) => {
+    const phone = String(value || "").trim();
+    if (!phone) return true;
+    return /^(09\d{9}|\+639\d{9})$/.test(phone);
+  };
+
+  return (
             <div
               className="fixed inset-0 z-[100] bg-slate-950/45 backdrop-blur-[2px]"
               onMouseDown={(e) => {
@@ -2503,14 +2688,20 @@ const RepairShopProfileDrawer = ({
                 {/* Profile identity */}
                 <div className="px-4 pt-5 pb-3 bg-white shrink-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#5d963d] to-[#2b8c91] text-white flex items-center justify-center text-sm font-bold shadow-sm">
-                      {profileData?.initials || "RS"}
+                    <div className="relative w-12 h-12 shrink-0">
+                      {profileData?.profile_photo ? (
+                        <img src={profileData.profile_photo} alt="Profile" className="w-12 h-12 rounded-full object-cover shadow-sm" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#5d963d] to-[#2b8c91] text-white flex items-center justify-center text-sm font-bold shadow-sm">
+                          {profileData?.initials || "RS"}
+                        </div>
+                      )}
                     </div>
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h2 className="text-[15px] font-black text-slate-800 truncate">
-                          {profileData?.full_name || "Repair Shop"}
+                          {profileData?.business_name || profileData?.full_name || (isRepairShop ? "Repair Shop" : "Tech Owner / Dealer")}
                         </h2>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lime-50 text-[#5d963d] text-[9px] font-bold border border-lime-100 shrink-0">
                           <CheckCircle2 size={10} />
@@ -2518,7 +2709,7 @@ const RepairShopProfileDrawer = ({
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        Repair Shop · {profileData?.barangay || profileData?.assigned_area || "Valenzuela"}
+                        {isRepairShop ? "Repair Shop" : "Tech Owner / Dealer"} · {profileData?.barangay || profileData?.assigned_area || "Valenzuela"}
                       </p>
                     </div>
                   </div>
@@ -2547,6 +2738,15 @@ const RepairShopProfileDrawer = ({
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="px-4 pb-3 bg-white">
+                  <label className="inline-flex items-center gap-2 text-[10px] font-bold text-[#5d963d] cursor-pointer">
+                    <Camera size={12} />
+                    {profilePhotoUploading ? "Uploading photo..." : "Change profile photo"}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleProfilePhotoUpload} disabled={profilePhotoUploading} />
+                  </label>
+                  <p className="text-[9px] text-slate-400 mt-1">Maximum 5 MB. Image files only.</p>
                 </div>
 
                 <div className="flex-1 overflow-y-auto bg-white">
@@ -2602,6 +2802,47 @@ const RepairShopProfileDrawer = ({
                             </div>
                           </section>
 
+                          {!isRepairShop && (
+                            <section>
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                                Listing Activity
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+                                  <p className="text-[9px] text-slate-400">Active Listings</p>
+                                  <p className="text-sm font-black text-slate-700">{profileData?.active_created_listings || 0}</p>
+                                </div>
+                                <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+                                  <p className="text-[9px] text-slate-400">Completed Listings</p>
+                                  <p className="text-sm font-black text-slate-700">{profileData?.completed_created_listings || 0}</p>
+                                </div>
+                              </div>
+                            </section>
+                          )}
+
+                          {isRepairShop && (
+                            <section>
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                                Repair Service Reviews
+                              </p>
+                              <div className="rounded-xl bg-slate-50 p-3 space-y-2">
+                                {profileData?.repair_reviews?.length ? (
+                                  profileData.repair_reviews.slice(0, 3).map((review) => (
+                                    <div key={review.id} className="border-b border-slate-200 last:border-0 pb-2 last:pb-0">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[10px] font-bold text-slate-700">{Number(review.overall_rating || 0).toFixed(1)} / 5</span>
+                                        <span className="text-[9px] text-slate-400">{review.created_at ? new Date(review.created_at).toLocaleDateString() : ""}</span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-500 mt-1">{review.comment || "No comment provided."}</p>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-[10px] text-slate-400">No repair-service reviews yet.</p>
+                                )}
+                              </div>
+                            </section>
+                          )}
+
                           <section>
                             <div className="flex items-center justify-between mb-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
@@ -2652,6 +2893,18 @@ const RepairShopProfileDrawer = ({
                             </div>
                           </section>
 
+                          <section>
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                              Operating Hours
+                            </p>
+                            <div className="rounded-xl bg-slate-50 px-3 py-3">
+                              <p className="whitespace-pre-line text-[11px] leading-relaxed text-slate-500">
+                                {profileData?.operating_hours?.trim() ||
+                                  "No operating hours have been provided yet."}
+                              </p>
+                            </div>
+                          </section>
+
                           <button
                             type="button"
                             onClick={() => setIsEditingProfile(true)}
@@ -2679,27 +2932,55 @@ const RepairShopProfileDrawer = ({
                             </button>
                           </div>
 
-                          {[
-                            ["Full Name", "full_name", "text", "Enter your full name"],
-                            ["Phone Number", "contact_number", "tel", "Enter your phone number"],
-                            ["Barangay", "assigned_area", "text", "Enter your barangay"],
-                          ].map(([label, key, type, placeholder]) => (
-                            <label key={key} className="block">
-                              <span className="text-[10px] font-bold text-slate-500">{label}</span>
-                              <input
-                                type={type}
-                                value={profileData?.[key] || ""}
-                                onChange={(e) =>
-                                  setProfileData((prev) => ({
-                                    ...prev,
-                                    [key]: e.target.value,
-                                  }))
-                                }
-                                placeholder={placeholder}
-                                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-slate-500">Full Name</span>
+                            <input
+                              type="text"
+                              value={profileData?.full_name || ""}
+                              disabled
+                              readOnly
+                              title="This information is verified by the system and cannot be edited."
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-[11px] text-slate-500 cursor-not-allowed outline-none"
+                            />
+                            <p className="text-[9px] text-slate-400 mt-1">This information is verified by the system and cannot be edited.</p>
+                          </label>
+
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-slate-500">Phone Number</span>
+                            <input
+                              type="tel"
+                              value={profileData?.contact_number || ""}
+                              onChange={(e) => setProfileData((prev) => ({ ...prev, contact_number: e.target.value }))}
+                              placeholder="09XXXXXXXXX"
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                            />
+                          </label>
+
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-slate-500">Barangay</span>
+                            <input
+                              type="text"
+                              value={profileData?.barangay || profileData?.assigned_area || ""}
+                              disabled
+                              readOnly
+                              title="This information is verified by the system and cannot be edited."
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-[11px] text-slate-500 cursor-not-allowed outline-none"
+                            />
+                            <p className="text-[9px] text-slate-400 mt-1">This information is verified by the system and cannot be edited.</p>
+                          </label>
+
+                          {!isRepairShop && (
+                            <label className="block">
+                              <span className="text-[10px] font-bold text-slate-500">Bio</span>
+                              <textarea
+                                rows={4}
+                                value={profileData?.business_activity || ""}
+                                onChange={(e) => setProfileData((prev) => ({ ...prev, business_activity: e.target.value }))}
+                                placeholder="Tell other users a little about yourself."
+                                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
                               />
                             </label>
-                          ))}
+                          )}
 
                           <label className="block">
                             <span className="text-[10px] font-bold text-slate-500">About the Shop</span>
@@ -2735,6 +3016,25 @@ const RepairShopProfileDrawer = ({
                             />
                           </label>
 
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-slate-500">
+                              Operating Hours
+                            </span>
+                            <textarea
+                              rows={2}
+                              maxLength={200}
+                              value={profileData?.operating_hours || ""}
+                              onChange={(e) =>
+                                setProfileData((prev) => ({
+                                  ...prev,
+                                  operating_hours: e.target.value,
+                                }))
+                              }
+                              placeholder="Mon–Sat 9:00 AM – 6:00 PM, Sunday closed"
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                            />
+                          </label>
+
                           <button
                             type="button"
                             onClick={async () => {
@@ -2744,23 +3044,29 @@ const RepairShopProfileDrawer = ({
                                   return;
                                 }
 
+                                if (!validatePhone(profileData?.contact_number)) {
+                                  alert("Please enter valid information for Phone Number.");
+                                  return;
+                                }
+
                                 const { data, error } = await supabase
                                   .from("profiles")
                                   .update({
-                                    full_name: profileData?.full_name?.trim() || null,
                                     contact_number: profileData?.contact_number?.trim() || null,
-                                    barangay:
-                                      profileData?.assigned_area?.trim() ||
-                                      profileData?.barangay?.trim() ||
-                                      null,
                                     business_activity:
                                       profileData?.business_activity?.trim() || null,
-                                    tech_specialization:
-                                      profileData?.tech_specialization?.trim() || null,
+                                    ...(isRepairShop
+                                      ? {
+                                          tech_specialization:
+                                            profileData?.tech_specialization?.trim() || null,
+                                          operating_hours:
+                                            profileData?.operating_hours?.trim() || null,
+                                        }
+                                      : {}),
                                   })
                                   .eq("id", session.user.id)
                                   .select(
-                                    "full_name,contact_number,barangay,business_activity,tech_specialization",
+                                    "full_name,contact_number,barangay,business_activity,tech_specialization,operating_hours,profile_photo",
                                   )
                                   .single();
 
@@ -2769,10 +3075,15 @@ const RepairShopProfileDrawer = ({
                                 setProfileData((prev) => ({
                                   ...prev,
                                   ...data,
+                                  operating_hours: data?.operating_hours || "",
                                   assigned_area: data?.barangay || "",
                                 }));
                                 setIsEditingProfile(false);
-                                alert("Profile updated successfully!");
+                                alert(
+                                  isRepairShop
+                                    ? "Business profile updated successfully."
+                                    : "Profile updated successfully."
+                                );
                               } catch (error) {
                                 console.error("PROFILE UPDATE ERROR:", error);
                                 alert(`Failed to update profile: ${error.message}`);
@@ -3044,8 +3355,8 @@ const RepairShopProfileDrawer = ({
                 </div>
               </aside>
             </div>
-
-);
+          );
+};
 
 const MyBidsView = ({ bids, onContactSeller }) => {
   const stats = {
@@ -3352,6 +3663,7 @@ const MessagesView = ({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [updatingAppointmentId, setUpdatingAppointmentId] = useState(null);
+
 
   // REQ-2: Pending Verification accounts are view-only (read, no reply).
   const [senderProfile, setSenderProfile] = useState(null);
@@ -3749,7 +4061,7 @@ const MessagesView = ({
     };
   }, [selectedChat, userId]);
 
-  const updateAppointment = async (id, nextStatus) => {
+  const updateAppointment = async (id, nextStatus, providedDeclineReason = "") => {
     if (!userId || !id || !nextStatus) return;
 
     if (updatingAppointmentId === id) return;
@@ -3772,11 +4084,19 @@ const MessagesView = ({
 
       const currentStatus = normalizeAppointmentStatus(appointment.status);
       const targetStatus = normalizeAppointmentStatus(nextStatus);
+      const normalizedDeclineReason =
+        String(providedDeclineReason || "").trim();
+
+      if (targetStatus === "declined" && !normalizedDeclineReason) {
+        throw new Error("Please provide a reason for declining this appointment.");
+      }
 
       // Prevent accidental/repeated transitions.
+      // A pending/requested appointment can now be confirmed directly, matching
+      // TC_SCH_02, while the legacy accepted -> confirmed path remains supported.
       const allowedTransitions = {
-        pending: ["accepted", "declined"],
-        requested: ["accepted", "declined"],
+        pending: ["accepted", "confirmed", "declined"],
+        requested: ["accepted", "confirmed", "declined"],
         accepted: ["confirmed", "declined"],
         confirmed: ["completed", "cancelled"],
         declined: [],
@@ -3871,6 +4191,7 @@ const MessagesView = ({
           .update({
             status: targetStatus,
             updated_at: new Date().toISOString(),
+
           })
           .eq("id", id)
           .eq("repair_shop_id", userId)
@@ -3924,8 +4245,62 @@ const MessagesView = ({
         }
       }
 
-      // Notify the harvester through the existing messages system.
+      // ---------------------------------------------------------
+      // IN-APP APPOINTMENT NOTIFICATION
+      // TC_SCH_02 / TC_SCH_04 / TC_SCH_05: the Tech Owner/Dealer receives
+      // a durable notification for confirmation, decline, and completion.
+      // Completion also creates an explicit rating prompt.
+      // ---------------------------------------------------------
       const readableStatus = targetStatus.replaceAll("_", " ");
+      let appointmentNotification = {
+        user_id: updatedAppointment.harvester_id,
+        type: "repair_appointment",
+        title: `Repair Appointment ${targetStatus === "confirmed" ? "Confirmed" : targetStatus === "declined" ? "Declined" : targetStatus === "completed" ? "Completed" : "Updated"}`,
+        content: `Your repair appointment for ${updatedAppointment.device_model || "your device"} on ${updatedAppointment.preferred_date || "the scheduled date"} at ${updatedAppointment.preferred_time || "the scheduled time"} is now ${readableStatus}.`,
+        related_listing_id: null,
+        is_read: false,
+        description:
+          targetStatus === "declined"
+            ? `Decline reason: ${normalizedDeclineReason}`
+            : `Repair appointment status changed to ${readableStatus}.`,
+      };
+
+      const { error: appointmentNotificationError } = await supabase
+        .from("notifications")
+        .insert(appointmentNotification);
+
+      if (appointmentNotificationError) {
+        console.warn(
+          "REPAIR APPOINTMENT NOTIFICATION ERROR:",
+          appointmentNotificationError
+        );
+      }
+
+      if (targetStatus === "completed") {
+        const { error: ratingPromptError } = await supabase
+          .from("notifications")
+          .insert({
+            user_id: updatedAppointment.harvester_id,
+            type: "repair_rating_prompt",
+            title: "Rate Your Repair Service",
+            content: "Your repair service has been completed. Please rate the Repair Shop.",
+            related_listing_id: null,
+            is_read: false,
+            description: `Rating prompt for completed repair appointment ${updatedAppointment.id}.`,
+          });
+
+        if (ratingPromptError) {
+          console.warn("REPAIR RATING PROMPT ERROR:", ratingPromptError);
+        }
+      }
+
+      // Notify the harvester through the existing messages system.
+      const statusDetails =
+        targetStatus === "declined"
+          ? `\nReason: ${normalizedDeclineReason}`
+          : "";
+      const messageContent =
+        `Repair appointment update\nStatus: ${readableStatus}${statusDetails}`;
 
       const { error: messageError } = await supabase
         .from("messages")
@@ -3933,7 +4308,7 @@ const MessagesView = ({
           sender_id: userId,
           receiver_id: updatedAppointment.harvester_id,
           listing_id: null,
-          content: `Repair appointment update\nStatus: ${readableStatus}`,
+          content: messageContent,
           is_read: false,
         });
 
@@ -4179,6 +4554,8 @@ const MessagesView = ({
                         </p>
                       )}
 
+
+
                       {(() => {
                         const status = normalizeAppointmentStatus(
                           appointment.status
@@ -4193,19 +4570,27 @@ const MessagesView = ({
                                   type="button"
                                   disabled={isUpdating}
                                   onClick={() =>
-                                    updateAppointment(appointment.id, "accepted")
+                                    updateAppointment(appointment.id, "confirmed")
                                   }
                                   className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-xs font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                  {isUpdating ? "Updating..." : "Accept Request"}
+                                  {isUpdating ? "Confirming..." : "Confirm Appointment"}
                                 </button>
 
                                 <button
                                   type="button"
                                   disabled={isUpdating}
-                                  onClick={() =>
-                                    updateAppointment(appointment.id, "declined")
-                                  }
+                                  onClick={() => {
+                                    const reason = window.prompt(
+                                      "Reason for declining this repair appointment:"
+                                    );
+                                    if (reason === null) return;
+                                    updateAppointment(
+                                      appointment.id,
+                                      "declined",
+                                      reason.trim()
+                                    );
+                                  }}
                                   className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   Decline
@@ -4214,16 +4599,36 @@ const MessagesView = ({
                             )}
 
                             {status === "accepted" && (
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() =>
-                                  updateAppointment(appointment.id, "confirmed")
-                                }
-                                className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-xs font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {isUpdating ? "Confirming..." : "Confirm Appointment"}
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={isUpdating}
+                                  onClick={() =>
+                                    updateAppointment(appointment.id, "confirmed")
+                                  }
+                                  className="px-4 py-2 rounded-xl bg-[#769c2d] text-white text-xs font-bold hover:bg-[#668827] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {isUpdating ? "Confirming..." : "Confirm Appointment"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isUpdating}
+                                  onClick={() => {
+                                    const reason = window.prompt(
+                                      "Reason for declining this repair appointment:"
+                                    );
+                                    if (reason === null) return;
+                                    updateAppointment(
+                                      appointment.id,
+                                      "declined",
+                                      reason.trim()
+                                    );
+                                  }}
+                                  className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  Decline
+                                </button>
+                              </>
                             )}
 
                             {status === "confirmed" && (

@@ -10,6 +10,9 @@ import {
   ShoppingBag,
   Clock,
   User,
+  Flag,
+  Award,
+  ShieldAlert,
 } from "lucide-react";
 
 const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
@@ -32,6 +35,15 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Listings");
+  const [reviewSort, setReviewSort] = useState("Date");
+  const [notFound, setNotFound] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [trustTier, setTrustTier] = useState(null);
+  const [completedTransactions, setCompletedTransactions] = useState(0);
+  const [co2RecoveredKg, setCo2RecoveredKg] = useState(0);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reporting, setReporting] = useState(false);
 
   useEffect(() => {
     if (!sellerId) return;
@@ -52,11 +64,17 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
           `
     id,
     full_name,
+    business_name,
+    role,
     barangay,
+    address,
+    business_activity,
+    profile_photo,
     average_rating,
     total_reviews,
     is_verified,
     verification_status,
+    status,
     created_at
   `,
         )
@@ -65,10 +83,78 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
 
       if (profileError) {
         console.error("Seller profile error:", profileError);
+        if (profileError.code === "PGRST116") {
+          setNotFound(true);
+          setSeller(null);
+          return;
+        }
         throw profileError;
       }
 
-      setSeller(profile);
+      const profileStatus = String(profile?.status || "active").trim().toLowerCase();
+      if (["inactive", "suspended", "blocked", "banned", "deactivated"].includes(profileStatus)) {
+        setUnavailable(true);
+        setSeller(null);
+        return;
+      }
+
+      setNotFound(false);
+      setUnavailable(false);
+      // ============================================
+      // 1B. TRUST TIER + COMPLETED TRANSACTIONS + CO₂
+      // Uses the same transaction/rating rules as the dashboard.
+      // ============================================
+      const [tiersResult, transactionsResult, marketplaceRatingResult, repairRatingResult] =
+        await Promise.all([
+          supabase
+            .from("trust_tiers")
+            .select("id,name,min_transactions,min_rating,privileges")
+            .order("min_transactions", { ascending: true }),
+          supabase
+            .from("transactions")
+            .select("id,status,carbon_saved")
+            .or(`seller_id.eq.${sellerId},harvester_id.eq.${sellerId}`)
+            .eq("status", "completed"),
+          supabase
+            .from("reviews")
+            .select("overall_rating")
+            .eq("seller_id", sellerId),
+          supabase
+            .from("repair_reviews")
+            .select("overall_rating")
+            .eq("repair_shop_id", sellerId),
+        ]);
+
+      if (tiersResult.error) console.error("Trust tiers error:", tiersResult.error);
+      if (transactionsResult.error) console.error("Completed transactions error:", transactionsResult.error);
+      if (marketplaceRatingResult.error) console.error("Marketplace rating error:", marketplaceRatingResult.error);
+      if (repairRatingResult.error) console.error("Repair rating error:", repairRatingResult.error);
+
+      const completed = transactionsResult.data || [];
+      const purchaseRatings = (marketplaceRatingResult.data || [])
+        .map((row) => Number(row.overall_rating))
+        .filter(Number.isFinite);
+      const purchaseAverage = purchaseRatings.length
+        ? purchaseRatings.reduce((sum, value) => sum + value, 0) / purchaseRatings.length
+        : 0;
+      const sortedTiers = [...(tiersResult.data || [])].sort(
+        (a, b) => Number(a.min_transactions || 0) - Number(b.min_transactions || 0),
+      );
+      const calculatedTier =
+        [...sortedTiers].reverse().find(
+          (tier) =>
+            completed.length >= Number(tier.min_transactions || 0) &&
+            purchaseAverage >= Number(tier.min_rating || 0),
+        ) ||
+        sortedTiers.find((tier) => String(tier.name || "").toLowerCase() === "newcomer") ||
+        sortedTiers[0] ||
+        null;
+
+      setTrustTier(calculatedTier);
+      setCompletedTransactions(completed.length);
+      setCo2RecoveredKg(
+        completed.reduce((sum, transaction) => sum + Number(transaction.carbon_saved || 0), 0),
+      );
 
       // ============================================
       // 2. GET SELLER LISTINGS
@@ -273,7 +359,78 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
 
   if (!sellerId) return null;
 
-  const sellerName = seller?.full_name || "Seller";
+  if (notFound || unavailable) {
+    return (
+      <div className="fixed inset-0 z-[120] bg-slate-950/45 backdrop-blur-[2px] flex items-center justify-center p-4">
+        <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl p-6 text-center">
+          <ShieldAlert size={34} className="mx-auto text-slate-400" />
+          <p className="mt-3 text-sm font-black text-slate-700">
+            {notFound
+              ? "User profile not found. Please check the username and try again."
+              : "This profile is no longer available"}
+          </p>
+          <button onClick={onClose} className="mt-5 w-full rounded-xl bg-slate-100 py-2.5 text-xs font-black text-slate-600">Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  const sellerName = seller?.business_name || seller?.full_name || "Seller";
+  const isRepairShopProfile = String(seller?.role || "").toLowerCase() === "repair_shop";
+
+  const sortReviews = (items) => [...items].sort((a, b) => {
+    if (reviewSort === "Most Helpful") {
+      const ratingDifference = Number(b.overall_rating || 0) - Number(a.overall_rating || 0);
+      if (ratingDifference !== 0) return ratingDifference;
+      return String(b.comment || "").length - String(a.comment || "").length;
+    }
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+  });
+
+  const sortedReviews = sortReviews(reviews);
+  const sortedRepairReviews = sortReviews(repairReviews);
+
+  const getCurrentUserId = async () => {
+    const { data } = await supabase.auth.getUser();
+    return data?.user?.id || null;
+  };
+
+  const handleReportProfile = async () => {
+    const reason = reportReason.trim();
+    const reporterId = await getCurrentUserId();
+    if (!reporterId) {
+      alert("Please log in again before reporting a profile.");
+      return;
+    }
+    if (!reason) {
+      alert("Please provide a reason for reporting this profile.");
+      return;
+    }
+    if (sellerId === reporterId) {
+      alert("You cannot report your own profile.");
+      return;
+    }
+
+    setReporting(true);
+    try {
+      const { error } = await supabase.from("profile_reports").insert({
+        reporter_id: reporterId,
+        reported_user_id: sellerId,
+        reason,
+        status: "pending",
+      });
+      if (error) throw error;
+
+      setShowReportModal(false);
+      setReportReason("");
+      alert("Profile report submitted successfully.");
+    } catch (error) {
+      console.error("PROFILE REPORT ERROR:", error);
+      alert(`Could not submit profile report: ${error.message}`);
+    } finally {
+      setReporting(false);
+    }
+  };
 
   const sellerInitials = sellerName
     .split(" ")
@@ -434,9 +591,17 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
         <div className="px-4">
           <div className="relative -mt-7 flex items-end justify-between">
             {/* AVATAR */}
-            <div className="w-14 h-14 rounded-full bg-[#4a8b63] border-2 border-white shadow-md flex items-center justify-center text-white text-sm font-black">
-              {sellerInitials}
-            </div>
+            {seller?.profile_photo ? (
+              <img
+                src={seller.profile_photo}
+                alt={sellerName}
+                className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-[#4a8b63] border-2 border-white shadow-md flex items-center justify-center text-white text-sm font-black">
+                {sellerInitials}
+              </div>
+            )}
 
             {/* RATING */}
             <div className="mb-1 text-right">
@@ -498,6 +663,29 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 {repairReviewAverage.toFixed(1)} Repair
               </span>
             )}
+          </div>
+        </div>
+
+        {/* TRUST / RECOVERY SUMMARY */}
+        <div className="mt-3 px-3 space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-100 rounded-full text-xs font-black text-amber-700">
+              <Award size={9} />
+              {trustTier?.name || "NEWCOMER"}
+            </span>
+            <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-100 rounded-full text-xs font-black text-emerald-700">
+              {co2RecoveredKg.toFixed(2)} kg CO₂ saved
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-slate-50 px-3 py-2">
+              <p className="text-[9px] text-slate-400">Completed Transactions</p>
+              <p className="text-xs font-black text-slate-700">{completedTransactions}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 px-3 py-2">
+              <p className="text-[9px] text-slate-400">{isRepairShopProfile ? "Shop Address" : "Location"}</p>
+              <p className="text-xs font-black text-slate-700 truncate">{seller?.address || seller?.barangay || "Not provided"}</p>
+            </div>
           </div>
         </div>
 
@@ -786,6 +974,18 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                 </button>
               </div>
 
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Sort Reviews</span>
+                <select
+                  value={reviewSort}
+                  onChange={(e) => setReviewSort(e.target.value)}
+                  className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-[9px] font-bold text-slate-600 outline-none"
+                >
+                  <option value="Date">Date</option>
+                  <option value="Most Helpful">Most Helpful</option>
+                </select>
+              </div>
+
               {/* MARKETPLACE REVIEWS */}
               {reviewType === "marketplace" && (
                 <>
@@ -861,7 +1061,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                       </div>
 
                       <div className="space-y-2">
-                        {reviews.map((review) => {
+                        {sortedReviews.map((review) => {
                           const reviewRating = getReviewRating(review);
                           const reviewerName = getReviewerName(review);
                           const reviewComment = getReviewComment(review);
@@ -1007,7 +1207,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                       </div>
 
                       <div className="space-y-2">
-                        {repairReviews.map((review) => {
+                        {sortedRepairReviews.map((review) => {
                           const reviewRating = Number(review.overall_rating || 0);
                           const reviewerName = getRepairReviewerName(review);
                           const reviewComment = getRepairReviewComment(review);
@@ -1152,6 +1352,29 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
           )}
         </div>
 
+        {showReportModal && (
+          <div className="absolute inset-0 z-40 bg-slate-950/40 flex items-center justify-center p-4">
+            <div className="w-full rounded-2xl bg-white shadow-2xl p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-black text-slate-700">Report Profile</h3>
+                <button type="button" onClick={() => setShowReportModal(false)} className="text-slate-400"><X size={16} /></button>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">Tell the admin why this profile should be reviewed.</p>
+              <textarea
+                rows={5}
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder="Reason for report..."
+                className="w-full mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs outline-none resize-none focus:bg-white focus:border-red-300"
+              />
+              <div className="flex gap-2 mt-3">
+                <button type="button" onClick={() => setShowReportModal(false)} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-black text-slate-600">Cancel</button>
+                <button type="button" onClick={handleReportProfile} disabled={reporting} className="flex-1 rounded-xl bg-red-600 py-2.5 text-xs font-black text-white disabled:opacity-50">{reporting ? "Submitting..." : "Submit Report"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ============================================
             FOOTER BUTTONS
         ============================================ */}
@@ -1161,6 +1384,14 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
             className="flex-1 py-2.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-black"
           >
             Close
+          </button>
+
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="px-3 py-2.5 rounded-lg border border-red-100 bg-red-50 text-red-600 text-xs font-black flex items-center justify-center gap-1.5 hover:bg-red-100 transition"
+          >
+            <Flag size={10} />
+            Report
           </button>
 
           <button
