@@ -760,11 +760,11 @@ const OfficerDashboard = () => {
           <StatCard
             icon={MapPin}
             label="Active Barangays"
-            value={`${activeBarangayCount}/${totalBarangayCoverage || activeBarangayCount}`}
+            value={`${activeBarangayCount}/${33}`}
             trend={
-              totalBarangayCoverage > 0
+              33 > 0
                 ? `${Math.round(
-                    (activeBarangayCount / totalBarangayCoverage) * 100,
+                    (activeBarangayCount / 33) * 100,
                   )}%`
                 : "0%"
             }

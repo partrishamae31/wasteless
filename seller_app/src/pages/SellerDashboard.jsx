@@ -4493,7 +4493,7 @@ const SellerDashboard = ({ session }) => {
                 <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition">
                   <Settings size={18} className="text-slate-400" /> Settings
                 </button>
-                <button
+                {/* <button
                                   type="button"
                                   onClick={() => {
                                     setShowAchievementsModal(true);
@@ -4502,7 +4502,7 @@ const SellerDashboard = ({ session }) => {
                                   className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition"
                                 >
                                   <Award size={18} className="text-slate-400" /> Achievements
-                                </button>
+                                </button> */}
 
                 {showAchievements && (
                   <div className="mx-1 mb-2 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3 space-y-3">
