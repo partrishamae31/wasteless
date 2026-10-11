@@ -145,8 +145,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     completed_created_listings: 0,
     repair_reviews: [],
   });
-  const [verificationStatus, setVerificationStatus] = useState("verified");
-  const isVerified = verificationStatus === "verified";
+  // Fail closed: accounts are view-only until the profile confirms they are
+  // verified (Pending Verification / Rejected / Not Submitted = view-only).
+  const [verificationStatus, setVerificationStatus] = useState("pending");
+  const isVerified = ["verified", "approved"].includes(
+    String(verificationStatus || "").toLowerCase()
+  );
   const [rejectionReason, setRejectionReason] = useState("");
 
   // Repair Shop verification resubmission
@@ -191,6 +195,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   // correct state and all required coordination data exists. Otherwise the
   // update is prevented and the user is told exactly what to correct.
   const handleCompleteHandover = async (transactionId) => {
+    // Pending Verification accounts are view-only.
+    if (!isVerified) {
+      alert("Pending Verification accounts are view-only and cannot complete transactions.");
+      return;
+    }
+
     const currentTx =
       transactions.find((tx) => tx.id === transactionId) ||
       (selectedTransaction?.id === transactionId ? selectedTransaction : null);
@@ -2511,9 +2521,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             handleCompleteHandover={handleCompleteHandover}
             onOpenMessages={handleOpenTransactionMessages}
             session={session} // Add this prop
+            readOnly={!isVerified}
           />
         ) : activeTab === "inventory" ? ( // ADD THIS
-          <InventoryView userId={session?.user?.id} />
+          <InventoryView userId={session?.user?.id} readOnly={!isVerified} />
         ) : activeTab === "map" ? ( // ADD THIS BLOCK
           <UrbanMineMap isVerified={isVerified} />
         ) : activeTab === "messages" ? (
@@ -2538,6 +2549,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           <DonationTab
             profileData={profileData}
             session={session}
+            readOnly={!isVerified}
           />
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-slate-300 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
@@ -4064,6 +4076,15 @@ const MessagesView = ({
   const updateAppointment = async (id, nextStatus, providedDeclineReason = "") => {
     if (!userId || !id || !nextStatus) return;
 
+    // Pending Verification repair shops are view-only: they can read
+    // appointment requests but cannot confirm, decline, or complete them.
+    if (!canSendMessages) {
+      alert(
+        "Pending Verification accounts are view-only and cannot confirm, decline, or complete repair appointments."
+      );
+      return;
+    }
+
     if (updatingAppointmentId === id) return;
 
     setUpdatingAppointmentId(id);
@@ -4564,11 +4585,17 @@ const MessagesView = ({
 
                         return (
                           <div className="flex flex-wrap gap-2 mt-4">
+                            {!canSendMessages &&
+                              ["pending", "requested", "accepted", "confirmed"].includes(status) && (
+                                <p className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                                  View-only: your account is pending verification, so you cannot confirm, decline, or complete appointments yet.
+                                </p>
+                              )}
                             {(status === "pending" || status === "requested") && (
                               <>
                                 <button
                                   type="button"
-                                  disabled={isUpdating}
+                                  disabled={isUpdating || !canSendMessages}
                                   onClick={() =>
                                     updateAppointment(appointment.id, "confirmed")
                                   }
@@ -4579,7 +4606,7 @@ const MessagesView = ({
 
                                 <button
                                   type="button"
-                                  disabled={isUpdating}
+                                  disabled={isUpdating || !canSendMessages}
                                   onClick={() => {
                                     const reason = window.prompt(
                                       "Reason for declining this repair appointment:"
@@ -4602,7 +4629,7 @@ const MessagesView = ({
                               <>
                                 <button
                                   type="button"
-                                  disabled={isUpdating}
+                                  disabled={isUpdating || !canSendMessages}
                                   onClick={() =>
                                     updateAppointment(appointment.id, "confirmed")
                                   }
@@ -4612,7 +4639,7 @@ const MessagesView = ({
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={isUpdating}
+                                  disabled={isUpdating || !canSendMessages}
                                   onClick={() => {
                                     const reason = window.prompt(
                                       "Reason for declining this repair appointment:"
@@ -4634,7 +4661,7 @@ const MessagesView = ({
                             {status === "confirmed" && (
                               <button
                                 type="button"
-                                disabled={isUpdating}
+                                disabled={isUpdating || !canSendMessages}
                                 onClick={() =>
                                   updateAppointment(appointment.id, "completed")
                                 }

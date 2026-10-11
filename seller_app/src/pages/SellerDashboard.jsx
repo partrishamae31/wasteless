@@ -1375,6 +1375,21 @@ const SellerDashboard = ({ session }) => {
   const isRepairShop = user?.role === "repair_shop";
   const isHarvester = user?.role === "harvester";
 
+  // Pending Verification (or unverified / rejected) accounts are VIEW-ONLY.
+  // They can browse every tab, but cannot create listings, bid, accept/decline
+  // bids, schedule meetups, complete/cancel transactions, donate, rate, or
+  // request repair appointments. Fails closed while the profile is loading.
+  const isReadOnly = !["verified", "approved"].includes(
+    String(profileData?.verification_status || "").toLowerCase()
+  );
+  const blockIfReadOnly = (action = "perform this action") => {
+    if (!isReadOnly) return false;
+    alert(
+      `Your account is pending verification and is view-only. You cannot ${action} until an administrator verifies your account.`
+    );
+    return true;
+  };
+
   // Profile display values must come from the profiles table because
   // Edit Profile saves changes there. Auth user_metadata can be stale.
   const currentProfileName =
@@ -1463,6 +1478,8 @@ const SellerDashboard = ({ session }) => {
   });
 
   const handleOpenMarketplaceRating = async (transaction, role) => {
+    if (blockIfReadOnly("submit ratings")) return;
+
     if (!transaction?.id) {
       alert("Transaction information is missing.");
       return;
@@ -1535,6 +1552,8 @@ const SellerDashboard = ({ session }) => {
   };
 
   const handleOpenDonation = (listing) => {
+    if (blockIfReadOnly("donate listings")) return;
+
     const status = String(listing?.status || "").trim().toLowerCase();
 
     if (
@@ -1607,6 +1626,7 @@ const SellerDashboard = ({ session }) => {
   // by donating it or unlisting it.
   const handleUnlistExpiredListing = async (listing) => {
     if (!listing?.id || !session?.user?.id) return;
+    if (blockIfReadOnly("unlist listings")) return;
 
     setProcessingExpiredListing(true);
     try {
@@ -1656,6 +1676,8 @@ const SellerDashboard = ({ session }) => {
   savedListing = null
 ) => {
   try {
+    if (blockIfReadOnly("donate listings")) return;
+
     if (!listingId) {
       alert("No listing selected for donation.");
       return;
@@ -1807,6 +1829,8 @@ const SellerDashboard = ({ session }) => {
 };
 
   const handleOpenRepairReview = async (transaction) => {
+    if (blockIfReadOnly("submit repair shop reviews")) return;
+
     if (!transaction?.id) {
       alert("Transaction information is missing.");
       return;
@@ -1860,6 +1884,8 @@ const SellerDashboard = ({ session }) => {
 
   const handlePlaceBid = async () => {
     try {
+      if (blockIfReadOnly("place bids or send messages")) return;
+
       if (!selectedListing) {
         alert("Please select a listing first.");
         return;
@@ -2406,6 +2432,8 @@ const SellerDashboard = ({ session }) => {
 
   const handleCompleteTransaction = async (txId) => {
     try {
+      if (blockIfReadOnly("complete transactions")) return;
+
       const txToComplete = transactions.find((t) => t.id === txId);
 
       if (!txToComplete) {
@@ -2519,6 +2547,8 @@ const SellerDashboard = ({ session }) => {
 
   const handleCancelTransaction = async (txId) => {
     try {
+      if (blockIfReadOnly("cancel transactions")) return;
+
       const txToCancel = transactions.find((t) => t.id === txId);
 
       if (!txToCancel) {
@@ -2797,6 +2827,8 @@ const SellerDashboard = ({ session }) => {
 
   const handleAcceptBid = async (bid, listing) => {
     try {
+      if (blockIfReadOnly("accept bids")) return;
+
       if (!bid?.id || !listing?.id) {
         throw new Error("Missing bid or listing information.");
       }
@@ -3015,6 +3047,8 @@ const SellerDashboard = ({ session }) => {
 
   const handleDeclineBid = async (bid, listing) => {
     try {
+      if (blockIfReadOnly("decline bids")) return;
+
       if (!bid?.id || !listing?.id) {
         throw new Error("Missing bid or listing information.");
       }
@@ -4555,6 +4589,26 @@ const SellerDashboard = ({ session }) => {
 
         {/* Stats Cards & Main Dashboard Content (Keep existing code below here) */}
 
+        {profileData && isReadOnly && (
+          <div className="mb-6 flex items-start gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+              <Clock size={20} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-black uppercase tracking-tight text-amber-800">
+                {profileData?.verification_status === "pending"
+                  ? "Pending Verification — View-only mode"
+                  : profileData?.verification_status === "rejected"
+                    ? "Account Not Verified — View-only mode"
+                    : "Account Not Verified — View-only mode"}
+              </h3>
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                You can browse listings, transactions, repair shops, donations and messages, but you cannot create listings, place or manage bids, schedule meetups, donate, rate, request repair appointments, or send messages until an administrator verifies your account.
+              </p>
+            </div>
+          </div>
+        )}
+
         {profileData?.verification_status === "rejected" && (
           <div className="mb-8 flex items-center gap-6 rounded-[2rem] border-2 border-red-100 bg-red-50 p-6 animate-in slide-in-from-top duration-500">
             <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600">
@@ -4968,8 +5022,8 @@ const SellerDashboard = ({ session }) => {
               <div className="animate-in fade-in duration-300 pt-8">
                 <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <h2 className="text-xl font-black text-slate-900">Listings</h2>
-                  <button type="button" onClick={openNewListing} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#3285a1] px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-[#2a7189] transition">
-                    <Plus size={18} /> New Listing
+                  <button type="button" onClick={openNewListing} disabled={isReadOnly} title={isReadOnly ? "View-only: your account is pending verification" : undefined} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#3285a1] px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-[#2a7189] transition disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:hover:bg-slate-200">
+                    <Plus size={18} /> {isReadOnly ? "New Listing (View-only)" : "New Listing"}
                   </button>
                 </div>
 
@@ -5001,7 +5055,7 @@ const SellerDashboard = ({ session }) => {
                     <p className="mt-1 text-xs text-slate-400">
                       {listingSubTab === "created" ? "Create a listing to make your item available in the marketplace." : "Your listing activity will appear here when available."}
                     </p>
-                    {listingSubTab === "created" && (
+                    {listingSubTab === "created" && !isReadOnly && (
                       <button type="button" onClick={openNewListing} className="mt-5 rounded-xl bg-[#3285a1] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#2a7189]">Create Listing</button>
                     )}
                   </div>
@@ -5029,7 +5083,7 @@ const SellerDashboard = ({ session }) => {
                                 <div className="rounded-xl bg-slate-50 px-3 py-3 text-center"><p className="text-[11px] text-slate-400">Bids</p><p className="mt-1 text-sm font-black text-slate-800">{getVisibleBids(listing).length}</p></div>
                               </div>
                               <div className="mt-4 flex items-center gap-2 text-xs text-slate-400"><MapPin size={14} /> {getListingBarangay(listing)} <span>·</span> {getListingOwner(listing)}</div>
-                              {bid.status === "pending" && (
+                              {bid.status === "pending" && !isReadOnly && (
                                 <div className="mt-4 flex gap-2">
                                   <button type="button" onClick={() => handleAcceptBid(bid, listing)} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-xs font-black text-white hover:bg-[#2a7189]"><Check size={14} className="mr-1 inline" /> Accept</button>
                                   <button type="button" onClick={() => handleDeclineBid(bid, listing)} className="flex-1 rounded-xl border border-red-200 py-3 text-xs font-black text-red-600 hover:bg-red-50"><X size={14} className="mr-1 inline" /> Decline</button>
@@ -5070,7 +5124,7 @@ const SellerDashboard = ({ session }) => {
                               </div>
                               <div className="mt-3 flex items-center justify-between">
                                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${bid.status === "accepted" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{bid.status === "accepted" ? "Accepted" : "Pending"}</span>
-                                {bid.status === "pending" && selectedBidListing.seller_id === session.user.id && (
+                                {bid.status === "pending" && !isReadOnly && selectedBidListing.seller_id === session.user.id && (
                                   <div className="flex gap-2">
                                     <button type="button" onClick={() => { handleAcceptBid(bid, selectedBidListing); setSelectedBidListing(null); }} className="rounded-lg bg-[#3285a1] px-3 py-2 text-xs font-bold text-white">Accept</button>
                                     <button type="button" onClick={() => handleDeclineBid(bid, selectedBidListing)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Decline</button>
@@ -5108,12 +5162,12 @@ const SellerDashboard = ({ session }) => {
                         <div className="flex gap-2">
                           <button type="button" onClick={() => setSelectedListingDetails(null)} className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50">Close</button>
                           {selectedListingDetails.seller_id !== session.user.id && String(selectedListingDetails.status).toLowerCase() === "active" && (
-                            <button type="button" onClick={() => { setSelectedListingDetails(null); handleSelectListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189]">Place Bid</button>
+                            <button type="button" disabled={isReadOnly} title={isReadOnly ? "View-only: your account is pending verification" : undefined} onClick={() => { setSelectedListingDetails(null); handleSelectListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:hover:bg-slate-200">{isReadOnly ? "Place Bid (View-only)" : "Place Bid"}</button>
                           )}
                           {selectedListingDetails.seller_id === session.user.id && getVisibleBids(selectedListingDetails).length > 0 && (
                             <button type="button" onClick={() => { setSelectedListingDetails(null); setSelectedBidListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189]">View Bids</button>
                           )}
-                          {selectedListingDetails.seller_id === session.user.id && ["active", "expired"].includes(String(selectedListingDetails.status).toLowerCase()) && getVisibleBids(selectedListingDetails).length === 0 && (
+                          {!isReadOnly && selectedListingDetails.seller_id === session.user.id && ["active", "expired"].includes(String(selectedListingDetails.status).toLowerCase()) && getVisibleBids(selectedListingDetails).length === 0 && (
                             <button type="button" onClick={() => {
                               setSelectedListingDetails(null);
                               if (String(selectedListingDetails.status).toLowerCase() === "expired") {
@@ -5444,11 +5498,11 @@ const SellerDashboard = ({ session }) => {
                                       </button>
                                       <button
                                         onClick={() => handleOpenRepairReview(tx)}
-                                        disabled={reviewedRepairAppointments.has(tx.repair_appointment_id)}
+                                        disabled={isReadOnly || reviewedRepairAppointments.has(tx.repair_appointment_id)}
                                         className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
                                           reviewedRepairAppointments.has(tx.repair_appointment_id)
                                             ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                                            : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100"
+                                            : (isReadOnly ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100")
                                         }`}
                                       >
                                         <Star size={18} fill="currentColor" />
@@ -5489,17 +5543,17 @@ const SellerDashboard = ({ session }) => {
                                       </div>
                                       <button onClick={() => setSelectedReceiptTransaction(tx)} className="w-full bg-[#3285a1] hover:bg-[#276b82] text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-100"><Download size={18}/>{isRepair ? "View Repair Service Record" : "View Transaction Receipt"}</button>
                                       {isRepair ? (
-                                        <button onClick={() => handleOpenRepairReview(tx)} disabled={reviewedRepairAppointments.has(tx.repair_appointment_id)} className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedRepairAppointments.has(tx.repair_appointment_id) ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100"}`}><Star size={18} fill="currentColor"/>{reviewedRepairAppointments.has(tx.repair_appointment_id) ? "Repair Shop Already Rated" : "Rate Repair Shop"}</button>
+                                        <button onClick={() => handleOpenRepairReview(tx)} disabled={isReadOnly || reviewedRepairAppointments.has(tx.repair_appointment_id)} className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${reviewedRepairAppointments.has(tx.repair_appointment_id) ? "bg-slate-100 text-slate-400 cursor-not-allowed" : (isReadOnly ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100")}`}><Star size={18} fill="currentColor"/>{reviewedRepairAppointments.has(tx.repair_appointment_id) ? "Repair Shop Already Rated" : "Rate Repair Shop"}</button>
                                       ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
                                           {isSeller && (
                                             <button
                                               onClick={() => handleOpenMarketplaceRating(tx, "buyer")}
-                                              disabled={reviewedMarketplaceTransactions.has(tx.id)}
+                                              disabled={isReadOnly || reviewedMarketplaceTransactions.has(tx.id)}
                                               className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
                                                 reviewedMarketplaceTransactions.has(tx.id)
                                                   ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                                                  : "bg-[#FF4D2D] hover:bg-[#e64528] text-white shadow-orange-200"
+                                                  : (isReadOnly ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-[#FF4D2D] hover:bg-[#e64528] text-white shadow-orange-200")
                                               }`}
                                             >
                                               <Star size={18} fill="currentColor" />
@@ -5509,11 +5563,11 @@ const SellerDashboard = ({ session }) => {
                                           {isBuyer && (
                                             <button
                                               onClick={() => handleOpenMarketplaceRating(tx, "seller")}
-                                              disabled={reviewedMarketplaceTransactions.has(tx.id)}
+                                              disabled={isReadOnly || reviewedMarketplaceTransactions.has(tx.id)}
                                               className={`w-full py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
                                                 reviewedMarketplaceTransactions.has(tx.id)
                                                   ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                                                  : "bg-[#2d7a7f] hover:bg-[#246367] text-white shadow-blue-200"
+                                                  : (isReadOnly ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-[#2d7a7f] hover:bg-[#246367] text-white shadow-blue-200")
                                               }`}
                                             >
                                               <Star size={18} fill="currentColor" />
@@ -5526,11 +5580,11 @@ const SellerDashboard = ({ session }) => {
                                   ) : isRepair ? (
                                     <div className="space-y-3"><div className="bg-purple-50 border border-purple-100 rounded-xl p-4"><p className="text-sm font-bold text-purple-800">Repair Appointment Scheduled</p><p className="text-xs text-purple-600 mt-1">The repair shop will mark the repair service as completed after the device has been repaired.</p></div></div>
                                   ) : isBuyer && isMeetupScheduled ? (
-                                    <div className="space-y-3"><div className="bg-amber-50 border border-amber-100 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Handover Pending</p><p className="text-xs text-amber-600 mt-1">After you receive the item at the scheduled meetup, confirm the handover below.</p></div><button onClick={() => handleCompleteTransaction(tx.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"><CheckCheck size={18}/> Confirm Handover Complete</button></div>
+                                    <div className="space-y-3"><div className="bg-amber-50 border border-amber-100 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Handover Pending</p><p className="text-xs text-amber-600 mt-1">After you receive the item at the scheduled meetup, confirm the handover below.</p></div><button onClick={() => handleCompleteTransaction(tx.id)} disabled={isReadOnly} title={isReadOnly ? "View-only: your account is pending verification" : undefined} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:hover:bg-slate-200"><CheckCheck size={18}/> {isReadOnly ? "Confirm Handover (View-only)" : "Confirm Handover Complete"}</button></div>
                                   ) : isPendingReview ? (
                                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Awaiting Administrator Review</p><p className="text-xs text-amber-700 mt-1">No further participant action is available while this transaction is under review.</p></div>
                                   ) : isSeller && !isMeetupScheduled ? (
-                                    <div className="space-y-3"><button onClick={() => {setShowMessages(true);setActiveTab("listings");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> Schedule Meetup via Messages</button><button onClick={() => setShowCancelModal(true)} className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"><XCircle size={18}/> Cancel Transaction</button></div>
+                                    <div className="space-y-3"><button onClick={() => {setShowMessages(true);setActiveTab("listings");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> {isReadOnly ? "View Messages" : "Schedule Meetup via Messages"}</button><button onClick={() => setShowCancelModal(true)} disabled={isReadOnly} title={isReadOnly ? "View-only: your account is pending verification" : undefined} className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"><XCircle size={18}/> {isReadOnly ? "Cancel Transaction (View-only)" : "Cancel Transaction"}</button></div>
                                   ) : isSeller && isMeetupScheduled ? (
                                     <div className="space-y-3"><div className="bg-blue-50 border border-blue-100 rounded-xl p-4"><p className="text-sm font-bold text-blue-800">Meetup Scheduled</p><p className="text-xs text-blue-600 mt-1">The buyer can confirm the handover after the scheduled meetup.</p></div></div>
                                   ) : (
@@ -5558,6 +5612,7 @@ const SellerDashboard = ({ session }) => {
               donationConfig={donationConfig}
               onDonate={handleConfirmDonation}
               onBackToListings={() => setActiveTab("listings")}
+              readOnly={isReadOnly}
             />
           )}
           {activeTab === "repair-shops" && (
@@ -5938,7 +5993,7 @@ const SellerDashboard = ({ session }) => {
             }
           }}
         />
-        {expiredListingAction && (
+        {expiredListingAction && !isReadOnly && (
           <div className="fixed inset-0 z-[380] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
             <div className="w-full max-w-lg rounded-[2rem] bg-white shadow-2xl overflow-hidden">
               <div className="bg-gradient-to-r from-orange-500 to-red-500 p-6 text-white">
@@ -6149,6 +6204,7 @@ const SellerDashboard = ({ session }) => {
                 setListingBids([]);
               }}
               onSubmit={handlePlaceBid}
+              readOnly={isReadOnly}
             />
           )
         }

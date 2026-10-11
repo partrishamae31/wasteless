@@ -1302,6 +1302,14 @@ const SellerMessages = ({ userId, onTabChange }) => {
   // ============================================================
 
   const handleScheduleMeetup = async () => {
+    // Pending Verification accounts are view-only: no meetup scheduling.
+    if (!canSendMessages) {
+      alert(
+        "Pending Verification accounts are view-only and cannot schedule meetups."
+      );
+      return;
+    }
+
     // Marketplace meetup scheduling works for both normal harvesters
     // and Repair Shops when they are the accepted bidder.
     if (
@@ -1845,14 +1853,17 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                   normalizeTransactionStatus(activeTransaction?.status)
                 ) && (
                   <button
+                    disabled={!canSendMessages}
+                    title={!canSendMessages ? "View-only: your account is pending verification" : undefined}
                     onClick={async () => {
+                      if (!canSendMessages) return;
                       await fetchAcceptedBidAmount();
                       setIsModalOpen(true);
                     }}
-                    className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-xs font-bold"
+                    className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-xs font-bold disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                   >
                     <Calendar size={14} />
-                    Schedule Meetup
+                    {canSendMessages ? "Schedule Meetup" : "Schedule Meetup (View-only)"}
                   </button>
                 )}
 
@@ -2499,10 +2510,11 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                   <button
                     type="button"
+                    disabled={!canSendMessages}
                     onClick={
                       handleScheduleMeetup
                     }
-                    className="flex-1 py-4 px-6 bg-[#9bc2c9] hover:bg-[#8ab1b8] text-white rounded-xl text-sm font-bold transition-colors shadow-md"
+                    className="flex-1 py-4 px-6 bg-[#9bc2c9] hover:bg-[#8ab1b8] text-white rounded-xl text-sm font-bold transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Schedule Meetup
                   </button>

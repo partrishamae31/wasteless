@@ -218,6 +218,12 @@ const HarvesterAlerts = ({ session, isVerified }) => {
   const handleCreateAlert = async (e) => {
     e.preventDefault();
 
+    // Pending Verification accounts are view-only.
+    if (!isVerified) {
+      alert("Pending Verification accounts are view-only and cannot create alerts.");
+      return;
+    }
+
     setError("");
 
     /*
@@ -294,6 +300,12 @@ const HarvesterAlerts = ({ session, isVerified }) => {
   };
 
   const deleteAlert = async (id) => {
+    // Pending Verification accounts are view-only.
+    if (!isVerified) {
+      alert("Pending Verification accounts are view-only and cannot delete alerts.");
+      return;
+    }
+
     const { error: deleteError } = await supabase
       .from("alerts")
       .delete()
@@ -309,7 +321,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
 
   const openCreateModal = () => {
     if (!isVerified) {
-      alert("Verification required.");
+      alert("Pending Verification accounts are view-only and cannot create alerts.");
       return;
     }
 
@@ -329,6 +341,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
         <MatchingListingsView
           alerts={selectedAlertForMatches}
           onBack={() => setSelectedAlertForMatches(null)}
+          isVerified={isVerified}
         />
       ) : (
         <div className="max-w-5xl mx-auto">
@@ -351,9 +364,15 @@ const HarvesterAlerts = ({ session, isVerified }) => {
 
               <button
                 onClick={openCreateModal}
-                className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all"
+                disabled={!isVerified}
+                title={!isVerified ? "View-only: your account is pending verification" : undefined}
+                className={`text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
+                  isVerified
+                    ? "bg-orange-500 hover:bg-orange-600 text-white"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                }`}
               >
-                Create Alert
+                {isVerified ? "Create Alert" : "View-only"}
               </button>
             </div>
 
@@ -618,8 +637,9 @@ const HarvesterAlerts = ({ session, isVerified }) => {
 
                       <button
                         onClick={() => deleteAlert(alert.id)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
-                        title="Delete alert"
+                        disabled={!isVerified}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={isVerified ? "Delete alert" : "View-only: your account is pending verification"}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -642,7 +662,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                         }
                         className="bg-[#00a843] hover:bg-[#008f39] text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
                       >
-                        View & Bid
+                        {isVerified ? "View & Bid" : "View"}
                       </button>
                     </div>
                   )}

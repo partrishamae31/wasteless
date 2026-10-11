@@ -78,6 +78,7 @@ const SellerDonationTab = ({
   dropOffPoints: dropOffPointsProp = [],
   onDonate,
   onBackToListings,
+  readOnly = false,
 }) => {
   const parentDropOffPoints = Array.isArray(dropOffPointsProp)
     ? dropOffPointsProp
@@ -995,6 +996,9 @@ const SellerDonationTab = ({
    * ---------------------------------------------------------
    */
   const openDonationModal = (listing) => {
+    // Pending Verification accounts are view-only.
+    if (readOnly) return;
+
     setDonationError("");
     setDonationSuccess("");
     setSelectedDropOffPointId("");
@@ -1025,6 +1029,14 @@ const SellerDonationTab = ({
    */
   const handleDonate = async () => {
     if (!selectedListing || isDonating) return;
+
+    // Pending Verification accounts are view-only.
+    if (readOnly) {
+      setDonationError(
+        "Pending Verification accounts are view-only and cannot donate listings."
+      );
+      return;
+    }
 
     if (!selectedDonationBarangay) {
       setDonationError("Please choose a barangay first.");
@@ -1639,11 +1651,12 @@ const SellerDonationTab = ({
                   onClick={() =>
                     openDonationModal(listing)
                   }
-                  disabled={loadingDropOffPoints}
+                  disabled={loadingDropOffPoints || readOnly}
+                  title={readOnly ? "View-only: your account is pending verification" : undefined}
                   className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#f97316] py-3 text-xs font-black uppercase tracking-widest text-white transition hover:bg-[#ea580c] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Gift size={14} />
-                  Donate This Listing
+                  {readOnly ? "View-only" : "Donate This Listing"}
                 </button>
               </div>
             ))}
@@ -2079,6 +2092,7 @@ const SellerDonationTab = ({
               <button
                 type="button"
                 disabled={
+                  readOnly ||
                   isDonating ||
                   loadingDropOffPoints ||
                   !selectedDonationBarangay ||

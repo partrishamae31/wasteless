@@ -1455,6 +1455,16 @@ const SellerRepairShopsTab = ({
       return;
     }
 
+    // Pending Verification accounts are view-only: no appointment requests.
+    if (!canSendMessages) {
+      alert(
+        isOwnAccountRestricted
+          ? "Your account is not allowed to request repair appointments."
+          : "Pending Verification accounts are view-only and cannot request repair appointments."
+      );
+      return;
+    }
+
     setAppointmentShop(shop);
     resetAppointmentForm();
 
@@ -1738,6 +1748,14 @@ const SellerRepairShopsTab = ({
 
   const cancelRepairAppointment = async (appointment) => {
     if (!appointment?.id || !userId) return;
+
+    // Pending Verification accounts are view-only.
+    if (!canSendMessages) {
+      alert(
+        "Pending Verification accounts are view-only and cannot change repair appointments."
+      );
+      return;
+    }
 
     if (
       !window.confirm(
@@ -2778,6 +2796,14 @@ const SellerRepairShopsTab = ({
                         repair shop confirms it.
                       </p>
 
+                      {!canSendMessages && (
+                        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                          View-only: your account is pending verification, so
+                          you can browse repair shops but cannot request or
+                          change appointments yet.
+                        </p>
+                      )}
+
                       {shopAppointments.filter(
                         (appointment) =>
                           !["cancelled", "rejected"].includes(
@@ -2786,13 +2812,16 @@ const SellerRepairShopsTab = ({
                       ).length === 0 ? (
                         <button
                           type="button"
+                          disabled={!canSendMessages}
                           onClick={() =>
                             openAppointmentModal(selectedShop)
                           }
-                          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white transition hover:bg-violet-700"
+                          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:hover:bg-slate-200"
                         >
                           <Calendar size={16} />
-                          Schedule Appointment
+                          {canSendMessages
+                            ? "Schedule Appointment"
+                            : "Schedule Appointment (View-only)"}
                         </button>
                       ) : (
                         <div className="mt-4 space-y-2">
@@ -2835,7 +2864,7 @@ const SellerRepairShopsTab = ({
 
                                 {String(
                                   appointment.status || ""
-                                ).toLowerCase() === "pending" && (
+                                ).toLowerCase() === "pending" && canSendMessages && (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -2852,15 +2881,17 @@ const SellerRepairShopsTab = ({
                               </div>
                             ))}
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openAppointmentModal(selectedShop)
-                            }
-                            className="mt-1 text-xs font-black text-violet-700 underline underline-offset-2"
-                          >
-                            Request another appointment
-                          </button>
+                          {canSendMessages && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openAppointmentModal(selectedShop)
+                              }
+                              className="mt-1 text-xs font-black text-violet-700 underline underline-offset-2"
+                            >
+                              Request another appointment
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3087,7 +3118,7 @@ const SellerRepairShopsTab = ({
                   className="flex items-center justify-center gap-3 rounded-2xl bg-[#3285a1] py-4 text-sm font-black text-white transition hover:bg-[#286f88]"
                 >
                   <MessageSquare size={19} />
-                  Send Message
+                  {isViewOnly ? "View Messages" : "Send Message"}
                 </button>
               </div>
             </div>

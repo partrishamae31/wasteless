@@ -17,6 +17,7 @@ const PlaceBidModal = ({
   setBidMessage,
   onClose,
   onSubmit,
+  readOnly = false,
 }) => {
   const [seller, setSeller] = useState(null);
   const [listingExpired, setListingExpired] = useState(false);
@@ -28,12 +29,12 @@ const PlaceBidModal = ({
       const expired = Boolean(expiryTime && expiryTime <= Date.now());
       const inactive = String(listing?.status || "active").toLowerCase() !== "active";
       setListingExpired(expired);
-      setBiddingLocked(expired || inactive);
+      setBiddingLocked(expired || inactive || readOnly);
     };
     refreshExpiry();
     const timer = window.setInterval(refreshExpiry, 1000);
     return () => window.clearInterval(timer);
-  }, [listing?.expires_at, listing?.status]);
+  }, [listing?.expires_at, listing?.status, readOnly]);
 
   useEffect(() => {
     const fetchSeller = async () => {
@@ -269,7 +270,7 @@ const PlaceBidModal = ({
                 <ArrowUpRight size={20} />
 
                 <span>
-                  {biddingLocked ? (listingExpired ? "This listing has expired and can no longer receive bids." : "This listing is no longer accepting bids.") : "Every new bid must be strictly lower than this price."}
+                  {readOnly ? "View-only: your account is pending verification, so you cannot place bids or send messages." : biddingLocked ? (listingExpired ? "This listing has expired and can no longer receive bids." : "This listing is no longer accepting bids.") : "Every new bid must be strictly lower than this price."}
                 </span>
               </div>
             </div>
@@ -290,6 +291,7 @@ const PlaceBidModal = ({
 
                 <input
                   type="number"
+                  disabled={readOnly}
                   min="1"
                   max={currentBiddingPrice > 0 ? currentBiddingPrice - 0.01 : undefined}
                   value={bidAmount}
@@ -340,6 +342,7 @@ const PlaceBidModal = ({
                     <button
                       key={offer.percentage}
                       type="button"
+                      disabled={readOnly}
                       onClick={() =>
                         setBidAmount(String(offer.amount))
                       }
@@ -381,6 +384,7 @@ const PlaceBidModal = ({
 
                 <textarea
                   id="seller-message"
+                  disabled={readOnly}
                   value={bidMessage}
                   onChange={(e) =>
                     setBidMessage(e.target.value)
@@ -418,7 +422,7 @@ const PlaceBidModal = ({
             }
             className="flex-1 py-4 bg-[#5b9e29] text-white rounded-2xl text-lg font-medium hover:bg-[#4e8924] disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {biddingLocked ? (listingExpired ? "Bidding Expired" : "Bidding Locked") : placingBid ? "Sending..." : "Place Bid"}
+            {readOnly ? "View-only" : biddingLocked ? (listingExpired ? "Bidding Expired" : "Bidding Locked") : placingBid ? "Sending..." : "Place Bid"}
           </button>
 
         </div>

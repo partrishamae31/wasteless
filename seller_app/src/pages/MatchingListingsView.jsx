@@ -11,7 +11,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-const MatchingListingsView = ({ alerts, onBack }) => {
+const MatchingListingsView = ({ alerts, onBack, isVerified = false }) => {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedListing, setSelectedListing] = useState(null);
@@ -54,6 +54,14 @@ const MatchingListingsView = ({ alerts, onBack }) => {
 
   const handleFormSubmit = async () => {
     if (!selectedListing) return;
+
+    // Pending Verification accounts are view-only: no bids, no messages.
+    if (!isVerified) {
+      alert(
+        "Pending Verification accounts are view-only and cannot place bids or send messages."
+      );
+      return;
+    }
 
     /*
      * FINAL SAFETY CHECK
@@ -810,10 +818,12 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       onClick={
                         handleFormSubmit
                       }
-                      disabled={submitting}
-                      className="w-full py-4 rounded-2xl bg-[#769c2d] hover:opacity-90 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50"
+                      disabled={submitting || !isVerified}
+                      className="w-full py-4 rounded-2xl bg-[#769c2d] hover:opacity-90 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {submitting
+                      {!isVerified
+                        ? "View-only (Pending Verification)"
+                        : submitting
                         ? "Submitting..."
                         : "Submit Bid"}
                     </button>
@@ -860,10 +870,12 @@ const MatchingListingsView = ({ alerts, onBack }) => {
                       onClick={
                         handleFormSubmit
                       }
-                      disabled={submitting}
-                      className="w-full py-4 rounded-2xl bg-[#3285a1] hover:opacity-90 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50"
+                      disabled={submitting || !isVerified}
+                      className="w-full py-4 rounded-2xl bg-[#3285a1] hover:opacity-90 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {submitting
+                      {!isVerified
+                        ? "View-only (Pending Verification)"
+                        : submitting
                         ? "Sending..."
                         : "Send Message"}
                     </button>
