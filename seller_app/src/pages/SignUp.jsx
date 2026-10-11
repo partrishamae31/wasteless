@@ -823,6 +823,8 @@ const SignUp = ({ onLoginClick }) => {
   const [techCertScanCompleted, setTechCertScanCompleted] = useState(false);
   const [registrationSummaryReady, setRegistrationSummaryReady] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [popupMessage, setPopupMessage] = useState("");
+  const showPopup = (message) => setPopupMessage(String(message || ""));
   const [loading, setLoading] = useState(false);
   const [scanningId, setScanningId] = useState(false);
   const [scanningPermit, setScanningPermit] = useState(false);
@@ -1033,7 +1035,19 @@ const SignUp = ({ onLoginClick }) => {
   };
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name } = e.target;
+    let { value } = e.target;
+
+    // Apply field-specific limits while the user types. Philippine contact
+    // numbers are stored as 11 digits (e.g. 09123456789). Document numbers
+    // can contain letters or separators, so preserve their format but cap length.
+    if (name === "contactNumber") {
+      value = value.replace(/\D/g, "").slice(0, 11);
+    } else if (name === "techCertificateNumber") {
+      value = value.slice(0, 20);
+    } else if (name === "businessPermitNumber") {
+      value = value.slice(0, 30);
+    }
 
     setFormData((prev) => ({
       ...prev,
@@ -1186,15 +1200,15 @@ const SignUp = ({ onLoginClick }) => {
   const scanBusinessPermit = async () => {
     const file = permitRef.current?.files?.[0] || formData.businessPermit;
     if (!file) {
-      alert("Please upload your business permit first.");
+      showPopup("Please upload your business permit first.");
       return;
     }
     if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") {
-      alert("Please upload a PDF, JPEG, or PNG permit.");
+      showPopup("Please upload a PDF, JPEG, or PNG permit.");
       return;
     }
     if (file.size > OCR_MAX_FILE_SIZE) {
-      alert("File size must not exceed 5MB.");
+      showPopup("File size must not exceed 5MB.");
       return;
     }
 
@@ -1272,7 +1286,7 @@ const SignUp = ({ onLoginClick }) => {
         "We couldn't read the business permit. Please upload a clearer document and try again.",
       );
       setScanMessage(friendly);
-      alert(friendly);
+      showPopup(friendly);
     } finally {
       setScanningPermit(false);
     }
@@ -1281,15 +1295,15 @@ const SignUp = ({ onLoginClick }) => {
   const scanTechnicalCertificate = async () => {
     const file = techRef.current?.files?.[0] || formData.techCert;
     if (!file) {
-      alert("Please upload your technical certification first.");
+      showPopup("Please upload your technical certification first.");
       return;
     }
     if (!OCR_IMAGE_TYPES.includes(file.type) && file.type !== "application/pdf") {
-      alert("Please upload a PDF, JPEG, or PNG certificate.");
+      showPopup("Please upload a PDF, JPEG, or PNG certificate.");
       return;
     }
     if (file.size > OCR_MAX_FILE_SIZE) {
-      alert("File size must not exceed 5MB.");
+      showPopup("File size must not exceed 5MB.");
       return;
     }
 
@@ -1364,7 +1378,7 @@ const SignUp = ({ onLoginClick }) => {
         "We couldn't read the technical certificate. Please upload a clearer document and try again.",
       );
       setScanMessage(friendly);
-      alert(friendly);
+      showPopup(friendly);
     } finally {
       setScanningTechCert(false);
     }
@@ -1406,11 +1420,11 @@ const SignUp = ({ onLoginClick }) => {
   const handleContinue = async () => {
     if (step === 1) {
       if (!accountType) {
-        alert("Please select an account type.");
+        showPopup("Please select an account type.");
         return;
       }
       if (!privacyConsent) {
-        alert("You must consent to data collection to proceed.");
+        showPopup("You must consent to data collection to proceed.");
         return;
       }
       setStep(2);
@@ -1437,9 +1451,9 @@ const SignUp = ({ onLoginClick }) => {
         setEmailVerified(false);
       }
 
-      if (!formData.email.trim() || !formData.password || !formData.confirmPassword) { alert("Please enter your email and password, then confirm your password."); return; }
-      if (formData.password !== formData.confirmPassword) { alert("Passwords do not match."); return; }
-      if (formData.password.length < 8 || !/[A-Z]/.test(formData.password) || !/[a-z]/.test(formData.password) || !/[0-9]/.test(formData.password) || !/[^A-Za-z0-9]/.test(formData.password)) { alert("Password must be at least 8 characters and include uppercase, lowercase, number, and symbol."); return; }
+      if (!formData.email.trim() || !formData.password || !formData.confirmPassword) { showPopup("Please enter your email and password, then confirm your password."); return; }
+      if (formData.password !== formData.confirmPassword) { showPopup("Passwords do not match."); return; }
+      if (formData.password.length < 8 || !/[A-Z]/.test(formData.password) || !/[a-z]/.test(formData.password) || !/[0-9]/.test(formData.password) || !/[^A-Za-z0-9]/.test(formData.password)) { showPopup("Password must be at least 8 characters and include uppercase, lowercase, number, and symbol."); return; }
       // One request at a time: a double click must not call signUp() twice,
       // because the second attempt reports the email as already registered.
       if (signupInFlightRef.current) return;
@@ -1468,7 +1482,7 @@ const SignUp = ({ onLoginClick }) => {
         setAuthUserId(data.user.id);
         setEmailVerified(false);
         setStep(3);
-        alert("A verification code has been sent to your email. Check your inbox and spam folder.");
+        showPopup("A verification code has been sent to your email. Check your inbox and spam folder.");
       } catch (err) {
         // Full technical detail stays in the console for debugging;
         // show an inline email error for duplicate-email cases and keep the user on Step 2.
@@ -1477,7 +1491,7 @@ const SignUp = ({ onLoginClick }) => {
         if (friendlyMessage.toLowerCase().includes("account with this email already exists")) {
           setErrors((prev) => ({ ...prev, email: friendlyMessage }));
         } else {
-          alert(friendlyMessage);
+          showPopup(friendlyMessage);
         }
       } finally {
         signupInFlightRef.current = false;
@@ -1509,7 +1523,7 @@ const SignUp = ({ onLoginClick }) => {
         // a normal login while wasteless_signup_in_progress is active.
         setOtpError("");
         setStep(4);
-        alert("Email verified! Please complete your account verification details.");
+        showPopup("Email verified! Please complete your account verification details.");
       } catch (err) {
         console.error("OTP verification error:", err);
         const message =
@@ -1522,25 +1536,25 @@ const SignUp = ({ onLoginClick }) => {
     }
 
     if (step === 4) {
-      if (!formData.fullName.trim()) { alert("Please scan your ID or enter the name shown on it."); return; }
-      if (!formData.contactNumber.trim()) { alert("Please enter your contact number after scanning your ID."); return; }
-      if (!formData.barangay) { alert("Please confirm your barangay after scanning your ID."); return; }
+      if (!formData.fullName.trim()) { showPopup("Please scan your ID or enter the name shown on it."); return; }
+      if (!formData.contactNumber.trim()) { showPopup("Please enter your contact number after scanning your ID."); return; }
+      if (!formData.barangay) { showPopup("Please confirm your barangay after scanning your ID."); return; }
       if (accountType === "harvester") {
         const idFile = governmentIdRef.current?.files?.[0] || formData.governmentId;
         if (!idFile) {
-          alert("Please upload your personal government ID and scan it before continuing.");
+          showPopup("Please upload your personal government ID and scan it before continuing.");
           return;
         }
         if (!idScanCompleted) {
-          alert("Please complete and verify the government ID scan before continuing.");
+          showPopup("Please complete and verify the government ID scan before continuing.");
           return;
         }
         if (!formData.address.trim()) {
-          alert("Please confirm or enter your address after the ID scan.");
+          showPopup("Please confirm or enter your address after the ID scan.");
           return;
         }
         if (!formData.fullName.trim() || !formData.barangay) {
-          alert("Please review the extracted name, address, and barangay before continuing.");
+          showPopup("Please review the extracted name, address, and barangay before continuing.");
           return;
         }
       }
@@ -1549,27 +1563,27 @@ const SignUp = ({ onLoginClick }) => {
       // =========================
       if (accountType === "repair_shop") {
         if (!formData.businessName.trim()) {
-          alert("Please enter your Shop / Business Name.");
+          showPopup("Please enter your Shop / Business Name.");
           return;
         }
 
         if (!formData.address.trim()) {
-          alert("Please enter your shop address.");
+          showPopup("Please enter your shop address.");
           return;
         }
 
         if (!shopLocation) {
-          alert("Please select your shop location on the map.");
+          showPopup("Please select your shop location on the map.");
           return;
         }
 
         if (!formData.businessPermit) {
-          alert("Please upload your Business Permit / DTI Registration.");
+          showPopup("Please upload your Business Permit / DTI Registration.");
           return;
         }
 
         if (!formData.certificationType) {
-          alert("Please select a Certification Type.");
+          showPopup("Please select a Certification Type.");
           return;
         }
 
@@ -1577,51 +1591,51 @@ const SignUp = ({ onLoginClick }) => {
           formData.certificationType === "Other Certification" &&
           !formData.otherCertification.trim()
         ) {
-          alert("Please specify your certification.");
+          showPopup("Please specify your certification.");
           return;
         }
 
         if (!formData.techCert) {
-          alert("Please upload your Certification Document.");
+          showPopup("Please upload your Certification Document.");
           return;
         }
 
         if (!permitScanCompleted) {
-          alert("Please scan your Business Permit / DTI Registration before continuing.");
+          showPopup("Please scan your Business Permit / DTI Registration before continuing.");
           return;
         }
 
         if (!techCertScanCompleted) {
-          alert("Please scan your Technical Certification before continuing.");
+          showPopup("Please scan your Technical Certification before continuing.");
           return;
         }
 
         if (!formData.businessPermitNumber.trim()) {
-          alert("Please enter or confirm the Business Permit Number.");
+          showPopup("Please enter or confirm the Business Permit Number.");
           return;
         }
         if (!formData.permitType.trim()) {
-          alert("Please enter or confirm the Permit Type.");
+          showPopup("Please enter or confirm the Permit Type.");
           return;
         }
         if (!formData.permitIssuingLgu.trim()) {
-          alert("Please enter or confirm the Permit Issuing LGU.");
+          showPopup("Please enter or confirm the Permit Issuing LGU.");
           return;
         }
         if (!formData.businessActivity.trim()) {
-          alert("Please enter or confirm the Business Activity / Nature of Business.");
+          showPopup("Please enter or confirm the Business Activity / Nature of Business.");
           return;
         }
         if (!formData.techCertificateNumber.trim()) {
-          alert("Please enter or confirm the Technical Certificate Number.");
+          showPopup("Please enter or confirm the Technical Certificate Number.");
           return;
         }
         if (!formData.techCertificateIssuer.trim()) {
-          alert("Please enter or confirm the Technical Certificate Issuer.");
+          showPopup("Please enter or confirm the Technical Certificate Issuer.");
           return;
         }
         if (!formData.techCertificateTitle.trim()) {
-          alert("Please enter or confirm the Technical Certification Title.");
+          showPopup("Please enter or confirm the Technical Certification Title.");
           return;
         }
 
@@ -1631,11 +1645,11 @@ const SignUp = ({ onLoginClick }) => {
       }
 
       if (!idScanCompleted) {
-        alert("Please scan your government ID successfully before continuing. If the ID is unreadable, upload a clear valid ID and try again.");
+        showPopup("Please scan your government ID successfully before continuing. If the ID is unreadable, upload a clear valid ID and try again.");
         return;
       }
       if (!formData.address.trim()) {
-        alert("Please confirm or enter your address before continuing.");
+        showPopup("Please confirm or enter your address before continuing.");
         return;
       }
 
@@ -1646,7 +1660,7 @@ const SignUp = ({ onLoginClick }) => {
 
     if (step === 5) {
       if (!registrationSummaryReady) {
-        alert("Please review your registration details before creating the account.");
+        showPopup("Please review your registration details before creating the account.");
         return;
       }
       await handleFinalSubmit();
@@ -1860,10 +1874,10 @@ const SignUp = ({ onLoginClick }) => {
       localStorage.removeItem("wasteless_signup_in_progress");
 
       setIsSubmitted(true);
-      alert("Account created successfully. Your badge is Pending Verification while verification is pending. Please log in with your email and password.");
+      showPopup("Account created successfully. Your badge is Pending Verification while verification is pending. Please log in with your email and password.");
     } catch (err) {
       console.error("Final registration submit error:", err);
-      alert(getFriendlyErrorMessage(err, "We couldn't finish creating your account. Please try again in a moment."));
+      showPopup(getFriendlyErrorMessage(err, "We couldn't finish creating your account. Please try again in a moment."));
     } finally {
       finalSubmitInFlightRef.current = false;
       setLoading(false);
@@ -2092,6 +2106,32 @@ const SignUp = ({ onLoginClick }) => {
         </div>
 
         <div className="p-8">
+          {!isSubmitted && (
+            <button
+              type="button"
+              onClick={handleBackToLogin}
+              disabled={loading}
+              className="mb-5 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 hover:text-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Go back to login page"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M19 12H5" />
+                <path d="m12 19-7-7 7-7" />
+              </svg>
+              Back to Login
+            </button>
+          )}
+
           <div className="flex items-center justify-center mb-8 relative">
             <div className="absolute top-1/2 left-10 right-10 h-[2px] bg-gray-100 -z-0"></div>
             <div className="flex justify-between w-full px-4 relative z-10">
@@ -2279,7 +2319,7 @@ const SignUp = ({ onLoginClick }) => {
                 <button type="button" onClick={() => { setOtpError(""); setStep(2); }} disabled={loading} className="flex-1 py-3 border rounded-xl text-sm disabled:opacity-50">Back</button>
                 <button type="button" onClick={handleContinue} disabled={loading} className="flex-1 py-3 bg-[#2d7a7f] text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Verifying..." : "Verify code"}</button>
               </div>
-              <button type="button" disabled={loading} onClick={async () => { setLoading(true); try { const { error } = await supabase.auth.resend({ type: "signup", email: formData.email.trim().toLowerCase() }); if (error) throw error; alert("A new verification code has been sent."); } catch (err) { console.error("Resend code error:", err); alert(getFriendlyErrorMessage(err, "We couldn't resend the code. Please try again shortly.")); } finally { setLoading(false); } }} className="w-full text-sm text-teal-700 font-semibold disabled:opacity-50">Resend code</button>
+              <button type="button" disabled={loading} onClick={async () => { setLoading(true); try { const { error } = await supabase.auth.resend({ type: "signup", email: formData.email.trim().toLowerCase() }); if (error) throw error; showPopup("A new verification code has been sent."); } catch (err) { console.error("Resend code error:", err); showPopup(getFriendlyErrorMessage(err, "We couldn't resend the code. Please try again shortly.")); } finally { setLoading(false); } }} className="w-full text-sm text-teal-700 font-semibold disabled:opacity-50">Resend code</button>
             </div>
           )}
 
@@ -2540,7 +2580,7 @@ const SignUp = ({ onLoginClick }) => {
 
                     <div>
                       <label className="text-xs font-bold text-gray-700 block mb-2">Certificate Number <span className="text-red-500">*</span></label>
-                      <input name="techCertificateNumber" type="text" value={formData.techCertificateNumber} onChange={handleChange} placeholder="Certificate number" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                      <input name="techCertificateNumber" type="text" maxLength={20} value={formData.techCertificateNumber} onChange={handleChange} placeholder="Certificate number (max 20 characters)" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
 
                     <div>
@@ -2644,7 +2684,7 @@ const SignUp = ({ onLoginClick }) => {
 
                     <div>
                       <label className="text-xs font-bold text-gray-700 block mb-2">Business Permit Number <span className="text-red-500">*</span></label>
-                      <input name="businessPermitNumber" type="text" value={formData.businessPermitNumber} onChange={handleChange} placeholder="Permit number" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                      <input name="businessPermitNumber" type="text" maxLength={30} value={formData.businessPermitNumber} onChange={handleChange} placeholder="Permit number (max 30 characters)" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
                     </div>
 
                     <div>
@@ -2693,8 +2733,8 @@ const SignUp = ({ onLoginClick }) => {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-2">Contact Number <span className="text-red-500">*</span></label>
-                  <input name="contactNumber" type="tel" value={formData.contactNumber} onChange={handleChange} placeholder="09123456789" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
-                  <p className="text-xs text-gray-500 mt-1">{accountType === "repair_shop" ? "Review the contact number extracted from the business permit." : "Enter or correct your phone number if it was not extracted from the ID."}</p>
+                  <input name="contactNumber" type="tel" inputMode="numeric" maxLength={11} value={formData.contactNumber} onChange={handleChange} placeholder="09123456789 (11 digits)" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm" />
+                  <p className="text-xs text-gray-500 mt-1">{accountType === "repair_shop" ? "Review the contact number extracted from the business permit." : "Enter or correct your phone number if it was not extracted from the ID."} Enter up to 11 digits.</p>
                 </div>
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-2">{accountType === "repair_shop" ? "Business Barangay" : "Barangay of Residence"} <span className="text-red-500">*</span></label>
@@ -2970,6 +3010,58 @@ const SignUp = ({ onLoginClick }) => {
           </p>
         </div>
       </div>
+
+      {popupMessage && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPopupMessage("");
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="signup-popup-title"
+            aria-describedby="signup-popup-message"
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl animate-fadeIn"
+          >
+            <div className="flex items-center gap-3 bg-gradient-to-r from-[#2d7a7f] to-[#6da43a] px-5 py-4 text-white">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              </div>
+              <h3 id="signup-popup-title" className="text-lg font-bold">
+                Wasteless Notification
+              </h3>
+            </div>
+            <div className="p-6">
+              <p id="signup-popup-message" className="whitespace-pre-line text-sm leading-6 text-slate-600">
+                {popupMessage}
+              </p>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setPopupMessage("")}
+                className="mt-6 w-full rounded-xl bg-[#2d7a7f] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#246367] focus:outline-none focus:ring-4 focus:ring-teal-100"
+              >
+                Okay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
