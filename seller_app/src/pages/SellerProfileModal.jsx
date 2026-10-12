@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import useBodyScrollLock from "../utils/useBodyScrollLock";
 import { supabase } from "../supabaseClient";
 import {
   X,
@@ -44,6 +45,8 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reporting, setReporting] = useState(false);
+
+  useBodyScrollLock(Boolean(sellerId));
 
   useEffect(() => {
     if (!sellerId) return;

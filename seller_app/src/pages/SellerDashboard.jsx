@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import useBodyScrollLock from "../utils/useBodyScrollLock";
 import { supabase } from "../supabaseClient";
 import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import CreateListingModal from "./CreateListingModal"; // Adjust path as needed
@@ -1616,7 +1617,7 @@ const SellerDashboard = ({ session }) => {
 
     fetchAvailableDropOffPoints();
 
-    return () => {
+  return () => {
       cancelled = true;
     };
   }, [session?.user?.id]);
@@ -4131,6 +4132,17 @@ const SellerDashboard = ({ session }) => {
       setVerificationLoading(false);
     }
   };
+
+  // Lock the document for every modal managed directly by this dashboard.
+  // The shared hook safely handles nested modal layers as well.
+  useBodyScrollLock(Boolean(
+    showProfileModal || showChangePasswordModal || showEditProfile ||
+    showAchievementsModal || showMessages || isModalOpen || selectedListing ||
+    showCancelModal || selectedReceiptTransaction || donationReceipt ||
+    isDonationModalOpen || showRateModal || showRepairReviewModal ||
+    isVerificationModalOpen || selectedBidder || selectedBidListing ||
+    selectedListingDetails || expiredListingAction
+  ));
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 relative">

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import useBodyScrollLock from "../utils/useBodyScrollLock";
 import { Star, ThumbsUp, ThumbsDown, MessageSquare, X, CheckCircle2 } from 'lucide-react';
 
 const RateBuyerModal = ({ isOpen, onClose, buyerName, onConfirm }) => {
@@ -16,6 +17,8 @@ const RateBuyerModal = ({ isOpen, onClose, buyerName, onConfirm }) => {
     payment: 0,
     overall: 0,
   });
+
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

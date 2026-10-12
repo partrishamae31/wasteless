@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import useBodyScrollLock from "../utils/useBodyScrollLock";
 import { X, Info, MapPin, Navigation, CheckCircle2, ChevronLeft, Circle, MoreVertical } from "lucide-react";
 
 const DonationModal = ({
@@ -57,6 +58,7 @@ const DonationModal = ({
   const hasMappedPoint = Boolean(selectedPoint?.id);
 
   const [view, setView] = useState("details");
+  useBodyScrollLock(isOpen);
 
   const handleConfirm = () => {
     if (!hasMappedPoint) return;

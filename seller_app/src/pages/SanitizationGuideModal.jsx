@@ -1,8 +1,11 @@
 import React, { useMemo, useState } from "react";
+import useBodyScrollLock from "../utils/useBodyScrollLock";
 import { X, Smartphone, Info, CheckCircle } from "lucide-react";
 
 const SanitizationGuideModal = ({ isOpen, onClose, deviceModel }) => {
   const [currentStep, setCurrentStep] = useState(1);
+
+  useBodyScrollLock(isOpen);
 
   const deviceInfo = useMemo(() => {
     const model = String(deviceModel || "").toLowerCase();

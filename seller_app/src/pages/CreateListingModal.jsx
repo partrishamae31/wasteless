@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import useBodyScrollLock from "../utils/useBodyScrollLock";
 import { supabase } from "../supabaseClient";
 import SanitizationGuideModal from "./SanitizationGuideModal";
 import {
@@ -661,19 +662,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     if (isOpen) {
       // Always start a newly opened Create Listing modal from a blank state.
       resetCreateListingForm();
-
-      // Prevent scrolling on the body when modal is open
-      document.body.style.overflow = "hidden";
-    } else {
-      // Re-enable scrolling when closed
-      document.body.style.overflow = "unset";
     }
-
-    // Cleanup function to ensure scroll is restored if component unmounts
-    return () => {
-      document.body.style.overflow = "unset";
-    };
   }, [isOpen]);
+
+  // Keep the page locked until this modal (and any nested modal) is closed.
+  useBodyScrollLock(isOpen);
 
   useEffect(() => {
     const fetchUserProfile = async () => {

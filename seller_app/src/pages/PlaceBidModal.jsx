@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import useBodyScrollLock from "../utils/useBodyScrollLock";
 import {
   X,
   MessageSquare,
@@ -22,6 +23,8 @@ const PlaceBidModal = ({
   const [seller, setSeller] = useState(null);
   const [listingExpired, setListingExpired] = useState(false);
   const [biddingLocked, setBiddingLocked] = useState(false);
+
+  useBodyScrollLock(Boolean(listing));
 
   useEffect(() => {
     const refreshExpiry = () => {
