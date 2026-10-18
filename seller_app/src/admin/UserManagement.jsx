@@ -31,6 +31,7 @@ const UserManagement = ({ adminBarangay }) => {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedUserForDetails, setSelectedUserForDetails] = useState(null);
   const [unavailableProfile, setUnavailableProfile] = useState(null);
+  const [noticeModal, setNoticeModal] = useState(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -180,7 +181,7 @@ const UserManagement = ({ adminBarangay }) => {
         .eq("id", user.id);
 
       if (error) {
-        alert(error.message);
+        setNoticeModal({ title: "Something went wrong", message: error.message, type: "error" });
       } else {
         // Immediately close any private profile view if the viewed account
         // has just become unavailable.
@@ -221,7 +222,7 @@ const UserManagement = ({ adminBarangay }) => {
 
   const handleDismiss = async (user) => {
     const reason = window.prompt(
-      `Reason for rejecting ${user.full_name || "this user's"} verification request (optional):`,
+      `Enter the discrepancy or correction required for ${user.full_name || "this user's"} verification request:`,
       "",
     );
 
@@ -229,9 +230,14 @@ const UserManagement = ({ adminBarangay }) => {
       return;
     }
 
+    if (!reason.trim()) {
+      setNoticeModal({ title: "Rejection reason required", message: "Please provide a rejection reason so the user knows what to correct.", type: "warning" });
+      return;
+    }
+
     const confirmed = window.confirm(
-      `Reject verification for ${user.full_name || "this user"}?\n\n` +
-        `The account will remain unverified and can be reviewed again after the user corrects their credentials.`,
+      `Reject verification for ${user.full_name || "this user"}?\\n\\n` +
+        `The account will remain unverified. The reason will be saved so the rejection email can explain what needs to be corrected.`,
     );
 
     if (!confirmed) {
@@ -242,22 +248,23 @@ const UserManagement = ({ adminBarangay }) => {
       .from("profiles")
       .update({
         verification_status: "rejected",
+        rejection_reason: reason.trim(),
         is_verified: false,
       })
       .eq("id", user.id);
 
     if (error) {
-      alert(error.message);
+      setNoticeModal({ title: "Something went wrong", message: error.message, type: "error" });
       return;
     }
 
-    console.info("Verification rejection reason:", reason);
-
     await fetchUsers();
-    alert(
-      "Verification rejected. The account remains unverified. " +
-        "A correction/resubmission workflow can use the rejection reason once the email/notification service is connected.",
-    );
+    setNoticeModal({
+      title: "Verification rejected",
+      message:
+        "The verification request was rejected and the reason was saved. If the Supabase email webhook is configured for profile verification-status updates, the user will receive a rejection email.",
+      type: "success",
+    });
   };
 
   return (
@@ -638,6 +645,67 @@ const UserManagement = ({ adminBarangay }) => {
         onClose={() => setIsDetailsOpen(false)}
         userData={selectedUserForDetails}
       />
+
+      {noticeModal && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="user-management-notice-title"
+          onClick={() => setNoticeModal(null)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div
+              className={`flex items-start gap-3 border-b px-6 py-5 ${
+                noticeModal.type === "success"
+                  ? "border-emerald-100 bg-emerald-50"
+                  : noticeModal.type === "warning"
+                    ? "border-amber-100 bg-amber-50"
+                    : "border-red-100 bg-red-50"
+              }`}
+            >
+              <div
+                className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                  noticeModal.type === "success"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : noticeModal.type === "warning"
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-red-100 text-red-700"
+                }`}
+              >
+                {noticeModal.type === "success" ? (
+                  <ShieldCheck size={20} />
+                ) : (
+                  <ShieldAlert size={20} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2
+                  id="user-management-notice-title"
+                  className="text-base font-semibold text-slate-800"
+                >
+                  {noticeModal.title}
+                </h2>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">
+                  {noticeModal.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end p-4">
+              <button
+                type="button"
+                onClick={() => setNoticeModal(null)}
+                className="rounded-xl bg-slate-800 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {unavailableProfile && (
         <div

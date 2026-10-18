@@ -32,6 +32,8 @@ const VerifyCredentialsModal = ({
   const [checklist, setChecklist] = useState(EMPTY_CHECKLIST);
   const [rejectionReason, setRejectionReason] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
+  // Replaces window.alert(): { type, title, message, onDismiss? }
+  const [notice, setNotice] = useState(null);
 
   const userRole = shopData?.role?.toLowerCase();
 
@@ -65,6 +67,7 @@ const VerifyCredentialsModal = ({
       setIsProcessing(false);
       setRejectionReason("");
       setShowRejectForm(false);
+      setNotice(null);
     }
   }, [isOpen, shopData?.id]);
 
@@ -125,11 +128,22 @@ const VerifyCredentialsModal = ({
     requiredDocumentsPresent,
   ]);
 
+  const showNotice = (type, title, message, onDismiss) =>
+    setNotice({ type, title, message, onDismiss });
+
+  const handleNoticeClose = async () => {
+    const onDismiss = notice?.onDismiss;
+    setNotice(null);
+    if (onDismiss) await onDismiss();
+  };
+
   const handleReject = async () => {
     if (!shopData?.id || isProcessing) return;
 
     if (!rejectionReason.trim()) {
-      alert(
+      showNotice(
+        "warning",
+        "Rejection Reason Required",
         "Please provide a reason for rejection so the applicant knows what needs to be corrected."
       );
       return;
@@ -149,18 +163,21 @@ const VerifyCredentialsModal = ({
 
       if (error) throw error;
 
-      alert(
-        "The verification request has been rejected. The applicant can use the rejection reason to correct and resubmit their documents."
+      // Refresh + close only after the admin dismisses the popup.
+      showNotice(
+        "success",
+        "Verification Rejected",
+        "The verification request has been rejected. The applicant can use the rejection reason to correct and resubmit their documents.",
+        async () => {
+          if (onSuccess) {
+            await onSuccess();
+          }
+          onClose();
+        }
       );
-
-      if (onSuccess) {
-        await onSuccess();
-      }
-
-      onClose();
     } catch (error) {
       console.error("Rejection failed:", error);
-      alert("Rejection Error: " + error.message);
+      showNotice("error", "Rejection Error", error.message);
     } finally {
       setIsProcessing(false);
     }
@@ -203,8 +220,10 @@ const VerifyCredentialsModal = ({
           "Verification update returned no rows. Check Supabase RLS policies."
         );
 
-        alert(
-          "Verification failed: the admin account may not have permission to update this user."
+        showNotice(
+          "error",
+          "Verification Failed",
+          "The admin account may not have permission to update this user."
         );
         return;
       }
@@ -218,7 +237,7 @@ const VerifyCredentialsModal = ({
       setIsSuccess(true);
     } catch (error) {
       console.error("Verification failed:", error);
-      alert("Verification Error: " + error.message);
+      showNotice("error", "Verification Error", error.message);
     } finally {
       setIsProcessing(false);
     }
@@ -255,6 +274,7 @@ const VerifyCredentialsModal = ({
   if (!isOpen || !shopData) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6 backdrop-blur-sm">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl animate-in fade-in zoom-in duration-200">
         {!isSuccess ? (
@@ -645,6 +665,76 @@ const VerifyCredentialsModal = ({
             </button>
           </div>
         )}
+      </div>
+    </div>
+
+    <NoticeModal notice={notice} onClose={handleNoticeClose} />
+    </>
+  );
+};
+
+/* =========================
+   NOTICE POPUP (replaces alert)
+========================= */
+
+const NOTICE_STYLES = {
+  success: {
+    Icon: CheckCircle,
+    iconWrap: "bg-emerald-100 text-emerald-600",
+    button: "bg-emerald-500 hover:bg-emerald-600",
+  },
+  error: {
+    Icon: XCircle,
+    iconWrap: "bg-red-100 text-red-600",
+    button: "bg-red-500 hover:bg-red-600",
+  },
+  warning: {
+    Icon: AlertTriangle,
+    iconWrap: "bg-amber-100 text-amber-600",
+    button: "bg-slate-900 hover:bg-slate-800",
+  },
+};
+
+const NoticeModal = ({ notice, onClose }) => {
+  if (!notice) return null;
+
+  const { Icon, iconWrap, button } =
+    NOTICE_STYLES[notice.type] || NOTICE_STYLES.warning;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-6 backdrop-blur-sm"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="notice-title"
+      aria-describedby="notice-message"
+    >
+      <div className="flex w-full max-w-sm flex-col items-center rounded-2xl bg-white p-8 text-center shadow-xl animate-in fade-in zoom-in duration-200">
+        <div
+          className={`mb-4 flex h-16 w-16 items-center justify-center rounded-full ${iconWrap}`}
+        >
+          <Icon size={32} />
+        </div>
+
+        <h3 id="notice-title" className="mb-2 text-lg font-bold text-slate-800">
+          {notice.title}
+        </h3>
+
+        <p
+          id="notice-message"
+          className="mb-6 text-sm leading-6 text-slate-500"
+        >
+          {notice.message}
+        </p>
+
+        <button
+          type="button"
+          autoFocus
+          onClick={onClose}
+          className={`w-full rounded-xl py-3 text-sm font-semibold text-white transition-colors ${button}`}
+        >
+          OK
+        </button>
       </div>
     </div>
   );
