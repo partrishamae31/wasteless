@@ -1340,7 +1340,8 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       // FINAL VISIBILITY RULE:
       // - Working -> visible to regular Tech Harvesters.
       // - Not Working -> visible exclusively to Repair Shops.
-      // - Not Working + hazardous -> never shown in the marketplace.
+      // - Not Working + hazardous -> hidden from every marketplace view.
+      //   Hazardous listings cannot be bid on, so Repair Shops should not see them.
       // The query already restricts Not Working items by account role; this
       // second check protects the UI if data changes while the dashboard is open.
       const sellableListings = (data || [])
@@ -1357,6 +1358,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             new Date(listing.expires_at).getTime() > Date.now();
 
           // Display only sellable, non-expired listings.
+          // Repair Shops may see Not Working listings, but hazardous Not Working
+          // devices are excluded because they cannot be bid on.
+          const hazardous = isHazardousListing(listing);
+
+          if (hazardous) {
+            return false;
+          }
+
           return ["working", "not working"].includes(condition) && notExpired;
         });
 
@@ -4136,10 +4145,41 @@ const MessagesView = ({
 
       // ---------------------------------------------------------
       // CONFIRM APPOINTMENT
-      // Create a transaction for the repair service only once.
-      // Repair service has no fee, so amount = 0.
+      // A repair shop can serve only one customer in a given time slot.
+      // Re-check the database here because another harvester may have
+      // submitted the same shop/date/time while this dashboard was open.
+      // This check is intentionally independent of harvester_id.
       // ---------------------------------------------------------
       if (targetStatus === "confirmed") {
+        const normalizedRequestedTime = appointment.preferred_time
+          ? String(appointment.preferred_time).slice(0, 5)
+          : "";
+
+        if (appointment.preferred_date && normalizedRequestedTime) {
+          const { data: conflictingAppointments, error: conflictError } =
+            await supabase
+              .from("repair_appointments")
+              .select("id,harvester_id,preferred_date,preferred_time,status")
+              .eq("repair_shop_id", appointment.repair_shop_id)
+              .eq("preferred_date", appointment.preferred_date)
+              .in("status", ["pending", "confirmed", "approved"])
+              .neq("id", appointment.id);
+
+          if (conflictError) throw conflictError;
+
+          const hasTimeConflict = (conflictingAppointments || []).some(
+            (otherAppointment) =>
+              String(otherAppointment.preferred_time || "").slice(0, 5) ===
+              normalizedRequestedTime
+          );
+
+          if (hasTimeConflict) {
+            throw new Error(
+              `This time slot (${normalizedRequestedTime}) is already scheduled for another customer on ${appointment.preferred_date}. Please choose another appointment.`
+            );
+          }
+        }
+
         const { data: customerProfile, error: profileError } =
           await supabase
             .from("profiles")

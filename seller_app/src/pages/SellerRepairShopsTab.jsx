@@ -779,6 +779,36 @@ const SellerRepairShopsTab = ({
 
   const [appointmentShop, setAppointmentShop] = useState(null);
   const [appointmentLoading, setAppointmentLoading] = useState(false);
+  const [appointmentAvailabilityLoading, setAppointmentAvailabilityLoading] =
+    useState(false);
+  const [appointmentAvailabilityError, setAppointmentAvailabilityError] =
+    useState("");
+  const [bookedAppointmentTimes, setBookedAppointmentTimes] = useState([]);
+
+  // Appointment slots are presented as fixed 1-hour choices instead of
+  // allowing arbitrary times. The final availability check below remains
+  // authoritative, so a slot booked by another user while this modal is
+  // open cannot be submitted successfully.
+  const appointmentTimeSlots = useMemo(() => {
+    const slots = [];
+    for (let minutes = 8 * 60; minutes <= 18 * 60; minutes += 60) {
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      const value = `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+      const label = new Date(2000, 0, 1, hours, mins).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      slots.push({ value, label });
+    }
+    return slots;
+  }, []);
+
+  const normalizeAppointmentTime = (value) =>
+    String(value || "")
+      .trim()
+      .slice(0, 5);
+
   const [appointmentForm, setAppointmentForm] = useState({
     deviceModel: "",
     category: "",
@@ -1435,7 +1465,103 @@ const SellerRepairShopsTab = ({
       preferredTime: "",
       notes: "",
     });
+    setBookedAppointmentTimes([]);
+    setAppointmentAvailabilityError("");
+    setAppointmentAvailabilityLoading(false);
   };
+
+  const fetchAppointmentAvailability = async (shop, date) => {
+    if (!shop?.id || !date) {
+      setBookedAppointmentTimes([]);
+      setAppointmentAvailabilityError("");
+      return;
+    }
+
+    setAppointmentAvailabilityLoading(true);
+    setAppointmentAvailabilityError("");
+
+    try {
+      const { data, error } = await supabase
+        .from("repair_appointments")
+        .select("preferred_time,status")
+        .eq("repair_shop_id", shop.id)
+        .eq("preferred_date", date)
+        .in("status", ["pending", "confirmed", "approved"]);
+
+      if (error) throw error;
+
+      setBookedAppointmentTimes(
+        Array.from(
+          new Set(
+            (data || [])
+              .map((appointment) => normalizeAppointmentTime(appointment.preferred_time))
+              .filter(Boolean)
+          )
+        )
+      );
+
+      // If another request booked the currently selected slot, immediately
+      // clear it so the user cannot unknowingly submit a stale selection.
+      const currentTime = normalizeAppointmentTime(appointmentForm.preferredTime);
+      if (currentTime && (data || []).some((appointment) =>
+        normalizeAppointmentTime(appointment.preferred_time) === currentTime
+      )) {
+        setAppointmentForm((previous) => ({ ...previous, preferredTime: "" }));
+      }
+    } catch (error) {
+      console.warn("Could not load appointment slot availability:", error);
+      setBookedAppointmentTimes([]);
+      setAppointmentAvailabilityError(
+        "We could not verify this repair shop's appointment slots. Please refresh and try again."
+      );
+    } finally {
+      setAppointmentAvailabilityLoading(false);
+    }
+  };
+
+  // Refresh the visible slot list whenever the selected shop/date changes.
+  useEffect(() => {
+    if (!appointmentShop || !appointmentForm.preferredDate) {
+      setBookedAppointmentTimes([]);
+      return;
+    }
+
+    fetchAppointmentAvailability(
+      appointmentShop,
+      appointmentForm.preferredDate
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointmentShop?.id, appointmentForm.preferredDate]);
+
+  // A repair appointment created/cancelled by another user updates the slot
+  // list immediately while the appointment modal is open.
+  useEffect(() => {
+    if (!appointmentShop?.id || !appointmentForm.preferredDate) return;
+
+    const channel = supabase
+      .channel(`repair-appointment-slots-${appointmentShop.id}-${userId || "guest"}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "repair_appointments",
+          filter: `repair_shop_id=eq.${appointmentShop.id}`,
+        },
+        () => {
+          fetchAppointmentAvailability(
+            appointmentShop,
+            appointmentForm.preferredDate
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointmentShop?.id, appointmentForm.preferredDate, userId]);
 
   const openAppointmentModal = async (shop) => {
     if (!userId) {
@@ -1533,6 +1659,14 @@ const SellerRepairShopsTab = ({
       return;
     }
 
+    // Never submit when the current slot availability could not be verified.
+    // Treating a failed availability read as "no bookings" could allow a
+    // client to bypass the visible disabled-slot protection.
+    if (appointmentAvailabilityError) {
+      alert(appointmentAvailabilityError);
+      return;
+    }
+
     // Never allow a client to submit an appointment for a date that has
     // already passed. The date input also has a minimum date, but this
     // validation protects direct/programmatic submissions as well.
@@ -1588,11 +1722,6 @@ const SellerRepairShopsTab = ({
           .in("status", ["pending", "confirmed", "approved"]);
 
       if (availabilityError) throw availabilityError;
-
-      const normalizeAppointmentTime = (value) =>
-        String(value || "")
-          .trim()
-          .slice(0, 5);
 
       const requestedTime = normalizeAppointmentTime(
         appointmentForm.preferredTime
@@ -3257,21 +3386,120 @@ const SellerRepairShopsTab = ({
                   />
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-black text-slate-600">
-                    Preferred Time *
-                  </label>
-                  <input
-                    type="time"
-                    value={appointmentForm.preferredTime}
-                    onChange={(e) =>
-                      setAppointmentForm((previous) => ({
-                        ...previous,
-                        preferredTime: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-violet-500"
-                  />
+                <div className="sm:col-span-2">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="block text-xs font-black text-slate-600">
+                      Available Time Slots *
+                    </label>
+                    {appointmentForm.preferredDate && (
+                      <span className="text-[11px] font-semibold text-slate-400">
+                        {appointmentAvailabilityLoading
+                          ? "Checking availability..."
+                          : `${bookedAppointmentTimes.length} slot${bookedAppointmentTimes.length === 1 ? "" : "s"} booked`}
+                      </span>
+                    )}
+                  </div>
+
+                  {!appointmentForm.preferredDate ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
+                      Select a date first to see the available time slots.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {appointmentTimeSlots.map((slot) => {
+                        const isBooked = bookedAppointmentTimes.includes(slot.value);
+                        const isSelected = appointmentForm.preferredTime === slot.value;
+
+                        const todayKey = new Date().toISOString().split("T")[0];
+                        const currentMinutes =
+                          new Date().getHours() * 60 + new Date().getMinutes();
+                        const [slotHour, slotMinute] = slot.value.split(":").map(Number);
+                        const slotMinutes = slotHour * 60 + slotMinute;
+                        const isPastToday =
+                          appointmentForm.preferredDate === todayKey &&
+                          slotMinutes <= currentMinutes;
+                        const isUnavailable = isBooked || isPastToday;
+
+                        return (
+                          <button
+                            key={slot.value}
+                            type="button"
+                            disabled={isUnavailable || appointmentAvailabilityLoading}
+                            title={
+                              isBooked
+                                ? "This time slot is already unavailable."
+                                : isPastToday
+                                  ? "This time has already passed today."
+                                  : "Select this appointment time"
+                            }
+                            onClick={() => {
+                              if (isBooked) {
+                                alert("This time slot is already unavailable.");
+                                return;
+                              }
+                              setAppointmentForm((previous) => ({
+                                ...previous,
+                                preferredTime: slot.value,
+                              }));
+                            }}
+                            className={`rounded-xl border px-3 py-2.5 text-xs font-black transition ${
+                              isUnavailable
+                                ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 line-through"
+                                : isSelected
+                                  ? "border-violet-600 bg-violet-600 text-white shadow-sm"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50"
+                            }`}
+                          >
+                            <span className="flex items-center justify-center gap-1.5">
+                              <Clock size={12} />
+                              {slot.label}
+                            </span>
+                            {isBooked && (
+                              <span className="mt-1 block text-[10px] font-bold no-underline">
+                                Unavailable
+                              </span>
+                            )}
+                            {!isBooked && isPastToday && (
+                              <span className="mt-1 block text-[10px] font-bold no-underline">
+                                Passed
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {appointmentAvailabilityError && (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                      {appointmentAvailabilityError}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          fetchAppointmentAvailability(
+                            appointmentShop,
+                            appointmentForm.preferredDate
+                          )
+                        }
+                        className="ml-2 underline underline-offset-2"
+                      >
+                        Refresh slots
+                      </button>
+                    </div>
+                  )}
+
+                  {appointmentForm.preferredDate && !appointmentAvailabilityLoading && !appointmentAvailabilityError &&
+                    appointmentTimeSlots.every((slot) =>
+                      bookedAppointmentTimes.includes(slot.value)
+                    ) && (
+                      <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
+                        No appointment time slots are currently available for this date. Please choose another date.
+                      </p>
+                    )}
+
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                    A slot marked <b>Unavailable</b> has already been reserved by another active appointment and cannot be selected.
+                  </p>
                 </div>
               </div>
 

@@ -1259,6 +1259,110 @@ const DonationReceiptModal = ({ receipt, onClose }) => {
   );
 };
 
+
+// Hazardous listings are created with rows in `listing_hazards` by
+// CreateListingModal. They must never be marketplace/bid eligible.
+// Keep a few explicit-field fallbacks so older listing records remain safe.
+const isListingHazardous = (listing) => {
+  if (!listing) return false;
+
+  if (listing.is_hazardous === true || listing.hazardous === true) return true;
+  if (
+    listing.hazardous_material === true ||
+    listing.hazardous_waste === true ||
+    listing.hazard_flag === true ||
+    listing.is_hazardous_waste === true
+  ) {
+    return true;
+  }
+
+  // `listing_hazards` is the authoritative relationship created by
+  // CreateListingModal. Support both a nested relation and the hydrated
+  // boolean used by the dashboard.
+  const relatedHazards = Array.isArray(listing.listing_hazards)
+    ? listing.listing_hazards
+    : [];
+  if (relatedHazards.length > 0) return true;
+
+  const values = [
+    listing.hazard_status,
+    listing.hazard_classification,
+    listing.hazard_type,
+    listing.hazardous_material,
+    listing.hazardous_status,
+    listing.damage_assessment,
+    listing.damage_description,
+    listing.description,
+    listing.system_diagnosis,
+  ]
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => String(value).trim().toLowerCase());
+
+  // The current CreateListing flow detects these high-risk damage issues and
+  // stores the assessment/diagnosis on the listing. Keep this as a defensive
+  // fallback so the seller cannot accidentally regain bidding controls when
+  // the separate listing_hazards relation has not been hydrated yet.
+  const hazardousIndicators = [
+    "dead/degraded battery",
+    "dead / degraded battery",
+    "lithium-ion battery",
+    "lithium ion battery",
+    "hazardous waste",
+    "hazardous material",
+    "water damage/ liquid exposure",
+    "water damage / liquid exposure",
+    "won't power on",
+    "hazardous",
+    "classified hazardous",
+    "confirmed hazardous",
+  ];
+
+  return values.some((value) =>
+    hazardousIndicators.some((indicator) => value.includes(indicator))
+  );
+};
+
+// The authoritative hazard relationship used by CreateListingModal is
+// `listing_hazards`. Attach a simple flag to dashboard listing objects so
+// every marketplace/action surface uses the same rule.
+const attachHazardFlags = async (rows) => {
+  const listings = Array.isArray(rows) ? rows : [];
+  const ids = listings.map((listing) => listing?.id).filter(Boolean);
+
+  if (ids.length === 0) return listings;
+
+  try {
+    const { data: hazardRows, error } = await supabase
+      .from("listing_hazards")
+      .select("listing_id")
+      .in("listing_id", ids);
+
+    if (error) {
+      console.warn("Unable to load listing hazard flags:", error.message);
+      return listings.map((listing) => ({
+        ...listing,
+        is_hazardous: isListingHazardous(listing),
+      }));
+    }
+
+    const hazardousIds = new Set(
+      (hazardRows || []).map((row) => String(row.listing_id))
+    );
+
+    return listings.map((listing) => ({
+      ...listing,
+      is_hazardous:
+        isListingHazardous(listing) || hazardousIds.has(String(listing.id)),
+    }));
+  } catch (error) {
+    console.warn("Listing hazard flag lookup failed:", error);
+    return listings.map((listing) => ({
+      ...listing,
+      is_hazardous: isListingHazardous(listing),
+    }));
+  }
+};
+
 const SellerDashboard = ({ session }) => {
   const [activeTab, setActiveTab] = useState("listings");
   const [listings, setListings] = useState([]);
@@ -1534,20 +1638,49 @@ const SellerDashboard = ({ session }) => {
   };
 
 
-  const handleListingCreated = (newListing) => {
+  const handleListingCreated = async (newListing) => {
     if (!newListing) return;
+
+    // Re-check the hazard relationship immediately after creation. This is
+    // important because a newly-created listing may not yet have the
+    // dashboard's hydrated `is_hazardous` flag.
+    let hydratedListing = {
+      ...newListing,
+      is_hazardous: isListingHazardous(newListing),
+    };
+
+    if (newListing.id) {
+      try {
+        const { data: hazardRows, error: hazardError } = await supabase
+          .from("listing_hazards")
+          .select("listing_id")
+          .eq("listing_id", newListing.id);
+
+        if (!hazardError && Array.isArray(hazardRows) && hazardRows.length > 0) {
+          hydratedListing.is_hazardous = true;
+        }
+      } catch (error) {
+        console.warn("Unable to re-check newly-created listing hazard:", error);
+      }
+    }
 
     // Keep the newly-created listing visible immediately without requiring
     // a full page refresh. The database remains the source of truth.
     setMyListings((prev) => [
-      newListing,
-      ...prev.filter((item) => item.id !== newListing.id),
+      hydratedListing,
+      ...prev.filter((item) => item.id !== hydratedListing.id),
     ]);
 
-    if (String(newListing.status || "").toLowerCase() === "active") {
+    // Hazardous listings are seller-management records only. They must never
+    // enter the general marketplace/bid list.
+    if (
+      String(hydratedListing.status || "").toLowerCase() === "active" &&
+      !isListingHazardous(hydratedListing) &&
+      !hydratedListing?.is_hazardous
+    ) {
       setListings((prev) => [
-        newListing,
-        ...prev.filter((item) => item.id !== newListing.id),
+        hydratedListing,
+        ...prev.filter((item) => item.id !== hydratedListing.id),
       ]);
     }
   };
@@ -1622,10 +1755,9 @@ const SellerDashboard = ({ session }) => {
     };
   }, [session?.user?.id]);
 
-  // Hazardous/Not Working and Parts listings cannot remain bid-eligible after
-  // their safe-storage period. Once expired, the owner must resolve the listing
-  // by donating it or unlisting it.
-  const handleUnlistExpiredListing = async (listing) => {
+  // Hazardous listings are never bid-eligible. Expired Not Working / Parts listings
+  // also must be resolved by donating or unlisting them.
+  const handleUnlistListing = async (listing) => {
     if (!listing?.id || !session?.user?.id) return;
     if (blockIfReadOnly("unlist listings")) return;
 
@@ -1662,10 +1794,10 @@ const SellerDashboard = ({ session }) => {
       setDonationReminder((prev) => (prev?.id === listing.id ? null : prev));
       setExpiredListingAction(null);
 
-      alert("The expired listing has been unlisted and bidding is disabled.");
+      alert("The listing has been unlisted and bidding is disabled.");
     } catch (error) {
       console.error("Unlist expired listing error:", error);
-      alert(`Failed to unlist the expired listing: ${error.message}`);
+      alert(`Failed to unlist the listing: ${error.message}`);
     } finally {
       setProcessingExpiredListing(false);
     }
@@ -1889,6 +2021,12 @@ const SellerDashboard = ({ session }) => {
 
       if (!selectedListing) {
         alert("Please select a listing first.");
+        return;
+      }
+
+      if (isListingHazardous(selectedListing) || selectedListing?.is_hazardous === true) {
+        alert("This listing is hazardous. Bidding is disabled. The only available actions are Donate or Unlist.");
+        setSelectedListing(null);
         return;
       }
 
@@ -2834,6 +2972,10 @@ const SellerDashboard = ({ session }) => {
         throw new Error("Missing bid or listing information.");
       }
 
+      if (isListingHazardous(listing) || listing?.is_hazardous === true) {
+        throw new Error("This listing is hazardous. Bidding and bid acceptance are disabled. The only available actions are Donate or Unlist.");
+      }
+
       // Accept is ONLY for the logged-in user's own listing.
       if (listing.seller_id !== session.user.id) {
         throw new Error("You can only accept bids on your own listings.");
@@ -3731,7 +3873,8 @@ const SellerDashboard = ({ session }) => {
 
         if (otherError) throw otherError;
 
-        setListings(otherListings || []);
+        const hydratedOtherListings = await attachHazardFlags(otherListings || []);
+        setListings(hydratedOtherListings);
 
         // ==========================================
         // LOGGED-IN USER'S OWN LISTINGS
@@ -3762,12 +3905,13 @@ const SellerDashboard = ({ session }) => {
 
         if (ownError) throw ownError;
 
-        setMyListings(ownListings || []);
+        const hydratedOwnListings = await attachHazardFlags(ownListings || []);
+        setMyListings(hydratedOwnListings);
 
         // ==========================================
         // LOGGED-IN USER'S DONATED ITEMS
         // ==========================================
-        const donations = (ownListings || []).filter(
+        const donations = hydratedOwnListings.filter(
           (listing) => listing.status?.toLowerCase() === "donated",
         );
 
@@ -3811,9 +3955,10 @@ const SellerDashboard = ({ session }) => {
 
         if (ownError) throw ownError;
 
-        setMyListings(ownListings || []);
+        const hydratedOwnListings = await attachHazardFlags(ownListings || []);
+        setMyListings(hydratedOwnListings);
 
-        const donations = (ownListings || []).filter(
+        const donations = hydratedOwnListings.filter(
           (listing) => listing.status?.toLowerCase() === "donated"
         );
         setMyDonations(donations);
@@ -3827,7 +3972,8 @@ const SellerDashboard = ({ session }) => {
 
         if (otherError) throw otherError;
 
-        setListings(otherListings || []);
+        const hydratedOtherListings = await attachHazardFlags(otherListings || []);
+        setListings(hydratedOtherListings);
       } catch (err) {
         console.error("Realtime listing refresh error:", err.message);
       }
@@ -3867,6 +4013,17 @@ const SellerDashboard = ({ session }) => {
     };
   }, [session?.user?.id, isAuthorized]);
 
+  // Lock the document for every modal managed directly by this dashboard.
+  // The shared hook safely handles nested modal layers as well.
+  useBodyScrollLock(Boolean(
+    showProfileModal || showChangePasswordModal || showEditProfile ||
+    showAchievementsModal || showMessages || isModalOpen || selectedListing ||
+    showCancelModal || selectedReceiptTransaction || donationReceipt ||
+    isDonationModalOpen || showRateModal || showRepairReviewModal ||
+    isVerificationModalOpen || selectedBidder || selectedBidListing ||
+    selectedListingDetails || expiredListingAction
+  ));
+
   if (checkingRole || !isAuthorized) {
     return (
       <div className="h-screen w-full bg-white flex items-center justify-center">
@@ -3875,6 +4032,11 @@ const SellerDashboard = ({ session }) => {
     );
   }
   const handleSelectListing = async (listing) => {
+    if (isListingHazardous(listing) || listing?.is_hazardous === true) {
+      setSelectedListingDetails(listing);
+      return;
+    }
+
     setBidAmount("");
     setBidMessage("");
     setLoading(true);
@@ -4132,17 +4294,6 @@ const SellerDashboard = ({ session }) => {
       setVerificationLoading(false);
     }
   };
-
-  // Lock the document for every modal managed directly by this dashboard.
-  // The shared hook safely handles nested modal layers as well.
-  useBodyScrollLock(Boolean(
-    showProfileModal || showChangePasswordModal || showEditProfile ||
-    showAchievementsModal || showMessages || isModalOpen || selectedListing ||
-    showCancelModal || selectedReceiptTransaction || donationReceipt ||
-    isDonationModalOpen || showRateModal || showRepairReviewModal ||
-    isVerificationModalOpen || selectedBidder || selectedBidListing ||
-    selectedListingDetails || expiredListingAction
-  ));
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 relative">
@@ -4804,6 +4955,8 @@ const SellerDashboard = ({ session }) => {
                   // Listings tab should display ONLY Working items.
                   .filter(
                     (item) =>
+                      !isListingHazardous(item) &&
+                      !item.is_hazardous &&
                       String(item.condition || "").trim().toLowerCase() === "working"
                   )
                   .map((item) => [item.id, item])
@@ -4819,13 +4972,13 @@ const SellerDashboard = ({ session }) => {
               return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
             });
 
-            // Keep the Listings tab restricted to Working items only.
-            // Non-working / defective listings remain in the database but are
-            // intentionally not rendered in this tab.
-            const myCreatedListings = myListings.filter(
-              (item) => String(item.condition || "").trim().toLowerCase() === "working"
-            );
+            // My Created Listings must show every listing created by the
+            // logged-in seller, including Not Working and hazardous listings.
+            // These listings still remain excluded from the general marketplace
+            // where the condition/routing rules are applied separately.
+            const myCreatedListings = [...myListings];
             const receivedBids = myCreatedListings
+              .filter((listing) => !isListingHazardous(listing) && !listing.is_hazardous)
               .flatMap((listing) =>
                 getVisibleBids(listing).map((bid) => ({ ...bid, listing }))
               )
@@ -4880,6 +5033,7 @@ const SellerDashboard = ({ session }) => {
               const isMine = item.seller_id === session.user.id;
               const status = String(item.status || "active").toLowerCase();
               const isActive = status === "active";
+              const isHazardous = isListingHazardous(item) || item.is_hazardous === true;
               const condition = normalizeCondition(item.condition);
               const statusLabel = formatStatus(item.status);
               const owner = getListingOwner(item);
@@ -4936,7 +5090,17 @@ const SellerDashboard = ({ session }) => {
                     <div className="mt-4 flex items-center gap-2 text-xs text-slate-400">
                       <MapPin size={14} /> {getListingBarangay(listing)} <span>·</span> {getListingOwner(listing)}
                     </div>
-                    <button type="button" onClick={() => handleSelectListing(listing)} className="mt-4 w-full rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189] transition">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isListingHazardous(listing) || listing?.is_hazardous === true) {
+                          setSelectedListingDetails(listing);
+                        } else {
+                          handleSelectListing(listing);
+                        }
+                      }}
+                      className="mt-4 w-full rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189] transition"
+                    >
                       View Listing
                     </button>
                   </article>
@@ -4948,6 +5112,11 @@ const SellerDashboard = ({ session }) => {
                   {isMine && mode === "all" && (
                     <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[#eef7fa] px-2.5 py-1 text-[10px] font-bold text-[#3285a1]">
                       <User size={12} /> Your Listing
+                    </div>
+                  )}
+                  {isHazardous && (
+                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-black text-red-700 border border-red-100">
+                      <Shield size={12} /> Hazardous
                     </div>
                   )}
                   {!isMine && mode === "all" && sellerTrustTiers[item.seller_id] &&
@@ -5002,7 +5171,9 @@ const SellerDashboard = ({ session }) => {
                     <button
                       type="button"
                       onClick={() => {
-                        if (isMine) {
+                        if (isHazardous) {
+                          setSelectedListingDetails(item);
+                        } else if (isMine) {
                           if (firstBid) setSelectedBidListing(item);
                           else setSelectedListingDetails(item);
                         } else {
@@ -5011,15 +5182,23 @@ const SellerDashboard = ({ session }) => {
                       }}
                       className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition ${isMine && firstBid ? "bg-[#3285a1] text-white hover:bg-[#2a7189]" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
                     >
-                      {isMine ? (firstBid ? `View ${bidsForItem.length} Bid${bidsForItem.length === 1 ? "" : "s"}` : "Manage Listing") : "Marketplace Listing"}
+                      {isHazardous
+                        ? "Manage Hazardous Listing"
+                        : isMine
+                          ? (firstBid ? `View ${bidsForItem.length} Bid${bidsForItem.length === 1 ? "" : "s"}` : "Manage Listing")
+                          : "Marketplace Listing"}
                     </button>
                   ) : mode === "created" ? (
                     <button
                       type="button"
-                      onClick={() => firstBid ? setSelectedBidListing(item) : setSelectedListingDetails(item)}
-                      className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition ${firstBid ? "bg-[#3285a1] text-white hover:bg-[#2a7189]" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+                      onClick={() => {
+                        if (isHazardous) setSelectedListingDetails(item);
+                        else if (firstBid) setSelectedBidListing(item);
+                        else setSelectedListingDetails(item);
+                      }}
+                      className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition ${isHazardous ? "bg-red-50 text-red-700 hover:bg-red-100" : firstBid ? "bg-[#3285a1] text-white hover:bg-[#2a7189]" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
                     >
-                      {firstBid ? `View ${bidsForItem.length} Bid${bidsForItem.length === 1 ? "" : "s"}` : "View Details"}
+                      {isHazardous ? "Manage Hazardous Listing" : firstBid ? `View ${bidsForItem.length} Bid${bidsForItem.length === 1 ? "" : "s"}` : "View Details"}
                     </button>
                   ) : (
                     <button type="button" onClick={() => setSelectedListingDetails(item)} className="mt-4 w-full rounded-xl bg-slate-50 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">
@@ -5110,7 +5289,9 @@ const SellerDashboard = ({ session }) => {
                   </div>
                 )}
 
-                {selectedBidListing && (
+                {selectedBidListing &&
+                  !isListingHazardous(selectedBidListing) &&
+                  !selectedBidListing?.is_hazardous && (
                   <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-2xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
                       <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
@@ -5162,35 +5343,86 @@ const SellerDashboard = ({ session }) => {
                             <p className="mt-1 text-xs text-slate-400">{selectedListingDetails.device_id || selectedListingDetails.model_number || "Device"}</p>
                           </div>
                         </div>
-                        <button type="button" onClick={() => setSelectedListingDetails(null)} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500"><X size={18} /></button>
+                        {!(isListingHazardous(selectedListingDetails) || selectedListingDetails?.is_hazardous) && (
+                          <button type="button" onClick={() => setSelectedListingDetails(null)} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500"><X size={18} /></button>
+                        )}
                       </div>
                       <div className="space-y-4 p-6">
                         <div className="grid grid-cols-2 gap-3">
                           <div className="rounded-xl bg-slate-50 p-4"><p className="text-[11px] text-slate-400">Asking Price</p><p className="mt-1 text-lg font-black text-slate-800">₱{Number(selectedListingDetails.asking_price || 0).toLocaleString()}</p></div>
                           <div className="rounded-xl bg-slate-50 p-4"><p className="text-[11px] text-slate-400">Condition</p><p className={`mt-1 text-lg font-bold ${normalizeCondition(selectedListingDetails.condition) === "Working" ? "text-emerald-600" : "text-orange-500"}`}>{normalizeCondition(selectedListingDetails.condition)}</p></div>
                         </div>
-                        <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">{selectedListingDetails.description || "No additional description provided."}</div>
+                        {isListingHazardous(selectedListingDetails) || selectedListingDetails?.is_hazardous ? (
+                          <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                            <div className="flex items-center gap-2 text-red-700">
+                              <Shield size={17} />
+                              <p className="text-sm font-black">Hazardous Listing</p>
+                            </div>
+                            <p className="mt-1 text-xs leading-relaxed text-red-600">
+                              This listing is classified as hazardous. Marketplace bidding is disabled. The only available actions are Donate or Unlist.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">{selectedListingDetails.description || "No additional description provided."}</div>
+                        )}
                         <div className="flex items-center gap-2 text-xs text-slate-400"><MapPin size={14} /> {getListingBarangay(selectedListingDetails)} <span>·</span> {getListingOwner(selectedListingDetails)}</div>
                         <div className="flex gap-2">
-                          <button type="button" onClick={() => setSelectedListingDetails(null)} className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50">Close</button>
-                          {selectedListingDetails.seller_id !== session.user.id && String(selectedListingDetails.status).toLowerCase() === "active" && (
-                            <button type="button" disabled={isReadOnly} title={isReadOnly ? "View-only: your account is pending verification" : undefined} onClick={() => { setSelectedListingDetails(null); handleSelectListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:hover:bg-slate-200">{isReadOnly ? "Place Bid (View-only)" : "Place Bid"}</button>
-                          )}
-                          {selectedListingDetails.seller_id === session.user.id && getVisibleBids(selectedListingDetails).length > 0 && (
-                            <button type="button" onClick={() => { setSelectedListingDetails(null); setSelectedBidListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189]">View Bids</button>
-                          )}
-                          {!isReadOnly && selectedListingDetails.seller_id === session.user.id && ["active", "expired"].includes(String(selectedListingDetails.status).toLowerCase()) && getVisibleBids(selectedListingDetails).length === 0 && (
-                            <button type="button" onClick={() => {
-                              setSelectedListingDetails(null);
-                              if (String(selectedListingDetails.status).toLowerCase() === "expired") {
-                                setExpiredListingAction({ ...selectedListingDetails, isExpired: true });
-                              } else {
-                                handleOpenDonation(selectedListingDetails);
-                              }
-                            }} className="flex-1 rounded-xl border border-purple-200 bg-purple-50 py-3 text-sm font-bold text-purple-700 hover:bg-purple-100">
-                              {String(selectedListingDetails.status).toLowerCase() === "expired" ? "Resolve Listing" : "Donate"}
-                            </button>
-                          )}
+                          {!isListingHazardous(selectedListingDetails) &&
+                            !selectedListingDetails?.is_hazardous &&
+                            !selectedListingDetails?.is_hazardous &&
+                            selectedListingDetails.seller_id !== session.user.id &&
+                            String(selectedListingDetails.status).toLowerCase() === "active" && (
+                              <button type="button" disabled={isReadOnly} title={isReadOnly ? "View-only: your account is pending verification" : undefined} onClick={() => { setSelectedListingDetails(null); handleSelectListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:hover:bg-slate-200">{isReadOnly ? "Place Bid (View-only)" : "Place Bid"}</button>
+                            )}
+
+                          {!isListingHazardous(selectedListingDetails) &&
+                            !selectedListingDetails?.is_hazardous &&
+                            selectedListingDetails.seller_id === session.user.id &&
+                            getVisibleBids(selectedListingDetails).length > 0 && (
+                              <button type="button" onClick={() => { setSelectedListingDetails(null); setSelectedBidListing(selectedListingDetails); }} className="flex-1 rounded-xl bg-[#3285a1] py-3 text-sm font-bold text-white hover:bg-[#2a7189]">View Bids</button>
+                            )}
+
+                          {selectedListingDetails.seller_id === session.user.id &&
+                            (isListingHazardous(selectedListingDetails) || selectedListingDetails?.is_hazardous) &&
+                            !isReadOnly && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedListingDetails(null);
+                                    handleOpenDonation(selectedListingDetails);
+                                  }}
+                                  className="flex-1 rounded-xl border border-purple-200 bg-purple-50 py-3 text-sm font-bold text-purple-700 hover:bg-purple-100"
+                                >
+                                  Donate
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnlistListing(selectedListingDetails)}
+                                  className="flex-1 rounded-xl border border-slate-200 bg-slate-50 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100"
+                                >
+                                  Unlist
+                                </button>
+                              </>
+                            )}
+
+                          {!isReadOnly &&
+                            !isListingHazardous(selectedListingDetails) &&
+                            !selectedListingDetails?.is_hazardous &&
+                            selectedListingDetails.seller_id === session.user.id &&
+                            ["active", "expired"].includes(String(selectedListingDetails.status).toLowerCase()) &&
+                            getVisibleBids(selectedListingDetails).length === 0 && (
+                              <button type="button" onClick={() => {
+                                setSelectedListingDetails(null);
+                                if (String(selectedListingDetails.status).toLowerCase() === "expired") {
+                                  setExpiredListingAction({ ...selectedListingDetails, isExpired: true });
+                                } else {
+                                  handleOpenDonation(selectedListingDetails);
+                                }
+                              }} className="flex-1 rounded-xl border border-purple-200 bg-purple-50 py-3 text-sm font-bold text-purple-700 hover:bg-purple-100">
+                                {String(selectedListingDetails.status).toLowerCase() === "expired" ? "Resolve Listing" : "Donate"}
+                              </button>
+                            )}
                         </div>
                       </div>
                     </div>
@@ -6070,7 +6302,7 @@ const SellerDashboard = ({ session }) => {
 
                   <button
                     type="button"
-                    onClick={() => handleUnlistExpiredListing(expiredListingAction)}
+                    onClick={() => handleUnlistListing(expiredListingAction)}
                     disabled={processingExpiredListing}
                     className="rounded-2xl border-2 border-slate-200 bg-slate-50 px-5 py-4 text-left hover:bg-slate-100 disabled:opacity-50"
                   >
