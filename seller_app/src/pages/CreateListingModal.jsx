@@ -542,6 +542,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   };
 
   const fileInputRef = useRef(null);
+  const stepScrollRef = useRef(null);
   const [issues, setIssues] = useState(INITIAL_ISSUES);
 
   const resetCreateListingForm = () => {
@@ -667,6 +668,21 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
 
   // Keep the page locked until this modal (and any nested modal) is closed.
   useBodyScrollLock(isOpen);
+
+  // Each newly selected step must begin at the top of the modal content.
+  // Prevent browser scroll anchoring from restoring a lower position when
+  // the previous step's content is replaced with a different-height step.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const frame = requestAnimationFrame(() => {
+      if (stepScrollRef.current) {
+        stepScrollRef.current.scrollTop = 0;
+      }
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [step, isOpen]);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -1405,8 +1421,9 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         </div>
 
         <div
+          ref={stepScrollRef}
           className="flex-1 min-h-0 p-8 pb-6 space-y-6 overflow-y-auto overscroll-contain touch-pan-y"
-          style={{ WebkitOverflowScrolling: "touch" }}
+          style={{ WebkitOverflowScrolling: "touch", overflowAnchor: "none", scrollBehavior: "auto" }}
         >
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in">
@@ -2528,7 +2545,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                 </p>
               )}
 
-              <div className="flex gap-4 sticky bottom-0 bg-white/90 backdrop-blur pb-2 pt-2 z-10000">
+              <div className="flex gap-4 bg-white pt-4 pb-2 mt-4 border-t border-gray-100">
                 <button
                   onClick={() => setStep(4)}
                   className="flex-1 py-4 border border-gray-200 text-gray-600 rounded-2xl font-bold hover:bg-gray-50 transition-colors"

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import {
@@ -20,6 +20,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
   const [conversations, setConversations] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
+  const chatBodyRef = useRef(null);
   const [repairAppointments, setRepairAppointments] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [error, setError] = useState("");
@@ -622,6 +623,24 @@ const RepairShopMessages = ({ userId, onClose }) => {
     };
   }, [userId, activeChat?.other_party_id]);
 
+  // Keep the newest message visible when opening a chat or receiving/sending a message.
+  // The scroll container is constrained so the message list scrolls independently.
+  useEffect(() => {
+    if (!activeChat) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const container = chatBodyRef.current;
+      if (!container) return;
+
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeChat?.conversation_key, messages.length, repairAppointments.length]);
+
   /*
    * ============================================================
    * FETCH ACTIVE CHAT
@@ -1075,13 +1094,13 @@ const RepairShopMessages = ({ userId, onClose }) => {
         </div>
       )}
 
-    <div className="flex h-[600px] bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden font-sans">
+    <div className="flex h-[600px] max-h-[85vh] min-h-0 bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden font-sans">
 
       {/* ======================================================
           SIDEBAR
       ====================================================== */}
 
-      <div className="w-80 border-r border-slate-50 flex flex-col">
+      <div className="w-80 shrink-0 min-h-0 border-r border-slate-50 flex flex-col">
 
         <div className="p-6 border-b border-slate-50">
           <div className="flex items-center justify-between mb-2">
@@ -1123,7 +1142,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
 
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-400">
@@ -1240,7 +1259,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
           MAIN CHAT
       ====================================================== */}
 
-      <div className="flex-1 flex flex-col">
+      <div className="min-w-0 min-h-0 flex-1 flex flex-col">
 
         {!activeChat ? (
           <div className="flex-1 flex items-center justify-center">
@@ -1272,7 +1291,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                 CHAT HEADER
             ================================================== */}
 
-            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+            <div className="shrink-0 p-4 md:p-6 border-b border-slate-50 flex justify-between items-center">
 
               <div className="flex items-center gap-3">
 
@@ -1333,7 +1352,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
                 CHAT BODY
             ================================================== */}
 
-            <div className="flex-1 overflow-y-auto p-8 space-y-5 bg-slate-50/30">
+            <div ref={chatBodyRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 md:p-6 space-y-5 bg-slate-50/30 scroll-smooth">
 
               {/* =================================================
                   REPAIR APPOINTMENTS
@@ -1566,7 +1585,7 @@ const RepairShopMessages = ({ userId, onClose }) => {
 
             <form
               onSubmit={handleSendMessage}
-              className="p-6 border-t border-slate-50"
+              className="shrink-0 p-4 md:p-6 border-t border-slate-50 bg-white"
             >
 
               {isViewOnly && (

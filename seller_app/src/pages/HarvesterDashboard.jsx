@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import HarvesterAlerts from "./HarvesterAlerts";
@@ -51,6 +51,17 @@ import {
   CalendarDays,
   Upload,
 } from "lucide-react";
+
+// Replace native browser showPopupAlert() dialogs with the dashboard's styled popup modal.
+const showPopupAlert = (message) => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("wasteless:popup-alert", {
+        detail: { message: String(message ?? "") },
+      })
+    );
+  }
+};
 
 const HAZARDOUS_DIAGNOSIS_KEYWORDS = [
   "Dead/Degraded Battery",
@@ -178,6 +189,61 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   });
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [popupAlertMessage, setPopupAlertMessage] = useState("");
+
+  // Listen for popup alerts from the dashboard and its nested views.
+  useEffect(() => {
+    const handlePopupAlert = (event) => {
+      setPopupAlertMessage(String(event?.detail?.message || ""));
+    };
+    window.addEventListener("wasteless:popup-alert", handlePopupAlert);
+    return () => window.removeEventListener("wasteless:popup-alert", handlePopupAlert);
+  }, []);
+
+  // Prevent the page behind any full-screen modal/backdrop from scrolling.
+  // The modal itself can still scroll when its content exceeds the viewport.
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.body) return undefined;
+
+    let isLocked = false;
+    let previousBodyOverflow = "";
+    let previousHtmlOverflow = "";
+
+    const syncModalScrollLock = () => {
+      const hasOpenModal = Boolean(document.querySelector(".fixed.inset-0"));
+
+      if (hasOpenModal && !isLocked) {
+        previousBodyOverflow = document.body.style.overflow;
+        previousHtmlOverflow = document.documentElement.style.overflow;
+        document.body.style.overflow = "hidden";
+        document.documentElement.style.overflow = "hidden";
+        isLocked = true;
+      } else if (!hasOpenModal && isLocked) {
+        document.body.style.overflow = previousBodyOverflow;
+        document.documentElement.style.overflow = previousHtmlOverflow;
+        isLocked = false;
+      }
+    };
+
+    syncModalScrollLock();
+
+    const modalObserver = new MutationObserver(syncModalScrollLock);
+    modalObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "aria-hidden"],
+    });
+
+    return () => {
+      modalObserver.disconnect();
+      if (isLocked) {
+        document.body.style.overflow = previousBodyOverflow;
+        document.documentElement.style.overflow = previousHtmlOverflow;
+      }
+    };
+  }, []);
+
 
   // TC_ALT_01: live component-alert toast shown when a new matching
   // Not Working listing is delivered through the notifications table.
@@ -197,7 +263,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const handleCompleteHandover = async (transactionId) => {
     // Pending Verification accounts are view-only.
     if (!isVerified) {
-      alert("Pending Verification accounts are view-only and cannot complete transactions.");
+      showPopupAlert("Pending Verification accounts are view-only and cannot complete transactions.");
       return;
     }
 
@@ -206,25 +272,25 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       (selectedTransaction?.id === transactionId ? selectedTransaction : null);
 
     if (!currentTx) {
-      alert("Transaction not found. Please refresh and try again.");
+      showPopupAlert("Transaction not found. Please refresh and try again.");
       return;
     }
 
     const oldStatus = String(currentTx.status || "").trim().toLowerCase();
 
     if (oldStatus === "completed" || oldStatus === "cancelled") {
-      alert(`This transaction is already ${oldStatus} and cannot be updated.`);
+      showPopupAlert(`This transaction is already ${oldStatus} and cannot be updated.`);
       return;
     }
 
     if (oldStatus !== "meetup_scheduled") {
-      alert("The meetup must be scheduled before the handover can be completed.");
+      showPopupAlert("The meetup must be scheduled before the handover can be completed.");
       return;
     }
 
     const missingFields = getMissingHandoverFields(currentTx);
     if (missingFields.length > 0) {
-      alert(
+      showPopupAlert(
         `The transaction cannot be completed because the following required details are missing: ${missingFields.join(", ")}.\n\nPlease coordinate with the seller through Messages so the meetup details can be corrected.`,
       );
       return;
@@ -250,7 +316,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       if (error) throw error;
 
       if (!data || data.length === 0) {
-        alert(
+        showPopupAlert(
           "The transaction could not be completed because its status has just changed. The latest status has been loaded.",
         );
         fetchTransactions();
@@ -283,7 +349,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       setShowRatingModal(true);
     } catch (err) {
       console.error("Update failed:", err.message);
-      alert("Error updating status: " + err.message);
+      showPopupAlert("Error updating status: " + err.message);
     }
   };
 
@@ -821,7 +887,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     // Resubmission is intentionally available only after rejection/expiration.
     // It does NOT require the account to be verified first.
     if (!allowedStatuses.includes(currentStatus)) {
-      alert("Document resubmission is only available for rejected or expired Repair Shop accounts.");
+      showPopupAlert("Document resubmission is only available for rejected or expired Repair Shop accounts.");
       return;
     }
 
@@ -831,12 +897,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       resubmissionTechCertRef.current?.files?.[0] || resubmissionTechCertFile;
 
     if (!permitFile) {
-      alert("Please upload your corrected Business Permit / DTI Registration.");
+      showPopupAlert("Please upload your corrected Business Permit / DTI Registration.");
       return;
     }
 
     if (!techCertFile) {
-      alert("Please upload your corrected Technical Certification document.");
+      showPopupAlert("Please upload your corrected Technical Certification document.");
       return;
     }
 
@@ -853,17 +919,17 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       ["Technical Certification", techCertFile],
     ]) {
       if (!allowedTypes.includes(file.type)) {
-        alert(`${label} must be a PDF, JPEG, PNG, or WebP file.`);
+        showPopupAlert(`${label} must be a PDF, JPEG, PNG, or WebP file.`);
         return;
       }
       if (file.size > maxFileSize) {
-        alert(`${label} must not exceed 5MB.`);
+        showPopupAlert(`${label} must not exceed 5MB.`);
         return;
       }
     }
 
     if (!session?.user?.id) {
-      alert("User session not found. Please log in again.");
+      showPopupAlert("User session not found. Please log in again.");
       return;
     }
 
@@ -974,10 +1040,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       }));
       setIsEditingProfile(false);
 
-      alert("Your corrected documents were resubmitted successfully. Your Repair Shop account is now pending administrator review.");
+      showPopupAlert("Your corrected documents were resubmitted successfully. Your Repair Shop account is now pending administrator review.");
     } catch (error) {
       console.error("REPAIR SHOP VERIFICATION RESUBMISSION ERROR:", error);
-      alert(error?.message || "Unable to resubmit your verification documents. Please try again.");
+      showPopupAlert(error?.message || "Unable to resubmit your verification documents. Please try again.");
     } finally {
       setResubmittingVerification(false);
     }
@@ -1110,7 +1176,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
             });
 
             // Keep the toast visible long enough to be noticed without
-            // blocking the application with a browser alert().
+            // blocking the application with a browser showPopupAlert().
             window.clearTimeout(
               window.__wastelessComponentAlertToastTimer
             );
@@ -1431,7 +1497,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
   const handlePlaceBid = async (listingId, amount, message) => {
     if (!isVerified) {
-      alert("Only verified harvesters can place bids.");
+      showPopupAlert("Only verified harvesters can place bids.");
       return;
     }
 
@@ -1439,7 +1505,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     // content instead of transmitting it with the bid.
     const bidMessageViolation = containsRestrictedContent(message);
     if (bidMessageViolation.blocked) {
-      alert(bidMessageViolation.message);
+      showPopupAlert(bidMessageViolation.message);
       return;
     }
 
@@ -1494,7 +1560,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           (listingCondition === "not working" && !isRepairShop)) ||
         isHazardousListing(currentListing)
       ) {
-        alert(
+        showPopupAlert(
           isHazardousListing(currentListing)
             ? "This item is hazardous and is not available for sale."
             : listingCondition === "not working" && !isRepairShop
@@ -1532,7 +1598,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       const numericAmount = Number(amount);
 
       if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-        alert("Please enter a valid bid amount.");
+        showPopupAlert("Please enter a valid bid amount.");
         return;
       }
 
@@ -1540,12 +1606,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         !Number.isFinite(currentDisplayedPrice) ||
         currentDisplayedPrice <= 0
       ) {
-        alert("This listing does not have a valid current displayed price.");
+        showPopupAlert("This listing does not have a valid current displayed price.");
         return;
       }
 
       if (numericAmount >= currentDisplayedPrice) {
-        alert(
+        showPopupAlert(
           `Your bid must be lower than the current displayed price of ₱${currentDisplayedPrice.toLocaleString()}.`,
         );
         return;
@@ -1577,14 +1643,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         ]);
       }
 
-      alert("Bid placed successfully!");
+      showPopupAlert("Bid placed successfully!");
       setSelectedListing(null);
 
       // Optional: refresh local state if you track bids locally
       // fetchActiveListings();
     } catch (err) {
       console.error("ERROR:", err);
-      alert("Error placing bid: " + err.message);
+      showPopupAlert("Error placing bid: " + err.message);
     }
   };
   // Opens the Messages tab pre-loaded with a chat to the seller of an accepted bid.
@@ -1592,7 +1658,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     const sellerId = bid?.listings?.seller_id;
 
     if (!sellerId) {
-      alert("Seller information is unavailable for this bid.");
+      showPopupAlert("Seller information is unavailable for this bid.");
       return;
     }
 
@@ -1612,7 +1678,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       tx.seller_id === session?.user?.id ? tx.harvester_id : tx.seller_id;
 
     if (!otherPartyId) {
-      alert("The other participant of this transaction is unavailable.");
+      showPopupAlert("The other participant of this transaction is unavailable.");
       return;
     }
 
@@ -1628,14 +1694,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
 
     // REQ-2: Pending Verification accounts are view-only.
     if (!isVerified) {
-      alert("Pending Verification accounts are view-only and cannot send messages.");
+      showPopupAlert("Pending Verification accounts are view-only and cannot send messages.");
       return;
     }
 
     // TC_MSG_03: block restricted content before transmitting.
     const messageViolation = containsRestrictedContent(message);
     if (messageViolation.blocked) {
-      alert(messageViolation.message);
+      showPopupAlert(messageViolation.message);
       return;
     }
 
@@ -1669,11 +1735,11 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         senderLabel: "A Tech Harvester",
       });
 
-      alert("Message sent to seller!");
+      showPopupAlert("Message sent to seller!");
       setSelectedListing(null);
     } catch (err) {
       console.error("ERROR SENDING MESSAGE:", err);
-      alert("Error sending message: " + err.message);
+      showPopupAlert("Error sending message: " + err.message);
     }
   };
   const handleMarkAllRead = async () => {
@@ -1786,22 +1852,22 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     const confirm = passwordForm.confirm;
 
     if (!current || !next || !confirm) {
-      alert("Please complete all password fields.");
+      showPopupAlert("Please complete all password fields.");
       return;
     }
 
     if (next.length < 8) {
-      alert("Your new password must be at least 8 characters.");
+      showPopupAlert("Your new password must be at least 8 characters.");
       return;
     }
 
     if (next !== confirm) {
-      alert("The new password and confirmation do not match.");
+      showPopupAlert("The new password and confirmation do not match.");
       return;
     }
 
     if (!session?.user?.email) {
-      alert("User session not found. Please log in again.");
+      showPopupAlert("User session not found. Please log in again.");
       return;
     }
 
@@ -1824,10 +1890,10 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       if (updateError) throw updateError;
 
       setPasswordForm({ current: "", next: "", confirm: "" });
-      alert("Password updated successfully.");
+      showPopupAlert("Password updated successfully.");
     } catch (error) {
       console.error("CHANGE PASSWORD ERROR:", error);
-      alert(error?.message || "Unable to update your password.");
+      showPopupAlert(error?.message || "Unable to update your password.");
     } finally {
       setChangingPassword(false);
     }
@@ -1857,12 +1923,59 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       }
     } catch (error) {
       console.error("DEACTIVATE ACCOUNT ERROR:", error);
-      alert(error?.message || "Unable to deactivate your account.");
+      showPopupAlert(error?.message || "Unable to deactivate your account.");
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
+      {popupAlertMessage && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/50 px-4 py-6 backdrop-blur-sm"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setPopupAlertMessage("");
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="dashboard-alert-title"
+            aria-describedby="dashboard-alert-message"
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          >
+            <div className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                <Bell size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="dashboard-alert-title" className="text-lg font-bold text-slate-900">Wasteless</h2>
+                <p id="dashboard-alert-message" className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-600">
+                  {popupAlertMessage}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPopupAlertMessage("")}
+                aria-label="Close popup"
+                className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+            <div className="flex justify-end px-6 py-4">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setPopupAlertMessage("")}
+                className="rounded-xl bg-[#5d9f26] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#518b21] focus:outline-none focus:ring-2 focus:ring-[#5d9f26] focus:ring-offset-2"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* =========================================================
           TC_ALT_01 — COMPONENT ALERT LIVE TOAST
           ========================================================= */}
@@ -2192,6 +2305,14 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               handleChangePassword={handleChangePassword}
               handleDeactivateAccount={handleDeactivateAccount}
               handleReverify={handleReverify}
+              resubmissionPermitFile={resubmissionPermitFile}
+              setResubmissionPermitFile={setResubmissionPermitFile}
+              resubmissionTechCertFile={resubmissionTechCertFile}
+              setResubmissionTechCertFile={setResubmissionTechCertFile}
+              resubmissionPermitRef={resubmissionPermitRef}
+              resubmissionTechCertRef={resubmissionTechCertRef}
+              resubmittingVerification={resubmittingVerification}
+              handleResubmitVerification={handleResubmitVerification}
               userTrustStats={userTrustStats}
               currentTrustTier={currentTrustTier}
               nextTrustTier={nextTrustTier}
@@ -2316,7 +2437,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               active={activeTab === "map"}
               onClick={() => {
                 if (!isVerified) {
-                  alert(
+                  showPopupAlert(
                     "Access Denied: Urban Mine Map is restricted to Verified Professionals.",
                   );
                 } else {
@@ -2609,6 +2730,14 @@ const RepairShopProfileDrawer = ({
   handleChangePassword,
   handleDeactivateAccount,
   handleReverify,
+  resubmissionPermitFile,
+  setResubmissionPermitFile,
+  resubmissionTechCertFile,
+  setResubmissionTechCertFile,
+  resubmissionPermitRef,
+  resubmissionTechCertRef,
+  resubmittingVerification,
+  handleResubmitVerification,
   userTrustStats,
   currentTrustTier,
   nextTrustTier,
@@ -2627,12 +2756,12 @@ const RepairShopProfileDrawer = ({
 
     const maxFileSize = 5 * 1024 * 1024;
     if (file.size > maxFileSize) {
-      alert("File size exceeds maximum limit. Please upload a photo under 5 MB.");
+      showPopupAlert("File size exceeds maximum limit. Please upload a photo under 5 MB.");
       return;
     }
 
     if (!file.type.startsWith("image/")) {
-      alert("Please upload a valid image file.");
+      showPopupAlert("Please upload a valid image file.");
       return;
     }
 
@@ -2659,10 +2788,10 @@ const RepairShopProfileDrawer = ({
 
       if (profileError) throw profileError;
       setProfileData((prev) => ({ ...prev, profile_photo: profilePhoto }));
-      alert("Profile photo updated successfully.");
+      showPopupAlert("Profile photo updated successfully.");
     } catch (error) {
       console.error("PROFILE PHOTO UPLOAD ERROR:", error);
-      alert(`Could not update profile photo: ${error.message}`);
+      showPopupAlert(`Could not update profile photo: ${error.message}`);
     } finally {
       setProfilePhotoUploading(false);
     }
@@ -3056,17 +3185,69 @@ const RepairShopProfileDrawer = ({
                             />
                           </label>
 
+                          {(verificationStatus === "rejected" || verificationStatus === "expired") && (
+                            <div className="rounded-xl border border-red-100 bg-red-50/60 p-3 space-y-3">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-red-700">
+                                Resubmit Verification Documents
+                              </p>
+                              <p className="text-[10px] text-red-500">
+                                Upload both corrected documents (PDF, JPEG, PNG or WebP, max 5MB each).
+                              </p>
+
+                              <label className="block">
+                                <span className="text-[10px] font-bold text-slate-500">
+                                  Business Permit / DTI Registration
+                                </span>
+                                <input
+                                  ref={resubmissionPermitRef}
+                                  type="file"
+                                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                                  onChange={(e) => setResubmissionPermitFile(e.target.files?.[0] || null)}
+                                  className="w-full mt-1 text-[10px] file:mr-2 file:rounded-lg file:border-0 file:bg-lime-100 file:px-3 file:py-1.5 file:text-[10px] file:font-bold file:text-lime-800"
+                                />
+                                {resubmissionPermitFile && (
+                                  <p className="text-[9px] text-slate-500 mt-1">Selected: {resubmissionPermitFile.name}</p>
+                                )}
+                              </label>
+
+                              <label className="block">
+                                <span className="text-[10px] font-bold text-slate-500">
+                                  Technical Certification
+                                </span>
+                                <input
+                                  ref={resubmissionTechCertRef}
+                                  type="file"
+                                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                                  onChange={(e) => setResubmissionTechCertFile(e.target.files?.[0] || null)}
+                                  className="w-full mt-1 text-[10px] file:mr-2 file:rounded-lg file:border-0 file:bg-lime-100 file:px-3 file:py-1.5 file:text-[10px] file:font-bold file:text-lime-800"
+                                />
+                                {resubmissionTechCertFile && (
+                                  <p className="text-[9px] text-slate-500 mt-1">Selected: {resubmissionTechCertFile.name}</p>
+                                )}
+                              </label>
+
+                              <button
+                                type="button"
+                                onClick={handleResubmitVerification}
+                                disabled={resubmittingVerification}
+                                className="w-full rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-2.5 text-[10px] font-black uppercase tracking-widest transition"
+                              >
+                                {resubmittingVerification ? "Submitting..." : "Resubmit for Review"}
+                              </button>
+                            </div>
+                          )}
+
                           <button
                             type="button"
                             onClick={async () => {
                               try {
                                 if (!session?.user?.id) {
-                                  alert("User session not found. Please log in again.");
+                                  showPopupAlert("User session not found. Please log in again.");
                                   return;
                                 }
 
                                 if (!validatePhone(profileData?.contact_number)) {
-                                  alert("Please enter valid information for Phone Number.");
+                                  showPopupAlert("Please enter valid information for Phone Number.");
                                   return;
                                 }
 
@@ -3100,14 +3281,14 @@ const RepairShopProfileDrawer = ({
                                   assigned_area: data?.barangay || "",
                                 }));
                                 setIsEditingProfile(false);
-                                alert(
+                                showPopupAlert(
                                   isRepairShop
                                     ? "Business profile updated successfully."
                                     : "Profile updated successfully."
                                 );
                               } catch (error) {
                                 console.error("PROFILE UPDATE ERROR:", error);
-                                alert(`Failed to update profile: ${error.message}`);
+                                showPopupAlert(`Failed to update profile: ${error.message}`);
                               }
                             }}
                             className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-2.5 text-[10px] font-black transition"
@@ -3684,7 +3865,7 @@ const MessagesView = ({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [updatingAppointmentId, setUpdatingAppointmentId] = useState(null);
-
+  const chatMessagesRef = useRef(null);
 
   // REQ-2: Pending Verification accounts are view-only (read, no reply).
   const [senderProfile, setSenderProfile] = useState(null);
@@ -3740,6 +3921,19 @@ const MessagesView = ({
       ["verified", "approved"].includes(senderVerification));
 
   const isViewOnly = senderProfileLoaded && !canSendMessages;
+
+  // Keep the latest message visible while keeping the chat body independently scrollable.
+  useEffect(() => {
+    if (!selectedChat) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const container = chatMessagesRef.current;
+      if (!container) return;
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedChat?.other_party_id, messages.length, appointments.length]);
 
   const normalizeAppointmentStatus = (status) =>
     String(status || "pending").trim().toLowerCase();
@@ -4088,7 +4282,7 @@ const MessagesView = ({
     // Pending Verification repair shops are view-only: they can read
     // appointment requests but cannot confirm, decline, or complete them.
     if (!canSendMessages) {
-      alert(
+      showPopupAlert(
         "Pending Verification accounts are view-only and cannot confirm, decline, or complete repair appointments."
       );
       return;
@@ -4399,7 +4593,7 @@ const MessagesView = ({
       }
     } catch (error) {
       console.error("UPDATE APPOINTMENT ERROR:", error);
-      alert(error?.message || "Unable to update appointment.");
+      showPopupAlert(error?.message || "Unable to update appointment.");
     } finally {
       setUpdatingAppointmentId(null);
     }
@@ -4463,7 +4657,7 @@ const MessagesView = ({
       await loadConversations();
     } catch (error) {
       console.error("SEND REPAIR SHOP MESSAGE ERROR:", error);
-      alert(error?.message || "Unable to send message.");
+      showPopupAlert(error?.message || "Unable to send message.");
     }
   };
 
@@ -4479,8 +4673,8 @@ const MessagesView = ({
   return (
     <div className="min-h-screen flex flex-col bg-[#f8fafc]">
       <div className="flex-1">
-        <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border border-white overflow-hidden min-h-[600px]">
-          <div className="col-span-4 border-r border-slate-50 p-6 overflow-y-auto">
+        <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border border-white overflow-hidden h-[calc(100vh-12rem)] min-h-[600px] max-h-[850px]">
+          <div className="col-span-4 min-h-0 border-r border-slate-50 p-6 overflow-y-auto overscroll-contain">
             <h2 className="text-xl font-black text-slate-800 mb-4">
               Messages
             </h2>
@@ -4559,10 +4753,10 @@ const MessagesView = ({
             )}
           </div>
 
-          <div className="col-span-8 flex flex-col bg-slate-50/30">
+          <div className="col-span-8 min-w-0 min-h-0 flex flex-col overflow-hidden bg-slate-50/30">
             {selectedChat ? (
               <>
-                <div className="p-6 bg-white border-b border-slate-100">
+                <div className="shrink-0 p-6 bg-white border-b border-slate-100">
                   <h2 className="text-xl font-bold text-slate-800">
                     {selectedChat.profile?.full_name ||
                       selectedChat.profile?.business_name ||
@@ -4573,8 +4767,100 @@ const MessagesView = ({
                   </p>
                 </div>
 
-                <div className="flex-1 p-8 overflow-y-auto space-y-5">
-                  {appointments.map((appointment) => (
+                <div className="flex min-h-0 flex-1">
+                  <section className="flex min-w-0 min-h-0 flex-1 flex-col">
+                    <div ref={chatMessagesRef} className="min-h-0 flex-1 p-6 md:p-8 overflow-y-auto overscroll-contain space-y-5 scroll-smooth">
+                  {messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex min-w-0 ${
+                        message.sender_id === userId
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`min-w-0 max-w-[85%] px-5 py-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${
+                          message.sender_id === userId
+                            ? "bg-[#769c2d] text-white rounded-br-md"
+                            : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
+                        }`}
+                      >
+                        {message.content}
+                      </div>
+                    </div>
+                  ))}
+
+                  {messages.length === 0 && (
+                    <p className="text-center text-xs text-slate-400 py-10">
+                      No messages in this conversation.
+                    </p>
+                  )}
+                    </div>
+
+                <div className="shrink-0 p-6 bg-white border-t border-slate-50">
+                  {isViewOnly && (
+                    <div className="mb-2 flex items-center gap-2 text-amber-600 text-xs font-bold">
+                      <Shield size={14} />
+                      {isSenderRestricted
+                        ? "Your account is not allowed to send messages."
+                        : "Your account is pending verification. You can read messages but cannot reply until you are verified."}
+                    </div>
+                  )}
+                  {sendMessageError && (
+                    <div className="mb-2 flex items-center gap-2 text-red-500 text-xs font-bold">
+                      <Shield size={14} />
+                      {sendMessageError}
+                    </div>
+                  )}
+                  <div className="flex gap-4">
+                    <input
+                      value={messageText}
+                      onChange={(e) => {
+                        setMessageText(e.target.value);
+                        if (sendMessageError) setSendMessageError("");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") sendMessage();
+                      }}
+                      disabled={!canSendMessages}
+                      placeholder={
+                        isViewOnly
+                          ? "View-only: replies are disabled"
+                          : "Type a message..."
+                      }
+                      className="flex-1 bg-slate-50 rounded-2xl py-4 px-6 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+
+                    <button
+                      onClick={sendMessage}
+                      disabled={!canSendMessages}
+                      className="bg-[#769c2d] text-white p-4 rounded-2xl disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Send size={18} />
+                    </button>
+                  </div>
+                </div>
+                  </section>
+
+                  <aside className="flex w-[340px] max-w-[42%] min-h-0 shrink-0 flex-col border-l border-slate-200 bg-white">
+                    <div className="shrink-0 border-b border-slate-100 px-5 py-5">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-black text-slate-800">Repair Appointments</h3>
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                          {appointments.length}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">Review and manage requests without leaving the chat.</p>
+                    </div>
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
+                      {appointments.length === 0 ? (
+                        <div className="py-10 text-center">
+                          <p className="text-xs font-semibold text-slate-500">No repair requests</p>
+                          <p className="mt-1 text-xs text-slate-400">Appointment requests from this harvester will appear here.</p>
+                        </div>
+                      ) : (
+                        appointments.map((appointment) => (
                     <div
                       key={`appointment-${appointment.id}`}
                       className="bg-white border border-emerald-100 rounded-3xl p-5 shadow-sm"
@@ -4732,78 +5018,10 @@ const MessagesView = ({
                         );
                       })()}
                     </div>
-                  ))}
-
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${
-                        message.sender_id === userId
-                          ? "justify-end"
-                          : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`px-5 py-3 rounded-2xl max-w-[70%] text-sm shadow-sm whitespace-pre-line ${
-                          message.sender_id === userId
-                            ? "bg-[#769c2d] text-white rounded-br-md"
-                            : "bg-white text-slate-600 rounded-bl-md border border-slate-100"
-                        }`}
-                      >
-                        {message.content}
-                      </div>
+                        ))
+                      )}
                     </div>
-                  ))}
-
-                  {messages.length === 0 && appointments.length === 0 && (
-                    <p className="text-center text-xs text-slate-400 py-10">
-                      No messages in this conversation.
-                    </p>
-                  )}
-                </div>
-
-                <div className="p-6 bg-white border-t border-slate-50">
-                  {isViewOnly && (
-                    <div className="mb-2 flex items-center gap-2 text-amber-600 text-xs font-bold">
-                      <Shield size={14} />
-                      {isSenderRestricted
-                        ? "Your account is not allowed to send messages."
-                        : "Your account is pending verification. You can read messages but cannot reply until you are verified."}
-                    </div>
-                  )}
-                  {sendMessageError && (
-                    <div className="mb-2 flex items-center gap-2 text-red-500 text-xs font-bold">
-                      <Shield size={14} />
-                      {sendMessageError}
-                    </div>
-                  )}
-                  <div className="flex gap-4">
-                    <input
-                      value={messageText}
-                      onChange={(e) => {
-                        setMessageText(e.target.value);
-                        if (sendMessageError) setSendMessageError("");
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") sendMessage();
-                      }}
-                      disabled={!canSendMessages}
-                      placeholder={
-                        isViewOnly
-                          ? "View-only: replies are disabled"
-                          : "Type a message..."
-                      }
-                      className="flex-1 bg-slate-50 rounded-2xl py-4 px-6 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-
-                    <button
-                      onClick={sendMessage}
-                      disabled={!canSendMessages}
-                      className="bg-[#769c2d] text-white p-4 rounded-2xl disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <Send size={18} />
-                    </button>
-                  </div>
+                  </aside>
                 </div>
               </>
             ) : (
@@ -5469,12 +5687,12 @@ const PlaceBidModal = ({
       const amount = Number(bidAmount);
 
       if (!amount || amount <= 0) {
-        alert("Please enter a valid offer amount.");
+        showPopupAlert("Please enter a valid offer amount.");
         return;
       }
 
       if (biddingLocked) {
-        alert(
+        showPopupAlert(
           listingExpired
             ? "This listing has expired and is no longer accepting bids."
             : "This listing is locked and is no longer accepting bids.",
@@ -5483,7 +5701,7 @@ const PlaceBidModal = ({
       }
 
       if (amount >= currentDisplayedPrice) {
-        alert(
+        showPopupAlert(
           `Your bid must be lower than the current displayed price of ₱${currentDisplayedPrice.toLocaleString()}.`,
         );
         return;
@@ -5491,7 +5709,7 @@ const PlaceBidModal = ({
     }
 
     if (activeTab === "question" && !question.trim()) {
-      alert("Please enter your question.");
+      showPopupAlert("Please enter your question.");
       return;
     }
 

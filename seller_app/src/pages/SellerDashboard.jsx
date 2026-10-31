@@ -52,6 +52,17 @@ import {
   Lock,
   Share2,
 } from "lucide-react";
+// Shared custom popup events keep feedback consistent across this dashboard and its nested modals.
+const APP_POPUP_EVENT = "wasteless:app-popup";
+const showAppAlert = (message) => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(APP_POPUP_EVENT, { detail: { type: "alert", message: String(message ?? "") } }));
+};
+const showAppConfirm = (message) => new Promise((resolve) => {
+  if (typeof window === "undefined") return resolve(false);
+  window.dispatchEvent(new CustomEvent(APP_POPUP_EVENT, { detail: { type: "confirm", message: String(message ?? ""), resolve } }));
+});
+
 const isRepairTransaction = (transaction) => {
   const type = String(transaction?.transaction_type || "").trim().toLowerCase();
   return type === "repair" || (!type && Boolean(transaction?.repair_appointment_id));
@@ -162,22 +173,22 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
 
   const handleSubmit = async () => {
     if (!currentUserId) {
-      alert("Your account information is missing. Please log in again.");
+      showAppAlert("Your account information is missing. Please log in again.");
       return;
     }
 
     if (!transaction.repair_appointment_id) {
-      alert("Repair appointment information is missing.");
+      showAppAlert("Repair appointment information is missing.");
       return;
     }
 
     if (!transaction.harvester_id) {
-      alert("Repair shop information is missing.");
+      showAppAlert("Repair shop information is missing.");
       return;
     }
 
     if (!communication || !service || !overall) {
-      alert("Please provide all three ratings before submitting.");
+      showAppAlert("Please provide all three ratings before submitting.");
       return;
     }
 
@@ -196,19 +207,19 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
       if (latestTransactionError) throw latestTransactionError;
 
       if (!latestTransaction || String(latestTransaction.status || "").trim().toLowerCase() !== "completed") {
-        alert("This repair service is no longer eligible for rating because the transaction is not completed.");
+        showAppAlert("This repair service is no longer eligible for rating because the transaction is not completed.");
         onClose();
         return;
       }
 
       if (latestTransaction.repair_appointment_id !== transaction.repair_appointment_id) {
-        alert("The repair appointment information has changed. Please refresh and try again.");
+        showAppAlert("The repair appointment information has changed. Please refresh and try again.");
         onClose();
         return;
       }
 
       if (latestTransaction.harvester_id !== transaction.harvester_id) {
-        alert("The repair shop information has changed. Please refresh and try again.");
+        showAppAlert("The repair shop information has changed. Please refresh and try again.");
         onClose();
         return;
       }
@@ -223,7 +234,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
       if (existingError) throw existingError;
 
       if (existingReview) {
-        alert("You have already reviewed this repair service.");
+        showAppAlert("You have already reviewed this repair service.");
         onClose();
         return;
       }
@@ -247,7 +258,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
         // TC_RATE_06: also handle the database uniqueness constraint when two
         // submissions race each other or the modal was opened in two tabs.
         if (error.code === "23505") {
-          alert("You have already reviewed this repair service.");
+          showAppAlert("You have already reviewed this repair service.");
           onSubmitted?.(data);
           onClose();
           return;
@@ -262,11 +273,11 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
       await syncUserReputation(transaction.harvester_id);
 
       onSubmitted?.(data);
-      alert("Repair shop rated successfully!");
+      showAppAlert("Repair shop rated successfully!");
       onClose();
     } catch (error) {
       console.error("Repair review error:", error);
-      alert(`Failed to submit repair review: ${error.message}`);
+      showAppAlert(`Failed to submit repair review: ${error.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -454,17 +465,17 @@ const MarketplaceRatingModal = ({
       : transaction.seller_id;
 
     if (!currentUserId || !transaction?.id || !ratedUserId) {
-      alert("The transaction or account information is missing.");
+      showAppAlert("The transaction or account information is missing.");
       return;
     }
 
     if (ratedUserId === currentUserId) {
-      alert("You cannot rate yourself.");
+      showAppAlert("You cannot rate yourself.");
       return;
     }
 
     if (!communication || !punctuality || !condition || !overall) {
-      alert("Please provide all four ratings before submitting.");
+      showAppAlert("Please provide all four ratings before submitting.");
       return;
     }
 
@@ -482,7 +493,7 @@ const MarketplaceRatingModal = ({
 
       if (existingReview) {
         onSubmitted?.(transaction.id);
-        alert(`You have already rated this ${isRatingBuyer ? "buyer" : "seller"}.`);
+        showAppAlert(`You have already rated this ${isRatingBuyer ? "buyer" : "seller"}.`);
         onClose();
         return;
       }
@@ -510,11 +521,11 @@ const MarketplaceRatingModal = ({
       await syncUserReputation(ratedUserId);
 
       onSubmitted?.(transaction.id, insertedReview);
-      alert(`${isRatingBuyer ? "Buyer" : "Seller"} rated successfully!`);
+      showAppAlert(`${isRatingBuyer ? "Buyer" : "Seller"} rated successfully!`);
       onClose();
     } catch (error) {
       console.error("Marketplace rating error:", error);
-      alert(`Failed to submit rating: ${error.message}`);
+      showAppAlert(`Failed to submit rating: ${error.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -1171,7 +1182,7 @@ const DonationReceiptModal = ({ receipt, onClose }) => {
       doc.save(`WasteLess-Dropoff-Receipt-${referenceNumber}.pdf`);
     } catch (error) {
       console.error("Failed to generate donation receipt:", error);
-      alert("Unable to generate the donation receipt. Please try again.");
+      showAppAlert("Unable to generate the donation receipt. Please try again.");
     }
   };
 
@@ -1364,7 +1375,14 @@ const attachHazardFlags = async (rows) => {
 };
 
 const SellerDashboard = ({ session }) => {
+  const [appPopup, setAppPopup] = useState(null);
   const [activeTab, setActiveTab] = useState("listings");
+
+  useEffect(() => {
+    const handleAppPopup = (event) => setAppPopup(event.detail || null);
+    window.addEventListener(APP_POPUP_EVENT, handleAppPopup);
+    return () => window.removeEventListener(APP_POPUP_EVENT, handleAppPopup);
+  }, []);
   const [listings, setListings] = useState([]);
   const [myListings, setMyListings] = useState([]);
   const [myDonations, setMyDonations] = useState([]);
@@ -1489,7 +1507,7 @@ const SellerDashboard = ({ session }) => {
   );
   const blockIfReadOnly = (action = "perform this action") => {
     if (!isReadOnly) return false;
-    alert(
+    showAppAlert(
       `Your account is pending verification and is view-only. You cannot ${action} until an administrator verifies your account.`
     );
     return true;
@@ -1586,12 +1604,12 @@ const SellerDashboard = ({ session }) => {
     if (blockIfReadOnly("submit ratings")) return;
 
     if (!transaction?.id) {
-      alert("Transaction information is missing.");
+      showAppAlert("Transaction information is missing.");
       return;
     }
 
     if (transaction.status !== "completed") {
-      alert("You can rate the other party only after the transaction is completed.");
+      showAppAlert("You can rate the other party only after the transaction is completed.");
       return;
     }
 
@@ -1599,12 +1617,12 @@ const SellerDashboard = ({ session }) => {
       role === "buyer" ? transaction.harvester_id : transaction.seller_id;
 
     if (!ratedUserId || ratedUserId === session.user.id) {
-      alert("The account information for the person being rated is missing.");
+      showAppAlert("The account information for the person being rated is missing.");
       return;
     }
 
     if (reviewedMarketplaceTransactions.has(transaction.id)) {
-      alert(`You have already rated this ${role}.`);
+      showAppAlert(`You have already rated this ${role}.`);
       return;
     }
 
@@ -1624,7 +1642,7 @@ const SellerDashboard = ({ session }) => {
           next.add(transaction.id);
           return next;
         });
-        alert(`You have already rated this ${role}.`);
+        showAppAlert(`You have already rated this ${role}.`);
         return;
       }
 
@@ -1633,7 +1651,7 @@ const SellerDashboard = ({ session }) => {
       setShowRateModal(true);
     } catch (error) {
       console.error("Error checking marketplace review:", error);
-      alert(`Unable to check the existing rating: ${error.message}`);
+      showAppAlert(`Unable to check the existing rating: ${error.message}`);
     }
   };
 
@@ -1794,10 +1812,10 @@ const SellerDashboard = ({ session }) => {
       setDonationReminder((prev) => (prev?.id === listing.id ? null : prev));
       setExpiredListingAction(null);
 
-      alert("The listing has been unlisted and bidding is disabled.");
+      showAppAlert("The listing has been unlisted and bidding is disabled.");
     } catch (error) {
       console.error("Unlist expired listing error:", error);
-      alert(`Failed to unlist the listing: ${error.message}`);
+      showAppAlert(`Failed to unlist the listing: ${error.message}`);
     } finally {
       setProcessingExpiredListing(false);
     }
@@ -1812,7 +1830,7 @@ const SellerDashboard = ({ session }) => {
     if (blockIfReadOnly("donate listings")) return;
 
     if (!listingId) {
-      alert("No listing selected for donation.");
+      showAppAlert("No listing selected for donation.");
       return;
     }
 
@@ -1824,7 +1842,7 @@ const SellerDashboard = ({ session }) => {
       null;
 
     if (!selectedDropOffPointId) {
-      alert(
+      showAppAlert(
         "Please select a drop-off point before confirming the donation."
       );
       return;
@@ -1952,12 +1970,12 @@ const SellerDashboard = ({ session }) => {
     setIsDonationModalOpen(false);
     setListingToDonate(null);
 
-    alert(
+    showAppAlert(
       "Thank you for donating! Your selected drop-off point has been saved."
     );
   } catch (err) {
     console.error("Donation error:", err);
-    alert(`Failed to process donation: ${err.message}`);
+    showAppAlert(`Failed to process donation: ${err.message}`);
   }
 };
 
@@ -1965,24 +1983,24 @@ const SellerDashboard = ({ session }) => {
     if (blockIfReadOnly("submit repair shop reviews")) return;
 
     if (!transaction?.id) {
-      alert("Transaction information is missing.");
+      showAppAlert("Transaction information is missing.");
       return;
     }
 
     // TC_RATE_04 / TC_RATE_08 / TC_RATE_09: a repair-service rating is
     // available only after the corresponding transaction is actually completed.
     if (String(transaction.status || "").trim().toLowerCase() !== "completed") {
-      alert("You can rate the Repair Shop only after the repair transaction is completed.");
+      showAppAlert("You can rate the Repair Shop only after the repair transaction is completed.");
       return;
     }
 
     if (!transaction?.repair_appointment_id) {
-      alert("Repair appointment information is missing.");
+      showAppAlert("Repair appointment information is missing.");
       return;
     }
 
     if (!session?.user?.id) {
-      alert("Your account information is missing. Please log in again.");
+      showAppAlert("Your account information is missing. Please log in again.");
       return;
     }
 
@@ -2003,7 +2021,7 @@ const SellerDashboard = ({ session }) => {
         setReviewedRepairAppointments((prev) =>
           new Set(prev).add(transaction.repair_appointment_id),
         );
-        alert("You have already reviewed this repair service.");
+        showAppAlert("You have already reviewed this repair service.");
         return;
       }
 
@@ -2011,7 +2029,7 @@ const SellerDashboard = ({ session }) => {
       setShowRepairReviewModal(true);
     } catch (error) {
       console.error("Error checking repair review:", error);
-      alert(`Unable to check the repair review: ${error.message}`);
+      showAppAlert(`Unable to check the repair review: ${error.message}`);
     }
   };
 
@@ -2020,18 +2038,18 @@ const SellerDashboard = ({ session }) => {
       if (blockIfReadOnly("place bids or send messages")) return;
 
       if (!selectedListing) {
-        alert("Please select a listing first.");
+        showAppAlert("Please select a listing first.");
         return;
       }
 
       if (isListingHazardous(selectedListing) || selectedListing?.is_hazardous === true) {
-        alert("This listing is hazardous. Bidding is disabled. The only available actions are Donate or Unlist.");
+        showAppAlert("This listing is hazardous. Bidding is disabled. The only available actions are Donate or Unlist.");
         setSelectedListing(null);
         return;
       }
 
       if (!bidAmount || Number(bidAmount) <= 0) {
-        alert("Please enter a valid offer amount.");
+        showAppAlert("Please enter a valid offer amount.");
         return;
       }
 
@@ -2041,12 +2059,12 @@ const SellerDashboard = ({ session }) => {
       );
 
       if (offerAmount > askingPrice) {
-        alert("Your offer cannot be higher than the asking price.");
+        showAppAlert("Your offer cannot be higher than the asking price.");
         return;
       }
 
       if (selectedListing.seller_id === session.user.id) {
-        alert("You cannot place an offer on your own listing.");
+        showAppAlert("You cannot place an offer on your own listing.");
         return;
       }
 
@@ -2055,14 +2073,14 @@ const SellerDashboard = ({ session }) => {
       const bidMessageViolation = containsRestrictedContent(bidMessage);
 
       if (bidMessageViolation.blocked) {
-        alert(bidMessageViolation.message);
+        showAppAlert(bidMessageViolation.message);
         return;
       }
 
       if (
         selectedListing.status?.toLowerCase() !== "active"
       ) {
-        alert("This listing is no longer active.");
+        showAppAlert("This listing is no longer active.");
         return;
       }
 
@@ -2173,14 +2191,14 @@ const SellerDashboard = ({ session }) => {
       setBidAmount("");
       setBidMessage("");
 
-      alert("Offer sent successfully!");
+      showAppAlert("Offer sent successfully!");
 
       // Close modal
       setSelectedListing(null);
     } catch (error) {
       console.error("Error placing offer:", error);
 
-      alert(
+      showAppAlert(
         `Failed to send offer: ${error.message}`
       );
     } finally {
@@ -2576,24 +2594,24 @@ const SellerDashboard = ({ session }) => {
       const txToComplete = transactions.find((t) => t.id === txId);
 
       if (!txToComplete) {
-        alert("Transaction not found.");
+        showAppAlert("Transaction not found.");
         return;
       }
 
       if (txToComplete.repair_appointment_id) {
-        alert(
+        showAppAlert(
           "This is a repair service. The repair shop will mark the service as completed."
         );
         return;
       }
 
       if (txToComplete.harvester_id !== session.user.id) {
-        alert("Only the buyer can confirm the handover.");
+        showAppAlert("Only the buyer can confirm the handover.");
         return;
       }
 
       if (txToComplete.status !== "meetup_scheduled") {
-        alert(
+        showAppAlert(
           "The meetup must be scheduled before the handover can be completed."
         );
         return;
@@ -2601,12 +2619,12 @@ const SellerDashboard = ({ session }) => {
 
       // Required transaction-coordination data must exist before completion.
       if (!String(txToComplete.meetup_date || "").trim()) {
-        alert("This transaction has no meetup date. Please ask the seller to schedule it.");
+        showAppAlert("This transaction has no meetup date. Please ask the seller to schedule it.");
         return;
       }
 
       if (!String(txToComplete.meetup_time || "").trim()) {
-        alert("This transaction has no meetup time. Please ask the seller to schedule it.");
+        showAppAlert("This transaction has no meetup time. Please ask the seller to schedule it.");
         return;
       }
 
@@ -2616,7 +2634,7 @@ const SellerDashboard = ({ session }) => {
           txToComplete.meeting_location || txToComplete.barangay || ""
         ).trim()
       ) {
-        alert(
+        showAppAlert(
           "This transaction has no meeting location. Please ask the seller to schedule it."
         );
         return;
@@ -2677,10 +2695,10 @@ const SellerDashboard = ({ session }) => {
         ]);
       }
 
-      alert("Handover confirmed. Transaction completed!");
+      showAppAlert("Handover confirmed. Transaction completed!");
     } catch (err) {
       console.error("Error completing transaction:", err);
-      alert("Failed to complete transaction: " + err.message);
+      showAppAlert("Failed to complete transaction: " + err.message);
     }
   };
 
@@ -2691,12 +2709,12 @@ const SellerDashboard = ({ session }) => {
       const txToCancel = transactions.find((t) => t.id === txId);
 
       if (!txToCancel) {
-        alert("Transaction not found.");
+        showAppAlert("Transaction not found.");
         return;
       }
 
       if (txToCancel.seller_id !== session.user.id) {
-        alert("Only the seller can cancel this transaction.");
+        showAppAlert("Only the seller can cancel this transaction.");
         return;
       }
 
@@ -2707,7 +2725,7 @@ const SellerDashboard = ({ session }) => {
       // Once a meetup is scheduled, the transaction must proceed to handover,
       // completion, or automatic Pending Review instead.
       if (!cancelableStatuses.includes(currentCancelStatus)) {
-        alert(
+        showAppAlert(
           currentCancelStatus === "meetup_scheduled"
             ? "This transaction cannot be cancelled because the meetup has already been scheduled."
             : currentCancelStatus === "pending_review"
@@ -2719,7 +2737,7 @@ const SellerDashboard = ({ session }) => {
 
       const reason = String(cancelReason || "").trim();
       if (!reason) {
-        alert(
+        showAppAlert(
           "Please select a cancellation reason before updating the transaction."
         );
         return;
@@ -2790,10 +2808,10 @@ const SellerDashboard = ({ session }) => {
 
       setShowCancelModal(false);
       setCancelReason("");
-      alert("Transaction cancelled successfully.");
+      showAppAlert("Transaction cancelled successfully.");
     } catch (err) {
       console.error("Error cancelling:", err);
-      alert(`Failed to cancel: ${err.message}`);
+      showAppAlert(`Failed to cancel: ${err.message}`);
     }
   };
 
@@ -2864,7 +2882,7 @@ const SellerDashboard = ({ session }) => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     } catch (error) {
       console.error("Delete notification error:", error);
-      alert(`Failed to delete notification: ${error.message}`);
+      showAppAlert(`Failed to delete notification: ${error.message}`);
     }
   };
 
@@ -2911,7 +2929,7 @@ const SellerDashboard = ({ session }) => {
         );
       }
 
-      alert(`Failed to mark notifications as read: ${error.message}`);
+      showAppAlert(`Failed to mark notifications as read: ${error.message}`);
     }
   };
 
@@ -2938,7 +2956,7 @@ const SellerDashboard = ({ session }) => {
       // Restore the previous state if the database operation failed.
       setNotifications(previousNotifications);
       setDonationReminder(previousDonationReminder);
-      alert(`Failed to clear notifications: ${error.message}`);
+      showAppAlert(`Failed to clear notifications: ${error.message}`);
     }
   };
   {
@@ -3181,10 +3199,10 @@ const SellerDashboard = ({ session }) => {
         await fetchNotifications();
       }
 
-      alert("Bid accepted! Both parties have been notified and the listing is now Matched.");
+      showAppAlert("Bid accepted! Both parties have been notified and the listing is now Matched.");
     } catch (error) {
       console.error("Error in bid acceptance:", error);
-      alert(`Error: ${error.message}`);
+      showAppAlert(`Error: ${error.message}`);
     }
   };
 
@@ -3220,7 +3238,7 @@ const SellerDashboard = ({ session }) => {
       );
     } catch (err) {
       console.error("Error declining bid:", err);
-      alert(`Failed to decline bid: ${err.message}`);
+      showAppAlert(`Failed to decline bid: ${err.message}`);
     }
   };
 
@@ -3407,7 +3425,7 @@ const SellerDashboard = ({ session }) => {
       console.log("ROLE CHECK DEBUG:", data, error); // 👈 ADD THIS
 
       if (error || !data) {
-        alert("Profile not found in database.");
+        showAppAlert("Profile not found in database.");
         await supabase.auth.signOut();
         return;
       }
@@ -3415,7 +3433,7 @@ const SellerDashboard = ({ session }) => {
       const dbRole = data.role?.toLowerCase().trim();
       if (!["harvester"].includes(dbRole)) {
         console.error("Role Mismatch. Found:", dbRole);
-        alert(`Access Denied: Your account is registered as a ${dbRole}.`);
+        showAppAlert(`Access Denied: Your account is registered as a ${dbRole}.`);
         await supabase.auth.signOut();
         return;
       }
@@ -4104,8 +4122,8 @@ const SellerDashboard = ({ session }) => {
 
   const handleSaveProfile = async (event) => {
     event?.preventDefault?.();
-    if (!session?.user?.id) return alert("Please log in again.");
-    if (!editProfile.full_name.trim()) return alert("Please enter your full name.");
+    if (!session?.user?.id) return showAppAlert("Please log in again.");
+    if (!editProfile.full_name.trim()) return showAppAlert("Please enter your full name.");
     setProfileSaving(true);
     try {
       const updates = {
@@ -4136,26 +4154,26 @@ const SellerDashboard = ({ session }) => {
       setProfileData(data);
       setUser((prev) => prev ? { ...prev, ...data, displayName: data.full_name } : data);
       setShowEditProfile(false);
-      alert("Profile updated successfully.");
+      showAppAlert("Profile updated successfully.");
     } catch (error) {
       console.error("Profile update failed:", error);
-      alert(`Could not update profile: ${error.message}`);
+      showAppAlert(`Could not update profile: ${error.message}`);
     } finally {
       setProfileSaving(false);
     }
   };
 
   const handleDeactivateAccount = async () => {
-    if (!window.confirm("Deactivate your account? You will be signed out. Contact support to reactivate it.")) return;
+    if (!(await showAppConfirm("Deactivate your account? You will be signed out. Contact support to reactivate it."))) return;
     try {
       const { error } = await supabase.from("profiles")
         .update({ status: "deactivated" }).eq("id", session.user.id);
       if (error) throw error;
       await supabase.auth.signOut();
-      alert("Your account has been deactivated.");
+      showAppAlert("Your account has been deactivated.");
     } catch (error) {
       console.error("Account deactivation failed:", error);
-      alert(`Could not deactivate account: ${error.message}`);
+      showAppAlert(`Could not deactivate account: ${error.message}`);
     }
   };
 
@@ -4193,7 +4211,7 @@ const SellerDashboard = ({ session }) => {
       // SELLER VALID ID
       if (profileData?.role === "harvester") {
         if (!verificationFiles.businessPermit) {
-          alert("Please upload your valid ID.");
+          showAppAlert("Please upload your valid ID.");
           return;
         }
 
@@ -4221,7 +4239,7 @@ const SellerDashboard = ({ session }) => {
       // HARVESTER FILES
       if (profileData?.role === "harvester") {
         if (!verificationFiles.businessPermit || !verificationFiles.techCert) {
-          alert("Please upload all required files.");
+          showAppAlert("Please upload all required files.");
           return;
         }
 
@@ -4284,12 +4302,12 @@ const SellerDashboard = ({ session }) => {
 
       setIsVerificationModalOpen(false);
 
-      alert(
+      showAppAlert(
         "Documents updated successfully. Your account is now pending verification again.",
       );
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      showAppAlert(err.message);
     } finally {
       setVerificationLoading(false);
     }
@@ -5018,11 +5036,11 @@ const SellerDashboard = ({ session }) => {
 
             const openNewListing = () => {
               if (profileData?.verification_status !== "verified") {
-                alert("Your account is still pending admin verification. You cannot create listings yet.");
+                showAppAlert("Your account is still pending admin verification. You cannot create listings yet.");
                 return;
               }
               if (!hasTrustPrivilege(["basic listings", "listings"])) {
-                alert(`This action is restricted to your current trust tier (${getTrustTierLabel(currentTrustTier.name)}). Requirements and available privileges are shown in your Trust Tier section.`);
+                showAppAlert(`This action is restricted to your current trust tier (${getTrustTierLabel(currentTrustTier.name)}). Requirements and available privileges are shown in your Trust Tier section.`);
                 return;
               }
               setIsModalOpen(true);
@@ -5897,8 +5915,8 @@ const SellerDashboard = ({ session }) => {
                 <h3 className="text-sm font-bold text-slate-700">Account actions</h3>
                 <p className="text-xs text-slate-500">Deactivate to disable your account, or request permanent deletion.</p>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <button type="button" onClick={() => { if (window.confirm("Are you sure you want to deactivate your account? You will be signed out.")) { setShowEditProfile(false); handleDeactivateAccount(); } }} className="flex-1 border border-amber-300 text-amber-800 hover:bg-amber-50 rounded-xl py-2.5 text-sm font-bold">Deactivate account</button>
-                  <button type="button" onClick={() => alert("Permanent account deletion is not available here yet. It must be implemented securely using a Supabase Edge Function and the Admin API.")} className="flex-1 border border-red-300 text-red-700 hover:bg-red-50 rounded-xl py-2.5 text-sm font-bold">Delete account</button>
+                  <button type="button" onClick={() => { if (await showAppConfirm("Are you sure you want to deactivate your account? You will be signed out.")) { setShowEditProfile(false); handleDeactivateAccount(); } }} className="flex-1 border border-amber-300 text-amber-800 hover:bg-amber-50 rounded-xl py-2.5 text-sm font-bold">Deactivate account</button>
+                  <button type="button" onClick={() => showAppAlert("Permanent account deletion is not available here yet. It must be implemented securely using a Supabase Edge Function and the Admin API.")} className="flex-1 border border-red-300 text-red-700 hover:bg-red-50 rounded-xl py-2.5 text-sm font-bold">Delete account</button>
                 </div>
               </div> */}
             </form>
@@ -6976,6 +6994,40 @@ const SellerDashboard = ({ session }) => {
                 </div>
               </div>
             )}
+      {appPopup && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/55 backdrop-blur-sm p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && appPopup.type !== "confirm") setAppPopup(null); }}>
+          <div role="alertdialog" aria-modal="true" aria-labelledby="app-popup-title" aria-describedby="app-popup-message" className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+            {(() => {
+              const message = String(appPopup.message || "");
+              const lower = message.toLowerCase();
+              const isSuccess = /success|successfully|completed|updated successfully|deactivated/.test(lower);
+              const isError = /failed|unable|could not|cannot|can't|error|missing|invalid|not eligible|not available|denied/.test(lower);
+              const isWarning = /please|cannot|can't|not allowed|only after|already|refresh|deactivate|cancel|hazardous|pending verification/.test(lower);
+              const kind = appPopup.type === "confirm" ? "confirm" : isSuccess ? "success" : isError ? "error" : isWarning ? "warning" : "info";
+              const iconClass = kind === "success" ? "bg-emerald-100 text-emerald-700" : kind === "error" ? "bg-rose-100 text-rose-700" : kind === "warning" || kind === "confirm" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700";
+              const title = kind === "confirm" ? "Please confirm" : kind === "success" ? "Success" : kind === "error" ? "Something went wrong" : kind === "warning" ? "Please check" : "Notice";
+              return (
+                <>
+                  <div className="flex items-start gap-4 p-6 pb-4">
+                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconClass}`}>
+                      {kind === "success" ? <CheckCircle2 size={25} /> : kind === "error" ? <XCircle size={25} /> : kind === "warning" || kind === "confirm" ? <AlertCircle size={25} /> : <Bell size={25} />}
+                    </div>
+                    <div className="min-w-0 flex-1 pt-1">
+                      <h2 id="app-popup-title" className="text-lg font-extrabold text-slate-900">{title}</h2>
+                      <p id="app-popup-message" className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-600">{message}</p>
+                    </div>
+                    {appPopup.type !== "confirm" && <button type="button" aria-label="Close popup" onClick={() => setAppPopup(null)} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>}
+                  </div>
+                  <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/80 px-6 py-4">
+                    {appPopup.type === "confirm" && <button type="button" onClick={() => { const resolve = appPopup.resolve; setAppPopup(null); resolve?.(false); }} className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100">Cancel</button>}
+                    <button type="button" autoFocus onClick={() => { const resolve = appPopup.resolve; setAppPopup(null); if (appPopup.type === "confirm") resolve?.(true); }} className="rounded-xl bg-[#287f95] px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#206b7e] focus:outline-none focus:ring-4 focus:ring-cyan-100">{appPopup.type === "confirm" ? "Confirm" : "Okay"}</button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -7109,7 +7161,7 @@ const CancelTransactionModal = ({
             onClick={() => {
               console.log("Cancel button clicked"); // Debugging line
               if (!cancelReason) {
-                alert("Please select a reason for cancellation.");
+                showAppAlert("Please select a reason for cancellation.");
                 return;
               }
               onConfirm(transaction.id);
