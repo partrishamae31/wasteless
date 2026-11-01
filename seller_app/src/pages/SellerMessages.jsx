@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { containsRestrictedContent } from "../utils/restrictedContentFilter";
 import { recordTransactionStatusHistory } from "../utils/transactionHistory";
@@ -15,6 +15,7 @@ import {
   Clock,
   Navigation,
   Star,
+  MessageSquare,
 } from "lucide-react";
 
 const SellerMessages = ({ userId, onTabChange }) => {
@@ -23,6 +24,19 @@ const SellerMessages = ({ userId, onTabChange }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [repairAppointments, setRepairAppointments] = useState([]);
+  const [searchText, setSearchText] = useState("");
+  const chatMessagesRef = useRef(null);
+
+  // Keep the latest message visible while the chat body scrolls on its own.
+  useEffect(() => {
+    if (!activeChat) return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = chatMessagesRef.current;
+      if (!container) return;
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeChat?.conversation_key, messages.length, repairAppointments.length]);
 
   const [acceptedBidAmount, setAcceptedBidAmount] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,6 +51,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
 
   const [dropOffPoints, setDropOffPoints] = useState([]);
   const [activeTransaction, setActiveTransaction] = useState(null);
+  const [activeTransactions, setActiveTransactions] = useState([]);
   const [transactionHistory, setTransactionHistory] = useState([]);
   const [error, setError] = useState("");
   const [showNewMessage, setShowNewMessage] = useState(false);
@@ -616,7 +631,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [userId, activeChat?.listing_id, activeTransaction?.id]);
+  }, [userId, activeChat?.other_party_id, activeTransaction?.id]);
 
   // ============================================================
   // FETCH DROP-OFF POINTS
@@ -658,25 +673,24 @@ const SellerMessages = ({ userId, onTabChange }) => {
   // ============================================================
 
   const fetchActiveTransaction = async () => {
-    // Marketplace conversations use transactions regardless of
-    // whether the accepted bidder is a normal harvester or a Repair Shop.
-    // Only true repair-service chats (no listing_id) skip transactions.
-    if (
-      !activeChat ||
-      !userId ||
-      !activeChat.listing_id
-    ) {
+    // One chat per person: load every active marketplace transaction
+    // between the signed-in user and the other party, whatever the listing.
+    if (!activeChat || !userId || !activeChat.other_party_id) {
       setActiveTransaction(null);
+      setActiveTransactions([]);
+      setTransactionHistory([]);
       return null;
     }
+
+    const otherId = activeChat.other_party_id;
 
     const { data, error } = await supabase
       .from("transactions")
       .select("*")
-      .eq("listing_id", activeChat.listing_id)
       .or(
-        `seller_id.eq.${userId},harvester_id.eq.${userId}`
+        `and(seller_id.eq.${userId},harvester_id.eq.${otherId}),and(seller_id.eq.${otherId},harvester_id.eq.${userId})`
       )
+      .not("listing_id", "is", null)
       .in("status", [
         "pending",
         "matched",
@@ -685,32 +699,39 @@ const SellerMessages = ({ userId, onTabChange }) => {
       ])
       .order("created_at", {
         ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
+      });
 
     if (error) {
       console.error(
-        "Error fetching active transaction:",
+        "Error fetching active transactions:",
         error.message
       );
 
       setActiveTransaction(null);
+      setActiveTransactions([]);
       return null;
     }
 
-    setActiveTransaction(data || null);
+    const list = data || [];
+    setActiveTransactions(list);
 
-    if (data) {
-      setAcceptedBidAmount(
-        Number(data.amount || 0)
-      );
-      await fetchTransactionHistory(data.id);
+    // The "selected" transaction is the one whose listing is the
+    // current context (used by the meetup modal), else the newest.
+    const selected =
+      list.find((tx) => tx.listing_id === activeChat.listing_id) ||
+      list[0] ||
+      null;
+
+    setActiveTransaction(selected);
+
+    if (selected) {
+      setAcceptedBidAmount(Number(selected.amount || 0));
+      await fetchTransactionHistory(selected.id);
     } else {
       setTransactionHistory([]);
     }
 
-    return data || null;
+    return selected;
   };
 
   const fetchAcceptedBidAmount = async () => {
@@ -726,12 +747,13 @@ const SellerMessages = ({ userId, onTabChange }) => {
   useEffect(() => {
     if (!activeChat) {
       setActiveTransaction(null);
+      setActiveTransactions([]);
       setTransactionHistory([]);
       return;
     }
 
     fetchActiveTransaction();
-  }, [activeChat, userId]);
+  }, [activeChat?.other_party_id, userId]);
 
   // ============================================================
   // FETCH ACTIVE CHAT
@@ -744,9 +766,10 @@ const SellerMessages = ({ userId, onTabChange }) => {
       return;
     }
 
-    // Only a Repair Shop chat without listing_id is a repair-service chat.
-    // A Repair Shop with listing_id is a marketplace transaction chat.
-    const isRepairShop = isRepairShopChat(activeChat);
+    // One chat per person: messages are loaded by participants only
+    // (every listing), and repair appointments are loaded whenever the
+    // other party is a repair shop.
+    const isRepairShop = activeChat.other_party_role_type === "repair_shop";
 
     const fetchChatData = async () => {
       // --------------------------------------------------------
@@ -755,30 +778,14 @@ const SellerMessages = ({ userId, onTabChange }) => {
 
       let messageQuery = supabase
         .from("messages")
-        .select("*")
+        .select("*, listings ( device_model )")
         .order("created_at", {
           ascending: true,
         });
 
-      if (isRepairShop) {
-        // Repair Shop chats are based on participants.
-        // They DO NOT depend on listing_id.
-        messageQuery = messageQuery.or(
-          `and(sender_id.eq.${userId},receiver_id.eq.${activeChat.other_party_id}),and(sender_id.eq.${activeChat.other_party_id},receiver_id.eq.${userId})`
-        );
-      } else {
-        // Marketplace chats use both:
-        // 1. listing_id
-        // 2. participants
-        messageQuery = messageQuery
-          .eq(
-            "listing_id",
-            activeChat.listing_id
-          )
-          .or(
-            `and(sender_id.eq.${userId},receiver_id.eq.${activeChat.other_party_id}),and(sender_id.eq.${activeChat.other_party_id},receiver_id.eq.${userId})`
-          );
-      }
+      messageQuery = messageQuery.or(
+        `and(sender_id.eq.${userId},receiver_id.eq.${activeChat.other_party_id}),and(sender_id.eq.${activeChat.other_party_id},receiver_id.eq.${userId})`
+      );
 
       const {
         data: messageData,
@@ -877,7 +884,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
 
     const channel = supabase
       .channel(
-        `chat-${userId}-${activeChat.other_party_id}-${activeChat.listing_id || "repair"}`
+        `chat-${userId}-${activeChat.other_party_id}`
       )
 
       // --------------------------------------------------------
@@ -903,24 +910,6 @@ const SellerMessages = ({ userId, onTabChange }) => {
               msg.receiver_id === userId);
 
           if (!belongsToChat) return;
-
-          // Marketplace chat must match listing.
-          if (
-            !isRepairShop &&
-            msg.listing_id !==
-              activeChat.listing_id
-          ) {
-            return;
-          }
-
-          // Repair Shop chat should not accidentally
-          // receive marketplace messages.
-          if (
-            isRepairShop &&
-            msg.listing_id
-          ) {
-            return;
-          }
 
           setMessages((prev) => {
             if (
@@ -951,8 +940,6 @@ const SellerMessages = ({ userId, onTabChange }) => {
             (updated.sender_id === userId && updated.receiver_id === activeChat.other_party_id) ||
             (updated.sender_id === activeChat.other_party_id && updated.receiver_id === userId);
           if (!belongsToChat) return;
-          if (!isRepairShop && updated.listing_id !== activeChat.listing_id) return;
-          if (isRepairShop && updated.listing_id) return;
           setMessages((prev) =>
             prev.map((item) => item.id === updated.id ? { ...item, ...updated } : item)
           );
@@ -1068,7 +1055,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
         channel
       );
     };
-  }, [activeChat, userId]);
+  }, [activeChat?.other_party_id, userId]);
 
   // ============================================================
   // NEW MESSAGE / RECIPIENT SEARCH
@@ -1583,6 +1570,56 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
   // RENDER
   // ============================================================
 
+  const filteredConversations = conversations.filter((conv) =>
+    String(conv.other_party_name || "Unknown User")
+      .toLowerCase()
+      .includes(searchText.toLowerCase())
+  );
+
+  // One sidebar row per person. Each person's separate marketplace
+  // transactions and repair-service chat stay available as "threads"
+  // that are switched from the chat header, so the list isn't flooded
+  // with the same user once per transaction.
+  const groupedConversations = (() => {
+    const groups = new Map();
+    filteredConversations.forEach((conv) => {
+      const id = conv.other_party_id;
+      if (!groups.has(id)) {
+        groups.set(id, { other_party_id: id, latest: conv, threads: [] });
+      }
+      groups.get(id).threads.push(conv);
+    });
+    return [...groups.values()];
+  })();
+
+  const getListingModel = (listingId, fallback) =>
+    fallback ||
+    conversations.find((c) => c.listing_id === listingId)?.listings
+      ?.device_model ||
+    "Item";
+
+  // Opens the meetup form for one specific transaction with this person.
+  const openMeetupFor = (tx) => {
+    if (!canSendMessages) return;
+    setActiveTransaction(tx);
+    setAcceptedBidAmount(Number(tx.amount || 0));
+    setActiveChat((prev) =>
+      prev
+        ? {
+            ...prev,
+            listing_id: tx.listing_id,
+            listings: { device_model: getListingModel(tx.listing_id) },
+          }
+        : prev
+    );
+    setIsModalOpen(true);
+  };
+
+  const getThreadLabel = (conv) =>
+    conv.listing_id
+      ? `Re: ${conv.listings?.device_model || "Item"}`
+      : `Repair: ${conv.repair_device_model || "Appointment"}`;
+
   return (
     <>
       {showNewMessage && (
@@ -1615,18 +1652,18 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
         </div>
       )}
 
-      <div className="flex h-[600px] bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden font-sans">
+      <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border border-white overflow-hidden h-[calc(100vh-12rem)] min-h-[600px] max-h-[850px] font-sans">
 
       {/* ======================================================
           SIDEBAR
       ======================================================= */}
 
-      <div className="w-80 border-r border-slate-50 flex flex-col">
+      <div className="col-span-4 min-h-0 border-r border-slate-50 flex flex-col">
 
-        <div className="p-6 border-b border-slate-50">
-          <h3 className="font-bold text-slate-800 mb-4">
+        <div className="p-6 pb-4 shrink-0">
+          <h2 className="text-xl font-black text-slate-800 mb-4">
             Messages
-          </h3>
+          </h2>
 
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs text-slate-400">Message any eligible user</span>
@@ -1649,46 +1686,51 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
             <input
               type="text"
-              placeholder="Search..."
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-xs outline-none"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search conversations..."
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none"
             />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-6">
 
-          {conversations.length === 0 ? (
+          {filteredConversations.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-xs text-slate-400">
-                No conversations yet.
+                {conversations.length === 0
+                  ? "No conversations yet."
+                  : "No matching conversations."}
               </p>
             </div>
           ) : (
-            conversations.map((conv) => {
+            groupedConversations.map((group) => {
+
+              const conv = group.latest;
 
               const isActive =
-                activeChat?.conversation_key ===
-                conv.conversation_key;
+                activeChat?.other_party_id ===
+                conv.other_party_id;
 
               const isRepairShop =
                 conv.other_party_role_type ===
                 "repair_shop";
-              const isMarketplaceChat =
-                Boolean(conv.listing_id);
 
               return (
                 <div
                   key={
-                    conv.conversation_key
+                    group.other_party_id
                   }
-                  onClick={() =>
+                  onClick={() => {
+                    if (isActive) return;
                     handleSelectConversation(
                       conv
-                    )
-                  }
-                  className={`p-4 cursor-pointer transition-all ${
+                    );
+                  }}
+                  className={`p-4 border-b border-slate-100 cursor-pointer rounded-2xl transition-all ${
                     isActive
-                      ? "bg-teal-50 border-l-4 border-[#2d7a7f]"
+                      ? "bg-slate-100"
                       : "hover:bg-slate-50"
                   }`}
                 >
@@ -1740,18 +1782,28 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     </span>
                   </div>
 
-                  <p className="text-xs text-teal-600 font-bold mb-1">
+                  <p className="text-xs text-teal-600 font-bold mb-1 flex items-center gap-2">
 
-                    {isMarketplaceChat
-                      ? `Re: ${
-                          conv.listings
-                            ?.device_model ||
-                          "Item"
-                        }`
-                      : `Repair: ${
-                          conv.repair_device_model ||
-                          "Appointment"
-                        }`}
+                    <span className="truncate">
+                      {(() => {
+                        const marketCount = group.threads.filter(
+                          (t) => t.listing_id
+                        ).length;
+                        const hasRepair = group.threads.some(
+                          (t) => !t.listing_id &&
+                            t.other_party_role_type === "repair_shop"
+                        );
+                        if (group.threads.length <= 1) return getThreadLabel(conv);
+                        return [
+                          marketCount > 0
+                            ? `${marketCount} transaction${marketCount > 1 ? "s" : ""}`
+                            : null,
+                          hasRepair ? "Repair" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ");
+                      })()}
+                    </span>
 
                   </p>
 
@@ -1772,7 +1824,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
           MAIN CHAT
       ======================================================= */}
 
-      <div className="flex-1 flex flex-col">
+      <div className="col-span-8 min-w-0 min-h-0 flex flex-col overflow-hidden bg-slate-50/30">
 
         {activeChat ? (
           <>
@@ -1781,7 +1833,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                 CHAT HEADER
             =================================================== */}
 
-            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+            <div className="shrink-0 p-6 bg-white border-b border-slate-100 flex justify-between items-center">
 
               <div className="flex items-center gap-3">
 
@@ -1813,11 +1865,9 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                   </div>
 
                   <p className="text-xs text-slate-400">
-                    {activeChat.listing_id
-                      ? "Marketplace Conversation"
-                      : activeChat.other_party_role_type ===
-                        "repair_shop"
-                      ? "Repair Service Conversation"
+                    {activeChat.other_party_role_type ===
+                    "repair_shop"
+                      ? "Repair Shop Conversation"
                       : "Marketplace Conversation"}
                   </p>
 
@@ -1843,244 +1893,104 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                 </div>
               </div>
 
-              {/* ------------------------------------------------
-                  MARKETPLACE MEETUP BUTTON
-              ------------------------------------------------- */}
-
-              {activeTransaction?.seller_id ===
-                  userId &&
-                ["pending", "matched"].includes(
-                  normalizeTransactionStatus(activeTransaction?.status)
-                ) && (
-                  <button
-                    disabled={!canSendMessages}
-                    title={!canSendMessages ? "View-only: your account is pending verification" : undefined}
-                    onClick={async () => {
-                      if (!canSendMessages) return;
-                      await fetchAcceptedBidAmount();
-                      setIsModalOpen(true);
-                    }}
-                    className="flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-xs font-bold disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
-                  >
-                    <Calendar size={14} />
-                    {canSendMessages ? "Schedule Meetup" : "Schedule Meetup (View-only)"}
-                  </button>
-                )}
-
-              {activeTransaction?.harvester_id ===
-                  userId &&
-                normalizeTransactionStatus(activeTransaction?.status) ===
-                  "meetup_scheduled" && (
-                  <span className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl text-xs font-bold border border-emerald-100">
-                    <CheckCheck size={14} />
-                    Meetup Scheduled
-                  </span>
-                )}
-
             </div>
+
+            <div className="flex min-h-0 flex-1">
+            <section className="flex min-w-0 min-h-0 flex-1 flex-col">
 
             {/* ==================================================
                 CHAT CONTENT
             =================================================== */}
 
-            <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/30">
+            <div ref={chatMessagesRef} className="min-h-0 flex-1 p-6 md:p-8 overflow-y-auto overscroll-contain space-y-5 scroll-smooth">
 
               {/* ------------------------------------------------
-                  MARKETPLACE ITEM INFO
+                  TRANSACTION COORDINATION (one card per transaction)
               ------------------------------------------------- */}
 
-              {activeChat.listing_id &&
-                activeChat.listings?.device_model && (
-                  <div className="bg-white border border-emerald-100 rounded-2xl p-4">
-                    <p className="text-xs uppercase tracking-wider font-bold text-emerald-600">
-                      Marketplace Item
-                    </p>
-
-                    <p className="text-xs font-bold text-slate-700 mt-1">
-                      {
-                        activeChat.listings
-                          .device_model
-                      }
-                    </p>
-                  </div>
-                )}
-
-              {/* ------------------------------------------------
-                  MARKETPLACE TRANSACTION COORDINATION
-              ------------------------------------------------- */}
-
-              {activeChat.listing_id && activeTransaction && (
-                <div className={`bg-white rounded-2xl p-5 shadow-sm border ${
-                  normalizeTransactionStatus(activeTransaction.status) === "cancelled"
+              {activeTransactions.map((tx) => (
+                <React.Fragment key={tx.id}>
+                  <div className={`bg-white rounded-2xl p-5 shadow-sm border ${
+                  normalizeTransactionStatus(tx.status) === "cancelled"
                     ? "border-red-200 bg-red-50/40"
-                    : normalizeTransactionStatus(activeTransaction.status) === "completed"
+                    : normalizeTransactionStatus(tx.status) === "completed"
                     ? "border-emerald-200 bg-emerald-50/30"
                     : "border-teal-100"
                 }`}>
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-2"><Calendar size={16} className="text-[#2d7a7f]" /><span className="text-xs font-bold text-slate-700">Transaction Coordination</span></div>
-                    <span className={`text-xs px-2 py-1 rounded-full font-bold ${normalizeTransactionStatus(activeTransaction.status) === "cancelled" ? "bg-red-100 text-red-700" : normalizeTransactionStatus(activeTransaction.status) === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-teal-50 text-teal-700"}`}>{formatTransactionStatus(activeTransaction.status)}</span>
+                    <div className="flex items-center gap-2"><Calendar size={16} className="text-[#2d7a7f]" /><span className="text-xs font-bold text-slate-700">Transaction Coordination · {getListingModel(tx.listing_id)}</span></div>
+                    <span className={`text-xs px-2 py-1 rounded-full font-bold ${normalizeTransactionStatus(tx.status) === "cancelled" ? "bg-red-100 text-red-700" : normalizeTransactionStatus(tx.status) === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-teal-50 text-teal-700"}`}>{formatTransactionStatus(tx.status)}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
-                    <p><span className="font-bold">Amount:</span> ₱{Number(activeTransaction.amount || 0).toLocaleString()}</p>
-                    {activeTransaction.meetup_date && <p className="flex items-center gap-2"><Calendar size={13} />{formatDate(activeTransaction.meetup_date)}</p>}
-                    {activeTransaction.meetup_time && <p className="flex items-center gap-2"><Clock size={13} />{formatMeetupTime(activeTransaction.meetup_time)}</p>}
-                    {activeTransaction.barangay && <p className="flex items-center gap-2"><MapPin size={13} />{activeTransaction.barangay}</p>}
+                    <p><span className="font-bold">Amount:</span> ₱{Number(tx.amount || 0).toLocaleString()}</p>
+                    {tx.meetup_date && <p className="flex items-center gap-2"><Calendar size={13} />{formatDate(tx.meetup_date)}</p>}
+                    {tx.meetup_time && <p className="flex items-center gap-2"><Clock size={13} />{formatMeetupTime(tx.meetup_time)}</p>}
+                    {tx.barangay && <p className="flex items-center gap-2"><MapPin size={13} />{tx.barangay}</p>}
                   </div>
-                  {activeTransaction.cancel_reason && <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-100 text-xs text-red-700"><span className="font-bold">Cancellation reason:</span> {activeTransaction.cancel_reason}</div>}
-                  {transactionHistory.length > 0 && <div className="mt-4 pt-4 border-t border-slate-100"><p className="text-xs font-bold text-slate-600 mb-3">Transaction History</p><div className="space-y-2 max-h-48 overflow-y-auto">{transactionHistory.map((entry) => <div key={entry.id} className="flex items-start justify-between gap-3 text-xs"><div><p className="font-semibold text-slate-600">{entry.old_status ? `${formatTransactionStatus(entry.old_status)} → ` : ""}{formatTransactionStatus(entry.new_status)}</p>{(entry.meetup_date || entry.meetup_time || entry.meeting_location) && <p className="text-slate-400 mt-1">{[entry.meetup_date ? formatDate(entry.meetup_date) : null, entry.meetup_time ? formatMeetupTime(entry.meetup_time) : null, entry.meeting_location || null].filter(Boolean).join(" • ")}</p>}</div><span className="text-slate-400 whitespace-nowrap">{formatDate(entry.changed_at)}</span></div>)}</div></div>}
+                  {tx.seller_id === userId && ["pending", "matched"].includes(normalizeTransactionStatus(tx.status)) && (
+                    <button
+                      type="button"
+                      disabled={!canSendMessages}
+                      title={!canSendMessages ? "View-only: your account is pending verification" : undefined}
+                      onClick={() => openMeetupFor(tx)}
+                      className="mt-4 flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-xs font-bold disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                    >
+                      <Calendar size={14} />
+                      {canSendMessages ? "Schedule Meetup" : "Schedule Meetup (View-only)"}
+                    </button>
+                  )}
+                  {tx.harvester_id === userId && normalizeTransactionStatus(tx.status) === "meetup_scheduled" && (
+                    <span className="mt-4 inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl text-xs font-bold border border-emerald-100">
+                      <CheckCheck size={14} />
+                      Meetup Scheduled
+                    </span>
+                  )}
+                  {tx.cancel_reason && <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-100 text-xs text-red-700"><span className="font-bold">Cancellation reason:</span> {tx.cancel_reason}</div>}
+                  {tx.id === activeTransaction?.id && transactionHistory.length > 0 && <div className="mt-4 pt-4 border-t border-slate-100"><p className="text-xs font-bold text-slate-600 mb-3">Transaction History</p><div className="space-y-2 max-h-48 overflow-y-auto">{transactionHistory.map((entry) => <div key={entry.id} className="flex items-start justify-between gap-3 text-xs"><div><p className="font-semibold text-slate-600">{entry.old_status ? `${formatTransactionStatus(entry.old_status)} → ` : ""}{formatTransactionStatus(entry.new_status)}</p>{(entry.meetup_date || entry.meetup_time || entry.meeting_location) && <p className="text-slate-400 mt-1">{[entry.meetup_date ? formatDate(entry.meetup_date) : null, entry.meetup_time ? formatMeetupTime(entry.meetup_time) : null, entry.meeting_location || null].filter(Boolean).join(" • ")}</p>}</div><span className="text-slate-400 whitespace-nowrap">{formatDate(entry.changed_at)}</span></div>)}</div></div>}
                 </div>
-              )}
-
-              {/* ------------------------------------------------
-                  REPAIR APPOINTMENTS
-              ------------------------------------------------- */}
-
-              {isRepairShopChat(activeChat) &&
-                repairAppointments.length > 0 && (
-                  <div className="space-y-4">
-
-                    {repairAppointments.map(
-                      (appointment) => (
-                        <div
-                          key={
-                            appointment.id
-                          }
-                          className="bg-white border border-violet-100 rounded-2xl p-5 shadow-sm"
-                        >
-
-                          <div className="flex items-center justify-between mb-3">
-
-                            <div className="flex items-center gap-2">
-
-                              <Calendar
-                                size={16}
-                                className="text-violet-600"
-                              />
-
-                              <span className="text-xs font-bold text-violet-700">
-                                Repair Appointment
-                              </span>
-
-                            </div>
-
-                            <span className="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-600 font-bold uppercase">
-                              {appointment.status ||
-                                "pending"}
-                            </span>
-
-                          </div>
-
-                          <div className="space-y-2 text-xs text-slate-600">
-
-                            <p>
-                              <span className="font-bold">
-                                Device:
-                              </span>{" "}
-                              {appointment.device_model ||
-                                "Not specified"}
-                            </p>
-
-                            <p>
-                              <span className="font-bold">
-                                Category:
-                              </span>{" "}
-                              {appointment.category ||
-                                "Not specified"}
-                            </p>
-
-                            <p>
-                              <span className="font-bold">
-                                Issue:
-                              </span>{" "}
-                              {appointment.issue_description ||
-                                "Not specified"}
-                            </p>
-
-                            <p className="flex items-center gap-2">
-                              <Calendar
-                                size={13}
-                              />
-
-                              <span>
-                                {formatDate(
-                                  appointment.preferred_date
-                                )}
-                              </span>
-                            </p>
-
-                            <p className="flex items-center gap-2">
-                              <Clock
-                                size={13}
-                              />
-
-                              <span>
-                                {appointment.preferred_time ||
-                                  "Not specified"}
-                              </span>
-                            </p>
-
-                            {appointment.notes && (
-                              <p>
-                                <span className="font-bold">
-                                  Notes:
-                                </span>{" "}
-                                {
-                                  appointment.notes
-                                }
-                              </p>
-                            )}
-
-                          </div>
-
-                        </div>
-                      )
-                    )}
-
-                  </div>
-                )}
-
-              {/* ------------------------------------------------
-                  NO APPOINTMENT MESSAGE
-              ------------------------------------------------- */}
-
-              {isRepairShopChat(activeChat) &&
-                repairAppointments.length ===
-                  0 && (
-                  <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4">
-                    <p className="text-xs text-violet-600">
-                      No repair appointment has
-                      been submitted in this
-                      conversation yet.
-                    </p>
-                  </div>
-                )}
+                </React.Fragment>
+              ))}
 
               {/* ------------------------------------------------
                   NORMAL MESSAGES
               ------------------------------------------------- */}
 
-              {messages.map((msg) => {
+              {messages.map((msg, index) => {
 
                 const isMe =
                   msg.sender_id ===
                   userId;
 
+                const ctx = msg.listing_id || null;
+                const prevCtx =
+                  index === 0 ? undefined : messages[index - 1].listing_id || null;
+                const showContextLabel =
+                  index === 0 ? Boolean(ctx) : ctx !== prevCtx;
+
                 return (
+                  <React.Fragment key={msg.id}>
+                  {showContextLabel && (
+                    <div className="flex justify-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-white border border-slate-100 rounded-full px-3 py-1">
+                        {ctx
+                          ? `Re: ${getListingModel(ctx, msg.listings?.device_model)}`
+                          : "General"}
+                      </span>
+                    </div>
+                  )}
                   <div
-                    key={msg.id}
                     className={`flex flex-col ${
                       isMe
                         ? "items-end ml-auto"
                         : "items-start"
-                    } max-w-[80%]`}
+                    } min-w-0 max-w-[85%]`}
                   >
 
                     <div
-                      className={`p-4 rounded-2xl shadow-sm text-xs ${
+                      className={`min-w-0 px-5 py-3 rounded-2xl shadow-sm text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${
                         isMe
-                          ? "bg-[#2d7a7f] text-white rounded-tr-none"
-                          : "bg-white border border-slate-100 text-slate-600 rounded-tl-none"
+                          ? "bg-[#2d7a7f] text-white rounded-br-md"
+                          : "bg-white border border-slate-100 text-slate-600 rounded-bl-md"
                       }`}
                     >
                       {msg.content}
@@ -2100,6 +2010,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     </div>
 
                   </div>
+                  </React.Fragment>
                 );
               })}
 
@@ -2113,7 +2024,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
               onSubmit={
                 handleSendMessage
               }
-              className="p-6 border-t border-slate-50"
+              className="shrink-0 p-6 bg-white border-t border-slate-50"
             >
 
               {isViewOnly && (
@@ -2138,7 +2049,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                 </div>
               )}
 
-              <div className="flex gap-3 bg-slate-50 p-2 rounded-2xl">
+              <div className="flex gap-4">
 
                 <input
                   value={newMessage}
@@ -2158,13 +2069,13 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                       ? "View-only: replies are disabled"
                       : "Type a message..."
                   }
-                  className="flex-1 bg-transparent border-none px-4 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex-1 bg-slate-50 rounded-2xl py-4 px-6 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 />
 
                 <button
                   type="submit"
                   disabled={!canSendMessages}
-                  className="p-3 bg-[#2d7a7f] text-white rounded-xl disabled:cursor-not-allowed disabled:opacity-40"
+                  className="p-4 bg-[#2d7a7f] text-white rounded-2xl disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send size={18} />
                 </button>
@@ -2173,10 +2084,80 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
             </form>
 
+            </section>
+
+            {/* ==================================================
+                REPAIR APPOINTMENTS SIDE PANEL
+            =================================================== */}
+
+            {(activeChat.other_party_role_type === "repair_shop" ||
+              repairAppointments.length > 0) && (
+              <aside className="flex w-[340px] max-w-[42%] min-h-0 shrink-0 flex-col border-l border-slate-200 bg-white">
+                <div className="shrink-0 border-b border-slate-100 px-5 py-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-black text-slate-800">Repair Appointments</h3>
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                      {repairAppointments.length}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">Your repair requests with this shop, without leaving the chat.</p>
+                </div>
+
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
+                  {repairAppointments.length === 0 ? (
+                    <div className="py-10 text-center">
+                      <p className="text-xs font-semibold text-slate-500">No repair requests</p>
+                      <p className="mt-1 text-xs text-slate-400">Appointment requests with this shop will appear here.</p>
+                    </div>
+                  ) : (
+                    repairAppointments.map((appointment) => (
+                      <div
+                        key={`appointment-${appointment.id}`}
+                        className="bg-white border border-emerald-100 rounded-3xl p-5 shadow-sm"
+                      >
+                        <div className="flex justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-black uppercase tracking-wider text-emerald-700">
+                              Repair Appointment Request
+                            </p>
+                            <h3 className="text-base font-bold text-slate-800 mt-1 break-words">
+                              {appointment.device_model || "Device"}
+                            </h3>
+                          </div>
+
+                          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold uppercase h-fit shrink-0">
+                            {String(appointment.status || "pending").toLowerCase()}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mt-4 text-xs text-slate-600">
+                          <p><b>Category:</b> {appointment.category || "—"}</p>
+                          <p><b>Date:</b> {appointment.preferred_date ? formatDate(appointment.preferred_date) : "—"}</p>
+                          <p><b>Time:</b> {appointment.preferred_time || "—"}</p>
+                          <p className="break-words"><b>Issue:</b> {appointment.issue_description || "—"}</p>
+                        </div>
+
+                        {appointment.notes && (
+                          <p className="text-xs text-slate-500 mt-3 break-words">
+                            <b>Notes:</b> {appointment.notes}
+                          </p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </aside>
+            )}
+
+            </div>
+
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-slate-300 text-xs font-bold uppercase tracking-widest">
-            Select a chat to begin
+          <div className="flex-1 flex items-center justify-center text-slate-300 flex-col gap-4">
+            <MessageSquare size={40} />
+            <p className="text-xs font-bold uppercase">
+              Select a chat to begin
+            </p>
           </div>
         )}
 

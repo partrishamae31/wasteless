@@ -1428,7 +1428,6 @@ const SellerDashboard = ({ session }) => {
   const [showAchievements, setShowAchievements] = useState(false);
   const [showAchievementsModal, setShowAchievementsModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showMessages, setShowMessages] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [user, setUser] = useState(null); // Assuming you have user data for the ID
   const [bids, setBids] = useState([]);
@@ -4035,7 +4034,7 @@ const SellerDashboard = ({ session }) => {
   // The shared hook safely handles nested modal layers as well.
   useBodyScrollLock(Boolean(
     showProfileModal || showChangePasswordModal || showEditProfile ||
-    showAchievementsModal || showMessages || isModalOpen || selectedListing ||
+    showAchievementsModal || isModalOpen || selectedListing ||
     showCancelModal || selectedReceiptTransaction || donationReceipt ||
     isDonationModalOpen || showRateModal || showRepairReviewModal ||
     isVerificationModalOpen || selectedBidder || selectedBidListing ||
@@ -4331,11 +4330,13 @@ const SellerDashboard = ({ session }) => {
               type="button"
               aria-label="Open messages"
               onClick={() => {
-                setShowMessages(true);
+                setActiveTab("messages");
                 setShowNotifications(false);
                 setShowProfileMenu(false);
               }}
-              className="relative flex items-center justify-center text-slate-400 hover:text-[#3285a1] transition-colors"
+              className={`relative flex items-center justify-center hover:text-[#3285a1] transition-colors ${
+                activeTab === "messages" ? "text-[#3285a1]" : "text-slate-400"
+              }`}
             >
               <MessageSquare size={24} />
               {messageUserCount > 0 && (
@@ -4897,34 +4898,17 @@ const SellerDashboard = ({ session }) => {
           ))}
         </div>
 
-        {/* --- MESSAGES OVERLAY --- */}
-        {showMessages && (
-          <div className="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-6xl h-[85vh] rounded-3xl shadow-2xl overflow-hidden relative animate-in fade-in zoom-in duration-200">
-              <button
-                type="button"
-                aria-label="Close messages"
-                onClick={() => setShowMessages(false)}
-                className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-white/90 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-50 hover:text-slate-800 transition shadow-sm"
-              >
-                <X size={18} />
-              </button>
-
-              <div className="h-full overflow-y-auto">
-                <SellerMessages
-                  userId={session.user.id}
-                  onTabChange={(tab) => {
-                    setShowMessages(false);
-                    if (tab && tab !== "messages") setActiveTab(tab);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* --- MAIN CONTENT AREA --- */}
         <div className="min-h-[600px]">
+          {activeTab === "messages" && (
+            <SellerMessages
+              userId={session.user.id}
+              onTabChange={(tab) => {
+                if (tab && tab !== "messages") setActiveTab(tab);
+              }}
+            />
+          )}
+
           {activeTab === "listings" && (() => {
             const normalizeCondition = (condition) =>
               String(condition || "").toLowerCase() === "working"
@@ -5846,7 +5830,7 @@ const SellerDashboard = ({ session }) => {
                                   ) : isPendingReview ? (
                                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4"><p className="text-sm font-bold text-amber-800">Awaiting Administrator Review</p><p className="text-xs text-amber-700 mt-1">No further participant action is available while this transaction is under review.</p></div>
                                   ) : isSeller && !isMeetupScheduled ? (
-                                    <div className="space-y-3"><button onClick={() => {setShowMessages(true);setActiveTab("listings");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> {isReadOnly ? "View Messages" : "Schedule Meetup via Messages"}</button><button onClick={() => setShowCancelModal(true)} disabled={isReadOnly} title={isReadOnly ? "View-only: your account is pending verification" : undefined} className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"><XCircle size={18}/> {isReadOnly ? "Cancel Transaction (View-only)" : "Cancel Transaction"}</button></div>
+                                    <div className="space-y-3"><button onClick={() => {setActiveTab("messages");}} className="w-full bg-[#2d7a7f] text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#246367] transition-colors"><Calendar size={18}/> {isReadOnly ? "View Messages" : "Schedule Meetup via Messages"}</button><button onClick={() => setShowCancelModal(true)} disabled={isReadOnly} title={isReadOnly ? "View-only: your account is pending verification" : undefined} className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"><XCircle size={18}/> {isReadOnly ? "Cancel Transaction (View-only)" : "Cancel Transaction"}</button></div>
                                   ) : isSeller && isMeetupScheduled ? (
                                     <div className="space-y-3"><div className="bg-blue-50 border border-blue-100 rounded-xl p-4"><p className="text-sm font-bold text-blue-800">Meetup Scheduled</p><p className="text-xs text-blue-600 mt-1">The buyer can confirm the handover after the scheduled meetup.</p></div></div>
                                   ) : (
