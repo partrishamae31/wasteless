@@ -2238,7 +2238,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                         </span>
                         View Profile
                       </button>
-                      <MenuLink
+                      {/* <MenuLink
                         icon={<Settings size={15} />}
                         label="Settings"
                         onClick={() => {
@@ -2247,7 +2247,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                           setShowProfileModal(true);
                           setIsEditingProfile(true);
                         }}
-                      />
+                      /> */}
                       {/* Achievements */}
                       <MenuLink
                         icon={<Award size={15} />}
@@ -2411,7 +2411,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           </div>
 
           {/* --- NAVIGATION --- */}
-          <div className="bg-white/95 backdrop-blur-md rounded-[2rem] border border-white shadow-lg px-16 py-4 flex flex-wrap gap-8 items-stretch z-1000">
+          <div className="bg-white/95 backdrop-blur-md rounded-[2rem] border border-white shadow-lg p-3 sm:p-4 flex flex-wrap gap-2 sm:gap-3 items-stretch">
             <NavBtn
               active={activeTab === "browse"}
               onClick={() => setActiveTab("browse")}
@@ -5056,12 +5056,12 @@ const NavBtn = ({ active, onClick, icon, label, disabled }) => (
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`flex-1 sm:flex-none min-w-[150px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-black text-xs transition-all ${active
+    className={`flex-1 basis-[calc(50%-0.5rem)] sm:basis-auto min-w-[130px] flex items-center justify-center gap-2 px-3 py-3 rounded-xl font-black text-xs whitespace-nowrap transition-all ${active
       ? "bg-[#527a24] text-white shadow-md"
       : "bg-white text-slate-500 hover:bg-lime-50 hover:text-[#527a24] border border-slate-100"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
   >
-    {icon}
+    <span className="shrink-0">{icon}</span>
     {label}
   </button>
 );

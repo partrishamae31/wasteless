@@ -12,8 +12,45 @@ import {
   Eye,
   X,
   Wrench,
+  ChevronDown,
 } from "lucide-react";
 import MatchingListingsView from "./MatchingListingsView";
+
+// Barangays of Valenzuela City. An empty value means "All Barangays".
+const VALENZUELA_BARANGAYS = [
+  "Arkong Bato",
+  "Bagbaguin",
+  "Balangkas",
+  "Bignay",
+  "Bisig",
+  "Canumay East",
+  "Canumay West",
+  "Coloong",
+  "Dalandanan",
+  "Gen. T. de Leon",
+  "Isla",
+  "Karuhatan",
+  "Lawang Bato",
+  "Lingunan",
+  "Mabolo",
+  "Malanday",
+  "Malinta",
+  "Mapulang Lupa",
+  "Marulas",
+  "Maysan",
+  "Palasan",
+  "Pariancillo Villa",
+  "Paso de Blas",
+  "Pasolo",
+  "Poblacion",
+  "Pulo",
+  "Punturin",
+  "Rincon",
+  "Tagalag",
+  "Ugong",
+  "Viente Reales",
+  "Wawang Pulo",
+];
 
 const HarvesterAlerts = ({ session, isVerified }) => {
   const [alerts, setAlerts] = useState([]);
@@ -447,6 +484,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
             </div>
 
             {/* MATCHES SECTION */}
+            {alerts.some((a) => a.matchCount > 0) ? (
             <div className="bg-[#edf8ed] border border-[#cce8cc] rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle2
@@ -540,16 +578,24 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                     );
                   })}
 
-                {alerts.filter(
-                  (a) => a.matchCount > 0
-                ).length === 0 && (
-                  <div className="text-center py-6 text-sm text-gray-500">
-                    No matching component listings available
-                    right now.
-                  </div>
-                )}
               </div>
             </div>
+            ) : (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center gap-3">
+              <Search size={18} className="text-slate-400 shrink-0" />
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700">
+                  No matches yet
+                </h3>
+
+                <p className="text-xs text-slate-500">
+                  No active listings match your alerts right now. We'll
+                  show them here as soon as one is posted.
+                </p>
+              </div>
+            </div>
+            )}
           </div>
 
           {/* ALERT CARDS */}
@@ -612,7 +658,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
 
                             <span>
                               {alert.preferred_barangay ||
-                                "Anywhere"}
+                                "All Barangays"}
                             </span>
                           </div>
 
@@ -890,9 +936,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                         size={18}
                       />
 
-                      <input
-                        type="text"
-                        placeholder="e.g., Marulas"
+                      <select
                         value={formData.preferred_barangay}
                         onChange={(e) =>
                           setFormData({
@@ -900,7 +944,19 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                             preferred_barangay: e.target.value,
                           })
                         }
-                        className="w-full border border-slate-200 rounded-xl pl-12 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                        className="w-full appearance-none bg-white border border-slate-200 rounded-xl pl-12 pr-10 py-3.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                      >
+                        <option value="">All Barangays</option>
+                        {VALENZUELA_BARANGAYS.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <ChevronDown
+                        className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+                        size={18}
                       />
                     </div>
                   </div>
