@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
+import { supabase } from "../supabaseClient.js";
 import {
   Package,
   Leaf,
@@ -22,31 +23,27 @@ const TEAL = "#2d91a8";
 const GREEN = "#619d2d";
 const NAVY = "#1b6a8f";
 
-const stats = [
+const statItems = [
   {
     icon: Package,
-    value: "2,400+",
     label: "Devices Recovered",
     color: TEAL,
     bg: "#e0f1f5",
   },
   {
     icon: Leaf,
-    value: "340 kg",
     label: "CO₂e Prevented",
     color: GREEN,
     bg: "#e8f2db",
   },
   {
     icon: Store,
-    value: "85+",
-    label: "Partner Repair Shops",
+    label: "Verified Repair Shops",
     color: "#8b5cf6",
     bg: "#f0e8fe",
   },
   {
     icon: MapPin,
-    value: "33",
     label: "Barangays Covered",
     color: "#f97316",
     bg: "#ffedd9",
@@ -617,9 +614,10 @@ function CountUp({ value }) {
   const ref = useRef(null);
   const [n, setN] = useState(0);
 
-  const m = value.match(/^([\d,]+)(.*)$/);
-  const target = m ? parseInt(m[1].replace(/,/g, ""), 10) : 0;
+  const m = String(value).match(/^([\d,]+(?:\.\d+)?)(.*)$/);
+  const target = m ? Number(m[1].replace(/,/g, "")) : 0;
   const suffix = m ? m[2] : "";
+  const decimals = m && m[1].includes(".") ? m[1].split(".")[1].length : 0;
 
   useEffect(() => {
     const el = ref.current;
@@ -644,7 +642,7 @@ function CountUp({ value }) {
         const p = Math.min((t - t0) / 1400, 1);
         const eased = 1 - Math.pow(1 - p, 3);
 
-        setN(Math.round(target * eased));
+        setN(target * eased);
 
         if (p < 1) {
           raf = requestAnimationFrame(tick);
@@ -680,7 +678,10 @@ function CountUp({ value }) {
 
   return (
     <span ref={ref}>
-      {n.toLocaleString("en-US")}
+      {n.toLocaleString("en-US", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })}
       {suffix}
     </span>
   );
@@ -688,7 +689,85 @@ function CountUp({ value }) {
 
 export default function Landing({ onGetStarted, onSignUp }) {
   const [open, setOpen] = useState(null);
+  const [stats, setStats] = useState(["—", "— kg", "—", "—"]);
   const rootRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLandingStats = async () => {
+      try {
+        const [transactionPage, repairShopsResult, dropOffResult] =
+          await Promise.all([
+            supabase
+              .from("transactions")
+              .select("carbon_saved")
+              .eq("status", "completed")
+              .range(0, 999),
+            supabase
+              .from("profiles")
+              .select("id", { count: "exact", head: true })
+              .eq("role", "repair_shop")
+              .eq("is_verified", true),
+            supabase
+              .from("drop_off_points")
+              .select("barangay")
+              .eq("is_active", true),
+          ]);
+
+        if (transactionPage.error) throw transactionPage.error;
+        if (repairShopsResult.error) throw repairShopsResult.error;
+        if (dropOffResult.error) throw dropOffResult.error;
+
+        // Supabase returns at most 1,000 rows per request by default.
+        // Fetch additional pages so the public totals do not silently stop at 1,000.
+        const completedTransactions = transactionPage.data || [];
+        let offset = 1000;
+        while (transactionPage.data?.length === 1000) {
+          const { data, error } = await supabase
+            .from("transactions")
+            .select("carbon_saved")
+            .eq("status", "completed")
+            .range(offset, offset + 999);
+
+          if (error) throw error;
+          completedTransactions.push(...(data || []));
+          if (!data || data.length < 1000) break;
+          offset += 1000;
+        }
+
+        const devicesRecovered = completedTransactions.length;
+        const carbonSavedKg = completedTransactions.reduce(
+          (total, transaction) =>
+            total + (Number(transaction.carbon_saved) || 0),
+          0
+        );
+        const verifiedRepairShops = repairShopsResult.count ?? 0;
+        const barangaysCovered = new Set(
+          (dropOffResult.data || [])
+            .map((point) => point.barangay?.trim())
+            .filter(Boolean)
+        ).size;
+
+        if (!cancelled) {
+          setStats([
+            String(devicesRecovered),
+            `${carbonSavedKg.toFixed(2)} kg`,
+            String(verifiedRepairShops),
+            String(barangaysCovered),
+          ]);
+        }
+      } catch (error) {
+        console.error("Unable to load Wasteless landing page statistics:", error);
+        if (!cancelled) setStats(["—", "— kg", "—", "—"]);
+      }
+    };
+
+    loadLandingStats();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -831,8 +910,8 @@ export default function Landing({ onGetStarted, onSignUp }) {
       ========================================================= */}
       <section className="relative bg-slate-50 px-6 py-8 md:py-10">
         <div className="mx-auto grid max-w-6xl grid-cols-2 gap-4 lg:grid-cols-4">
-          {stats.map(
-            ({ icon: Icon, value, label, color, bg }, index) => (
+          {statItems.map(
+            ({ icon: Icon, label, color, bg }, index) => (
               <div
                 key={label}
                 data-reveal
@@ -857,7 +936,7 @@ export default function Landing({ onGetStarted, onSignUp }) {
                   className="relative text-2xl font-bold"
                   style={{ color }}
                 >
-                  <CountUp value={value} />
+                  <CountUp value={stats[index]} />
                 </p>
 
                 <p className="relative mt-1 text-xs text-slate-500">
