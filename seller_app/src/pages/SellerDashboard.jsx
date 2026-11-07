@@ -51,7 +51,109 @@ import {
   Download,
   Lock,
   Share2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
+// Same layout and components for every role; only the accent changes.
+const THEME = {
+  banner: "bg-gradient-to-r from-cyan-300 via-emerald-200 to-lime-300",
+  tabActive: "bg-[#3285a1]",
+  accentText: "text-[#3285a1]",
+  accentHover: "hover:text-[#3285a1]",
+  focus: "focus:border-[#3285a1] focus:ring-cyan-100",
+  focusVisible: "focus-visible:text-[#3285a1] focus-visible:ring-[#3285a1]",
+  drawer: "from-[#287f95] to-[#1f6a7e]",
+  drawerText: "text-[#287f95]",
+  drawerBar: "bg-[#287f95]",
+  infoIcon: "bg-[#287f95]/10 text-[#287f95]",
+};
+
+
+// Philippine mobile number: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX (13 characters).
+// Strips anything that is not a digit (or a leading +) and caps the length while typing.
+const sanitizePhone = (value) => {
+  const raw = String(value ?? "").replace(/[^\d+]/g, "");
+  const hasPlus = raw.startsWith("+");
+  const digits = raw.replace(/\+/g, "");
+  return (hasPlus ? "+" : "") + digits.slice(0, hasPlus ? 12 : 11);
+};
+const isValidPhone = (value) => {
+  const phone = String(value || "").trim();
+  return !phone || /^(09\d{9}|\+639\d{9})$/.test(phone);
+};
+const PHONE_ERROR = "Phone number must be 11 digits starting with 09 (e.g. 09123456789) or +63 followed by 10 digits.";
+
+
+// Round avatar: shows the photo, or the first letter of the name as a fallback.
+const AvatarBubble = ({ url, name, className = "", textClassName = "" }) => {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
+
+  const initial = (name || "?").trim().charAt(0).toUpperCase();
+
+  return (
+    <div className={`relative shrink-0 overflow-hidden rounded-full ${className}`}>
+      {url && !failed ? (
+        <img
+          src={url}
+          alt={`${name || "User"}'s profile photo`}
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span className={`flex h-full w-full items-center justify-center ${textClassName}`}>
+          {initial}
+        </span>
+      )}
+    </div>
+  );
+};
+
+
+const StatCard = ({ label, value, isPrice = false }) => (
+  <div className="flex min-h-[120px] flex-col items-center justify-center rounded-2xl border border-slate-100 bg-white px-3 py-6 text-center shadow-sm">
+    <div className="text-3xl font-black tracking-tight text-slate-800">
+      {isPrice ? `₱${value}` : value}
+    </div>
+    <div className="mt-2 text-xs font-bold uppercase tracking-widest text-slate-500">{label}</div>
+  </div>
+);
+
+const StatGrid = ({ children }) => (
+  <div className="mb-8 grid grid-cols-2 gap-4 xl:grid-cols-4">{children}</div>
+);
+
+// tabs: [{ key, label, icon, muted? }]. `muted` greys a tab out but keeps it clickable.
+const TabBar = ({ tabs, active, onChange }) => (
+  <div
+    role="tablist"
+    className="mb-8 flex gap-1 overflow-x-auto rounded-xl border border-slate-100 bg-white p-1 shadow-sm"
+  >
+    {tabs.map((tab) => {
+      const isActive = active === tab.key;
+      return (
+        <button
+          key={tab.key}
+          type="button"
+          role="tab"
+          aria-selected={isActive}
+          onClick={() => onChange(tab.key)}
+          className={`flex min-w-fit flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-3 text-sm font-semibold transition ${
+            isActive ? `${THEME.tabActive} text-white shadow-sm` : "text-slate-600 hover:bg-slate-50"
+          } ${tab.muted && !isActive ? "opacity-50" : ""}`}
+        >
+          {tab.icon}
+          {tab.label}
+        </button>
+      );
+    })}
+  </div>
+);
+
+
 // Shared custom popup events keep feedback consistent across this dashboard and its nested modals.
 const APP_POPUP_EVENT = "wasteless:app-popup";
 const showAppAlert = (message) => {
@@ -1391,6 +1493,14 @@ const SellerDashboard = ({ session }) => {
   const [profileModalTab, setProfileModalTab] = useState("profile");
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
+  const [visiblePasswords, setVisiblePasswords] = useState({ current: false, next: false, confirm: false });
+
+  // Hide the password fields again whenever the profile drawer closes.
+  useEffect(() => {
+    if (!showProfileModal) {
+      setVisiblePasswords({ current: false, next: false, confirm: false });
+    }
+  }, [showProfileModal]);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
@@ -1423,6 +1533,7 @@ const SellerDashboard = ({ session }) => {
   const [profileData, setProfileData] = useState(null);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [editProfile, setEditProfile] = useState({ full_name: "", contact_number: "", barangay: "" });
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
@@ -2963,13 +3074,13 @@ const SellerDashboard = ({ session }) => {
   }
   function InfoRow({ label, value, icon }) {
     return (
-      <div className="flex items-start gap-3">
-        <div className="mt-1 text-slate-400">{icon}</div>
-        <div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">
-            {label}
-          </p>
-          <p className="text-xs font-semibold text-slate-700">{value}</p>
+      <div className="flex items-center gap-3.5 px-4 py-3.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#287f95]/10 text-[#287f95]">
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-slate-500">{label}</p>
+          <p className="mt-0.5 break-words text-sm font-semibold leading-snug text-slate-800">{value}</p>
         </div>
       </div>
     );
@@ -4123,6 +4234,7 @@ const SellerDashboard = ({ session }) => {
     event?.preventDefault?.();
     if (!session?.user?.id) return showAppAlert("Please log in again.");
     if (!editProfile.full_name.trim()) return showAppAlert("Please enter your full name.");
+    if (!isValidPhone(editProfile.contact_number)) return showAppAlert(PHONE_ERROR);
     setProfileSaving(true);
     try {
       const updates = {
@@ -4162,8 +4274,72 @@ const SellerDashboard = ({ session }) => {
     }
   };
 
+  // Profile photo: stored in the public "avatars" bucket under the user's own
+  // folder, and the resulting URL is saved to profiles.avatar_url.
+  const AVATAR_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+
+  const saveAvatarUrl = async (avatarUrl) => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .update({ avatar_url: avatarUrl })
+      .eq("id", session.user.id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    setProfileData((prev) => ({ ...(prev || {}), ...data }));
+    setUser((prev) => (prev ? { ...prev, avatar_url: data.avatar_url } : prev));
+  };
+
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow picking the same file again later
+    if (!file) return;
+    if (!session?.user?.id) return showAppAlert("Please log in again.");
+    if (!file.type.startsWith("image/")) {
+      return showAppAlert("Please choose an image file (JPG, PNG or WebP).");
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      return showAppAlert("That photo is larger than 2 MB. Please choose a smaller one.");
+    }
+
+    setAvatarUploading(true);
+    try {
+      const path = `${session.user.id}/avatar`;
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      // Cache-buster so the new photo shows immediately instead of the old one.
+      await saveAvatarUrl(`${data.publicUrl}?v=${Date.now()}`);
+      showAppAlert("Profile photo updated.");
+    } catch (error) {
+      console.error("Profile photo upload failed:", error);
+      showAppAlert(`Could not update profile photo: ${error.message}`);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!session?.user?.id) return;
+    if (!(await showAppConfirm("Remove your profile photo?"))) return;
+    setAvatarUploading(true);
+    try {
+      await supabase.storage.from("avatars").remove([`${session.user.id}/avatar`]);
+      await saveAvatarUrl(null);
+      showAppAlert("Profile photo removed.");
+    } catch (error) {
+      console.error("Profile photo removal failed:", error);
+      showAppAlert(`Could not remove profile photo: ${error.message}`);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   const handleDeactivateAccount = async () => {
-    if (!(await showAppConfirm("Deactivate your account? You will be signed out. Contact support to reactivate it."))) return;
+    if (!(await showAppConfirm("Deactivate your account? You will be signed out. Log in again to reactivate your account."))) return;
     try {
       const { error } = await supabase.from("profiles")
         .update({ status: "deactivated" }).eq("id", session.user.id);
@@ -4317,7 +4493,7 @@ const SellerDashboard = ({ session }) => {
       {/* Reference-style gradient banner behind the dashboard header */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-[360px] bg-gradient-to-r from-cyan-300 via-emerald-200 to-lime-300"
+        className={`pointer-events-none absolute inset-x-0 top-0 h-[360px] ${THEME.banner}`}
       />
       {/* Header Area */}
       <div className="relative z-10 p-6">
@@ -4357,7 +4533,7 @@ const SellerDashboard = ({ session }) => {
                 setShowProfileMenu(false); // Close profile if notification is opened
               }}
             />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center border-2 border-white">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center border-2 border-white">
               {notifications.filter((n) => !n.is_read).length}
             </span>
 
@@ -4606,7 +4782,7 @@ const SellerDashboard = ({ session }) => {
                       : "text-slate-400"
                   }`}
               >
-                <CheckCircle size={10} />
+                <CheckCircle size={13} />
 
                 {profileData?.verification_status === "verified"
                   ? "Verified"
@@ -4617,9 +4793,11 @@ const SellerDashboard = ({ session }) => {
                       : "Not Submitted"}
               </div>
             </div>
-            <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center text-white font-bold shadow-sm">
-              {currentProfileName.charAt(0).toUpperCase()}
-            </div>
+            <AvatarBubble
+              url={profileData?.avatar_url}
+              name={currentProfileName}
+              className="h-10 w-10 bg-emerald-600 text-white font-bold shadow-sm"
+            />
           </div>
 
           {/* Profile Dropdown Menu */}
@@ -4628,9 +4806,11 @@ const SellerDashboard = ({ session }) => {
               {/* Dropdown Header */}
               <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-4 text-white">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-bold">
-                    {currentProfileName.charAt(0).toUpperCase()}
-                  </div>
+                  <AvatarBubble
+                    url={profileData?.avatar_url}
+                    name={currentProfileName}
+                    className="h-10 w-10 bg-white/20 font-bold"
+                  />
                   <div className="overflow-hidden">
                     <div className="text-sm font-bold truncate">
                       {currentProfileName}
@@ -4643,7 +4823,7 @@ const SellerDashboard = ({ session }) => {
                 <div className="flex gap-2">
                   <div className="flex-1 bg-white/10 rounded-lg p-1.5 text-center">
                     <div className="text-xs opacity-70 flex items-center justify-center gap-1">
-                      <Star size={10} /> Rating
+                      <Star size={13} /> Rating
                     </div>
                     <div className="text-xs font-bold">
                       {profileData?.average_rating
@@ -4653,7 +4833,7 @@ const SellerDashboard = ({ session }) => {
                   </div>
                   <div className="flex-1 bg-white/10 rounded-lg p-1.5 text-center">
                     <div className="text-xs opacity-70 flex items-center justify-center gap-1">
-                      <Package size={10} /> Listings
+                      <Package size={13} /> Listings
                     </div>
                     <div className="text-xs font-bold">{listings.length}</div>
                   </div>
@@ -4672,9 +4852,9 @@ const SellerDashboard = ({ session }) => {
                 >
                   <User size={18} className="text-slate-400" /> View Profile
                 </button>
-                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition">
+                {/* <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition">
                   <Settings size={18} className="text-slate-400" /> Settings
-                </button>
+                </button> */}
                 {/* <button
                                   type="button"
                                   onClick={() => {
@@ -4825,78 +5005,36 @@ const SellerDashboard = ({ session }) => {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          {[
-            {
-              label: "My Active Listings",
-              val: myListings.filter(
-                (item) => item.status?.toLowerCase() === "active",
-              ).length,
-            },
-            {
-              label: "Bids Received",
-              val: myListings.reduce(
-                (sum, item) =>
-                  sum +
-                  (item.bids?.filter((bid) => bid.status !== "declined")
-                    .length || 0),
-                0,
-              ),
-            },
-            { label: "Messages", val: messageUserCount },
-            {
-              label: "Rating",
-              val: profileData?.average_rating?.toFixed(1) || "4.8",
-            },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="bg-white py-8 rounded-2xl shadow-sm border border-slate-100 text-center"
-            >
-              <div className="text-3xl font-black mb-1 text-slate-800">
-                {stat.val}
-              </div>
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                {stat.label}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        
+        <StatGrid>
+          <StatCard
+            label="My Active Listings"
+            value={myListings.filter((item) => item.status?.toLowerCase() === "active").length}
+          />
+          <StatCard
+            label="Bids Received"
+            value={myListings.reduce(
+              (sum, item) => sum + (item.bids?.filter((bid) => bid.status !== "declined").length || 0),
+              0,
+            )}
+          />
+          <StatCard label="Messages" value={messageUserCount} />
+          <StatCard
+            label="Rating"
+            value={profileData?.average_rating ? Number(profileData.average_rating).toFixed(1) : "0.0"}
+          />
+        </StatGrid>
 
         {/* Tabs Navigation */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex mb-8">
-          {[
-            "listings",
-            "transactions",
-            "repair-shops",
-            "donation",
-          ].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-medium transition capitalize ${activeTab === tab
-                ? "bg-[#3285a1] text-white"
-                : "text-slate-500 hover:bg-slate-50"
-                }`}
-            >
-              {tab === "listings" && <Package size={18} />}
-              {tab === "transactions" && <ArrowLeftRight size={18} />}
-              {tab === "repair-shops" && <Wrench size={18} />}
-              {tab === "donation" && <Gift size={18} />}
-              
-
-              {tab === "listings"
-                ? "Listings"
-                : tab === "repair-shops"
-                  ? "Repair Shop"
-                  : tab === "donation"
-                    ? "Donation"
-                    : "Transactions"}
-            </button>
-          ))}
-        </div>
+        <TabBar
+          active={activeTab}
+          onChange={setActiveTab}
+          tabs={[
+            { key: "listings", label: "Listings", icon: <Package size={18} /> },
+            { key: "transactions", label: "Transactions", icon: <ArrowLeftRight size={18} /> },
+            { key: "repair-shops", label: "Repair Shop", icon: <Wrench size={18} /> },
+            { key: "donation", label: "Donation", icon: <Gift size={18} /> },
+          ]}
+        />
 
         {/* --- MAIN CONTENT AREA --- */}
         <div className="min-h-[600px]">
@@ -5077,15 +5215,15 @@ const SellerDashboard = ({ session }) => {
                     </div>
                     <div className="mt-5 grid grid-cols-3 gap-2">
                       <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
-                        <p className="text-[11px] text-slate-400">Asking</p>
+                        <p className="text-[13px] text-slate-400">Asking</p>
                         <p className="mt-1 text-sm font-black text-slate-800">₱{asking.toLocaleString()}</p>
                       </div>
                       <div className="rounded-xl bg-[#eef7fa] px-3 py-3 text-center">
-                        <p className="text-[11px] text-slate-400">Your Bid</p>
+                        <p className="text-[13px] text-slate-400">Your Bid</p>
                         <p className="mt-1 text-sm font-black text-[#3285a1]">₱{amount.toLocaleString()}</p>
                       </div>
                       <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
-                        <p className="text-[11px] text-slate-400">Share</p>
+                        <p className="text-[13px] text-slate-400">Share</p>
                         <p className="mt-1 text-sm font-black text-slate-800">{percentage}%</p>
                       </div>
                     </div>
@@ -5112,18 +5250,18 @@ const SellerDashboard = ({ session }) => {
               return (
                 <article key={item.id} className={`rounded-2xl border bg-white p-5 shadow-sm transition ${isMine ? "border-[#a9d9e7] ring-1 ring-[#dff2f7]" : "border-slate-200 hover:border-[#a9d9e7]"}`}>
                   {isMine && mode === "all" && (
-                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[#eef7fa] px-2.5 py-1 text-[10px] font-bold text-[#3285a1]">
+                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[#eef7fa] px-2.5 py-1 text-xs font-bold text-[#3285a1]">
                       <User size={12} /> Your Listing
                     </div>
                   )}
                   {isHazardous && (
-                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-black text-red-700 border border-red-100">
+                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-black text-red-700 border border-red-100">
                       <Shield size={12} /> Hazardous
                     </div>
                   )}
                   {!isMine && mode === "all" && sellerTrustTiers[item.seller_id] &&
                     Number(sellerTrustTiers[item.seller_id].min_transactions || 0) > 0 && (
-                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 border border-amber-100">
+                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 border border-amber-100">
                       <Award size={12} /> Recommended Seller · {getTrustTierLabel(sellerTrustTiers[item.seller_id].name)}
                     </div>
                   )}
@@ -5145,19 +5283,19 @@ const SellerDashboard = ({ session }) => {
 
                   <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
-                      <p className="text-[11px] text-slate-400">Asking</p>
+                      <p className="text-[13px] text-slate-400">Asking</p>
                       <p className="mt-1 text-sm font-black text-slate-800">₱{Number(item.asking_price || 0).toLocaleString()}</p>
                     </div>
                     <div className="rounded-xl bg-[#eef5ff] px-3 py-3 text-center">
-                      <p className="text-[11px] text-slate-400">Current Lowest</p>
+                      <p className="text-[13px] text-slate-400">Current Lowest</p>
                       <p className="mt-1 text-sm font-black text-[#3285a1]">₱{lowestActiveBid.toLocaleString()}</p>
                     </div>
                     <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
-                      <p className="text-[11px] text-slate-400">Condition</p>
+                      <p className="text-[13px] text-slate-400">Condition</p>
                       <p className={`mt-1 text-sm font-semibold ${condition === "Working" ? "text-emerald-600" : "text-orange-500"}`}>{condition}</p>
                     </div>
                     <div className={`rounded-xl px-3 py-3 text-center ${bidsForItem.length > 0 ? "bg-[#eef5ff]" : "bg-slate-50"}`}>
-                      <p className="text-[11px] text-slate-400">Bids</p>
+                      <p className="text-[13px] text-slate-400">Bids</p>
                       <p className="mt-1 text-sm font-black text-[#3285a1]">{bidsForItem.length}</p>
                     </div>
                   </div>
@@ -5271,9 +5409,9 @@ const SellerDashboard = ({ session }) => {
                                 <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${bid.status === "accepted" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{bid.status === "accepted" ? "Accepted" : "Pending"}</span>
                               </div>
                               <div className="mt-5 grid grid-cols-3 gap-2">
-                                <div className="rounded-xl bg-slate-50 px-3 py-3 text-center"><p className="text-[11px] text-slate-400">Asking</p><p className="mt-1 text-sm font-black text-slate-800">₱{Number(listing.asking_price || 0).toLocaleString()}</p></div>
-                                <div className="rounded-xl bg-[#eef5ff] px-3 py-3 text-center"><p className="text-[11px] text-slate-400">Offer</p><p className="mt-1 text-sm font-black text-[#3285a1]">₱{Number(bid.amount || 0).toLocaleString()}</p></div>
-                                <div className="rounded-xl bg-slate-50 px-3 py-3 text-center"><p className="text-[11px] text-slate-400">Bids</p><p className="mt-1 text-sm font-black text-slate-800">{getVisibleBids(listing).length}</p></div>
+                                <div className="rounded-xl bg-slate-50 px-3 py-3 text-center"><p className="text-[13px] text-slate-400">Asking</p><p className="mt-1 text-sm font-black text-slate-800">₱{Number(listing.asking_price || 0).toLocaleString()}</p></div>
+                                <div className="rounded-xl bg-[#eef5ff] px-3 py-3 text-center"><p className="text-[13px] text-slate-400">Offer</p><p className="mt-1 text-sm font-black text-[#3285a1]">₱{Number(bid.amount || 0).toLocaleString()}</p></div>
+                                <div className="rounded-xl bg-slate-50 px-3 py-3 text-center"><p className="text-[13px] text-slate-400">Bids</p><p className="mt-1 text-sm font-black text-slate-800">{getVisibleBids(listing).length}</p></div>
                               </div>
                               <div className="mt-4 flex items-center gap-2 text-xs text-slate-400"><MapPin size={14} /> {getListingBarangay(listing)} <span>·</span> {getListingOwner(listing)}</div>
                               {bid.status === "pending" && !isReadOnly && (
@@ -5351,8 +5489,8 @@ const SellerDashboard = ({ session }) => {
                       </div>
                       <div className="space-y-4 p-6">
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-xl bg-slate-50 p-4"><p className="text-[11px] text-slate-400">Asking Price</p><p className="mt-1 text-lg font-black text-slate-800">₱{Number(selectedListingDetails.asking_price || 0).toLocaleString()}</p></div>
-                          <div className="rounded-xl bg-slate-50 p-4"><p className="text-[11px] text-slate-400">Condition</p><p className={`mt-1 text-lg font-bold ${normalizeCondition(selectedListingDetails.condition) === "Working" ? "text-emerald-600" : "text-orange-500"}`}>{normalizeCondition(selectedListingDetails.condition)}</p></div>
+                          <div className="rounded-xl bg-slate-50 p-4"><p className="text-[13px] text-slate-400">Asking Price</p><p className="mt-1 text-lg font-black text-slate-800">₱{Number(selectedListingDetails.asking_price || 0).toLocaleString()}</p></div>
+                          <div className="rounded-xl bg-slate-50 p-4"><p className="text-[13px] text-slate-400">Condition</p><p className={`mt-1 text-lg font-bold ${normalizeCondition(selectedListingDetails.condition) === "Working" ? "text-emerald-600" : "text-orange-500"}`}>{normalizeCondition(selectedListingDetails.condition)}</p></div>
                         </div>
                         {isListingHazardous(selectedListingDetails) || selectedListingDetails?.is_hazardous ? (
                           <div className="rounded-xl border border-red-200 bg-red-50 p-4">
@@ -5613,7 +5751,7 @@ const SellerDashboard = ({ session }) => {
                                       The scheduled handover was not confirmed within the allowed period. The transaction has been flagged for Administrator review.
                                     </p>
                                     {tx.pending_review_at && (
-                                      <p className="mt-2 text-[11px] font-bold text-amber-600">
+                                      <p className="mt-2 text-[13px] font-bold text-amber-600">
                                         Flagged: {new Date(tx.pending_review_at).toLocaleString()}
                                       </p>
                                     )}
@@ -5705,7 +5843,7 @@ const SellerDashboard = ({ session }) => {
                                           <div className="mt-1 h-2.5 w-2.5 rounded-full bg-[#3285a1] shrink-0" />
                                           <div>
                                             <p className="text-xs font-black text-slate-700">{entry.old_status ? `${String(entry.old_status).replaceAll("_", " ")} → ` : ""}{String(entry.new_status || "updated").replaceAll("_", " ")}</p>
-                                            <p className="mt-1 text-[11px] text-slate-400">{new Date(entry.changed_at).toLocaleString()}</p>
+                                            <p className="mt-1 text-[13px] text-slate-400">{new Date(entry.changed_at).toLocaleString()}</p>
                                           </div>
                                         </div>
                                       ))}
@@ -5883,7 +6021,7 @@ const SellerDashboard = ({ session }) => {
                 <span className="text-xs text-slate-500">Email changes require a separate authentication flow.</span>
               </label>
               <label className="block text-sm font-bold text-slate-700">Contact number
-                <input type="tel" maxLength={30} value={editProfile.contact_number} onChange={(e) => setEditProfile(p => ({...p, contact_number:e.target.value}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" />
+                <input type="tel" inputMode="tel" maxLength={13} placeholder="09XXXXXXXXX" value={editProfile.contact_number} onChange={(e) => setEditProfile(p => ({...p, contact_number: sanitizePhone(e.target.value)}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" />
               </label>
               <label className="block text-sm font-bold text-slate-700">Barangay
                 <select value={editProfile.barangay} onChange={(e) => setEditProfile(p => ({...p, barangay:e.target.value}))} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">
@@ -5918,59 +6056,101 @@ const SellerDashboard = ({ session }) => {
               aria-label="Profile"
             >
               {/* Seller profile header */}
-              <div className="relative shrink-0 bg-[#287f95] px-5 pt-5 pb-4 text-white">
+              <div className="relative shrink-0 overflow-hidden bg-gradient-to-b from-[#287f95] to-[#1f6a7e] px-6 pb-7 pt-6 text-white">
                 <button
                   type="button"
                   onClick={() => setShowProfileModal(false)}
-                  className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+                  className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
                   aria-label="Close profile"
                 >
                   <X size={18} />
                 </button>
 
-                <div className="flex items-center gap-3 pr-10">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-emerald-400 to-green-600 text-lg font-black shadow-sm">
-                    {currentProfileName.charAt(0).toUpperCase()}
+                <div className="flex flex-col items-center pt-2 text-center">
+                  <div className="relative">
+                    <AvatarBubble
+                      url={profileData?.avatar_url}
+                      name={currentProfileName}
+                      className="h-24 w-24 bg-white shadow-lg ring-4 ring-white/25"
+                      textClassName="text-4xl font-black text-[#287f95]"
+                    />
+                    {avatarUploading && (
+                      <div className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-900/50" role="status" aria-label="Uploading photo">
+                        <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-white/40 border-t-white" />
+                      </div>
+                    )}
+                    <label
+                      className={`absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white text-[#287f95] shadow-md transition hover:bg-slate-100 focus-within:ring-2 focus-within:ring-white ${
+                        avatarUploading ? "pointer-events-none opacity-60" : "cursor-pointer"
+                      }`}
+                      title="Change profile photo"
+                    >
+                      <Camera size={17} />
+                      <span className="sr-only">Change profile photo</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="sr-only"
+                        onChange={handleAvatarChange}
+                        disabled={avatarUploading}
+                      />
+                    </label>
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h2 className="truncate text-base font-black">{currentProfileName}</h2>
-                      {profileData?.verification_status === "approved" || profileData?.verification_status === "verified" ? (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold text-white">
-                          <CheckCircle size={10} /> Verified
-                        </span>
-                      ) : (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold text-white">
-                          <CheckCircle size={10} /> {profileData?.verification_status === "pending" ? "Pending" : "Not Verified"}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-white/80">
-                      Tech Harvester · {currentProfileBarangay || "Not assigned"}
-                    </p>
-                  </div>
+                  {profileData?.avatar_url && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveAvatar}
+                      disabled={avatarUploading}
+                      className="mt-2 text-xs font-semibold text-white/80 underline-offset-2 hover:text-white hover:underline disabled:opacity-50"
+                    >
+                      Remove photo
+                    </button>
+                  )}
+
+                  <h2 className="mt-3 max-w-full break-words text-xl font-black leading-tight">
+                    {currentProfileName}
+                  </h2>
+                  <p className="mt-1 text-sm text-white/80">
+                    Tech Harvester in {currentProfileBarangay || "an unassigned barangay"}
+                  </p>
+
+                  {profileData?.verification_status === "approved" || profileData?.verification_status === "verified" ? (
+                    <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-bold text-emerald-50 ring-1 ring-emerald-200/40">
+                      <CheckCircle size={13} /> Verified account
+                    </span>
+                  ) : (
+                    <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-300/20 px-3 py-1 text-xs font-bold text-amber-50 ring-1 ring-amber-200/40">
+                      <Clock size={13} />
+                      {profileData?.verification_status === "pending" ? "Verification pending" : "Not verified"}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* Profile tabs */}
-              <div className="shrink-0 border-b border-slate-100 bg-white px-4 pt-3">
-                <div className="grid grid-cols-3 rounded-xl bg-slate-100 p-0.5">
+              <div className="shrink-0 border-b border-slate-200 bg-white px-2">
+                <div className="grid grid-cols-3" role="tablist">
                   {[
-                    { id: "profile", label: "View Profile" },
-                    { id: "security", label: "Account & Security" },
+                    { id: "profile", label: "Profile" },
+                    { id: "security", label: "Security" },
                     { id: "trust", label: "Trust Tier" },
                   ].map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
+                      role="tab"
+                      aria-selected={profileModalTab === tab.id}
                       onClick={() => setProfileModalTab(tab.id)}
-                      className={`rounded-lg px-2 py-2 text-[10px] font-bold transition ${
+                      className={`relative px-2 py-3.5 text-sm font-bold transition focus:outline-none focus-visible:bg-slate-50 ${
                         profileModalTab === tab.id
-                          ? "bg-white text-[#287f95] shadow-sm"
-                          : "text-slate-500 hover:text-slate-700"
+                          ? "text-[#287f95]"
+                          : "text-slate-500 hover:text-slate-800"
                       }`}
                     >
                       {tab.label}
+                      {profileModalTab === tab.id && (
+                        <span className="absolute inset-x-4 bottom-0 h-[3px] rounded-t-full bg-[#287f95]" />
+                      )}
                     </button>
                   ))}
                 </div>
@@ -5980,26 +6160,22 @@ const SellerDashboard = ({ session }) => {
               <div className="min-h-0 flex-1 overflow-y-auto bg-white">
                 {/* ================= VIEW PROFILE ================= */}
                 {profileModalTab === "profile" && (
-                  <div className="px-4 pb-8 pt-5">
-                    <section>
-                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                        Personal Information
-                      </p>
+                  <div className="min-h-full bg-slate-50 px-5 pb-8 pt-5">
+                    <h3 className="mb-2.5 px-1 text-sm font-black text-slate-800">Personal information</h3>
 
-                      <div className="space-y-2">
-                        <InfoRow label="Full Name" value={currentProfileName} icon={<User size={14} />} />
-                        <InfoRow label="Email" value={session?.user?.email || "No email provided"} icon={<Mail size={14} />} />
-                        <InfoRow label="Phone Number" value={currentProfilePhone || "No phone number"} icon={<Phone size={14} />} />
-                        <InfoRow label="Barangay" value={currentProfileBarangay || "Not assigned"} icon={<MapPin size={14} />} />
-                      </div>
-                    </section>
+                    <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <InfoRow label="Full name" value={currentProfileName} icon={<User size={17} />} />
+                      <InfoRow label="Email" value={session?.user?.email || "No email provided"} icon={<Mail size={17} />} />
+                      <InfoRow label="Phone number" value={currentProfilePhone || "No phone number"} icon={<Phone size={17} />} />
+                      <InfoRow label="Barangay" value={currentProfileBarangay || "Not assigned"} icon={<MapPin size={17} />} />
+                    </div>
 
                     <button
                       type="button"
                       onClick={openEditProfile}
-                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#2d8da6] px-4 py-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#26798e]"
+                      className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#287f95] px-4 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#1f6a7e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#287f95] focus-visible:ring-offset-2"
                     >
-                      <Edit3 size={14} /> Edit Profile
+                      <Edit3 size={16} /> Edit profile
                     </button>
                   </div>
                 )}
@@ -6008,7 +6184,7 @@ const SellerDashboard = ({ session }) => {
                 {profileModalTab === "security" && (
                   <div className="px-4 pb-8 pt-6">
                     <section>
-                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                      <p className="mb-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
                         Change Password
                       </p>
 
@@ -6017,29 +6193,48 @@ const SellerDashboard = ({ session }) => {
                           ["Current Password", "current", passwordForm.current],
                           ["New Password", "next", passwordForm.next],
                           ["Confirm New Password", "confirm", passwordForm.confirm],
-                        ].map(([label, key, value]) => (
-                          <label key={key} className="block">
-                            <span className="text-[10px] font-medium text-slate-500">{label}</span>
-                            <input
-                              type="password"
-                              value={value}
-                              onChange={(e) => {
-                                setPasswordForm((prev) => ({ ...prev, [key]: e.target.value }));
-                                setPasswordError("");
-                                setPasswordSuccess("");
-                              }}
-                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[11px] outline-none focus:border-[#2d8da6] focus:ring-2 focus:ring-cyan-100"
-                            />
-                          </label>
-                        ))}
+                        ].map(([label, key, value]) => {
+                          const isVisible = visiblePasswords[key];
+                          return (
+                            <div key={key}>
+                              <label htmlFor={`profile-password-${key}`} className="text-xs font-medium text-slate-500">
+                                {label}
+                              </label>
+                              <div className="relative mt-1">
+                                <input
+                                  id={`profile-password-${key}`}
+                                  type={isVisible ? "text" : "password"}
+                                  value={value}
+                                  autoComplete={key === "current" ? "current-password" : "new-password"}
+                                  onChange={(e) => {
+                                    setPasswordForm((prev) => ({ ...prev, [key]: e.target.value }));
+                                    setPasswordError("");
+                                    setPasswordSuccess("");
+                                  }}
+                                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-11 text-[13px] outline-none focus:border-[#2d8da6] focus:ring-2 focus:ring-cyan-100"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setVisiblePasswords((prev) => ({ ...prev, [key]: !prev[key] }))}
+                                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-slate-400 transition hover:text-[#287f95] focus:outline-none focus-visible:text-[#287f95] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2d8da6]"
+                                  aria-label={isVisible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+                                  aria-pressed={isVisible}
+                                  title={isVisible ? "Hide password" : "Show password"}
+                                >
+                                  {isVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
 
                         {passwordError && (
-                          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-[10px] text-red-700">
+                          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
                             {passwordError}
                           </p>
                         )}
                         {passwordSuccess && (
-                          <p role="status" className="rounded-lg border border-green-200 bg-green-50 p-2.5 text-[10px] text-green-700">
+                          <p role="status" className="rounded-lg border border-green-200 bg-green-50 p-2.5 text-xs text-green-700">
                             {passwordSuccess}
                           </p>
                         )}
@@ -6048,7 +6243,7 @@ const SellerDashboard = ({ session }) => {
                           type="button"
                           onClick={handleChangePassword}
                           disabled={passwordSaving}
-                          className="w-full rounded-xl bg-[#2d8da6] py-2.5 text-[10px] font-black text-white transition hover:bg-[#26798e] disabled:cursor-not-allowed disabled:opacity-50"
+                          className="w-full rounded-xl bg-[#2d8da6] py-2.5 text-xs font-black text-white transition hover:bg-[#26798e] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {passwordSaving ? "Updating Password..." : "Update Password"}
                         </button>
@@ -6058,13 +6253,13 @@ const SellerDashboard = ({ session }) => {
                     <div className="my-6 border-t border-slate-100" />
 
                     <section>
-                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                      <p className="mb-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
                         Danger Zone
                       </p>
                       <button
                         type="button"
                         onClick={handleDeactivateAccount}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-300 py-3 text-[10px] font-bold text-red-600 transition hover:bg-red-50"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-300 py-3 text-xs font-bold text-red-600 transition hover:bg-red-50"
                       >
                         <XCircle size={13} /> Deactivate Account
                       </button>
@@ -6088,7 +6283,7 @@ const SellerDashboard = ({ session }) => {
                       ].map((stat) => (
                         <div key={stat.label} className="rounded-xl bg-slate-50 px-2 py-3 text-center">
                           <p className="text-sm font-black text-slate-800">{stat.value}</p>
-                          <p className="mt-1 text-[8px] leading-tight text-slate-400">{stat.label}</p>
+                          <p className="mt-1 text-xs leading-tight text-slate-400">{stat.label}</p>
                         </div>
                       ))}
                     </div>
@@ -6097,12 +6292,12 @@ const SellerDashboard = ({ session }) => {
                     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Current Tier</p>
+                          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Current Tier</p>
                           <h3 className="mt-1 text-lg font-black text-slate-700">
                             {trustTierLoading ? "Loading..." : getTrustTierLabel(currentTrustTier?.name)}
                           </h3>
                         </div>
-                        <div className="text-right text-[9px] text-slate-400">
+                        <div className="text-right text-xs text-slate-400">
                           {nextTrustTier ? (
                             <>
                               <p>{Number(userTrustStats.completedTransactions || 0)} transactions</p>
@@ -6114,7 +6309,7 @@ const SellerDashboard = ({ session }) => {
                         </div>
                       </div>
 
-                      <div className="mt-4 flex items-center justify-between text-[8px] text-slate-400">
+                      <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
                         <span>{getTrustTierLabel(currentTrustTier?.name)}</span>
                         <span>{nextTrustTier ? getTrustTierLabel(nextTrustTier.name) : getTrustTierLabel(currentTrustTier?.name)}</span>
                       </div>
@@ -6124,7 +6319,7 @@ const SellerDashboard = ({ session }) => {
                           style={{ width: `${progressPercent}%` }}
                         />
                       </div>
-                      <div className="mt-1 text-right text-[8px] text-slate-400">{progressPercent}% to next tier</div>
+                      <div className="mt-1 text-right text-xs text-slate-400">{progressPercent}% to next tier</div>
                     </section>
 
                     {/* CO2 */}
@@ -6135,22 +6330,22 @@ const SellerDashboard = ({ session }) => {
                             <Leaf size={16} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[10px] font-black uppercase text-[#145374]">CO₂ Recovery Contribution</p>
-                            <p className="text-[8px] text-[#3b91ad]">from harvesting & processing e-waste</p>
+                            <p className="text-xs font-black uppercase text-[#145374]">CO₂ Recovery Contribution</p>
+                            <p className="text-xs text-[#3b91ad]">from harvesting & processing e-waste</p>
                           </div>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-lg font-black text-[#145374]">
-                            {trustRecoveryCo2.toFixed(2)} <span className="text-[9px]">kg</span>
+                            {trustRecoveryCo2.toFixed(2)} <span className="text-xs">kg</span>
                           </p>
-                          <p className="text-[8px] text-[#3b91ad]">CO₂ recovered</p>
+                          <p className="text-xs text-[#3b91ad]">CO₂ recovered</p>
                         </div>
                       </div>
                       <div className="mt-3 flex items-center gap-2 border-t border-emerald-100 pt-3">
                         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
                           <Package size={13} />
                         </div>
-                        <p className="text-[9px] text-[#145374]">
+                        <p className="text-xs text-[#145374]">
                           <span className="font-black">{trustRecoveredDevices} devices</span> recovered & processed
                         </p>
                       </div>
@@ -6158,23 +6353,23 @@ const SellerDashboard = ({ session }) => {
 
                     {/* Privileges */}
                     <section className="mt-4">
-                      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Current Privileges</p>
+                      <p className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Current Privileges</p>
                       <div className="space-y-1.5">
                         {(() => {
                           const privileges = currentTrustTier?.privileges || [];
                           const nextPrivileges = nextTrustTier?.privileges || [];
                           const allPrivileges = [...new Set([...privileges, ...nextPrivileges])];
                           if (!allPrivileges.length) {
-                            return <div className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-500">No privileges configured for this tier.</div>;
+                            return <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No privileges configured for this tier.</div>;
                           }
                           return allPrivileges.map((privilege, index) => {
                             const active = privileges.some((p) => String(p).trim().toLowerCase() === String(privilege).trim().toLowerCase());
                             return (
                               <div key={`${privilege}-${index}`} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${active ? "bg-emerald-50" : "bg-slate-50"}`}>
                                 <span className={active ? "text-emerald-500" : "text-slate-300"}>
-                                  {active ? <CheckCircle size={13} /> : <Lock size={11} />}
+                                  {active ? <CheckCircle size={13} /> : <Lock size={13} />}
                                 </span>
-                                <span className={`text-[10px] font-semibold ${active ? "text-slate-700" : "text-slate-400"}`}>{privilege}</span>
+                                <span className={`text-xs font-semibold ${active ? "text-slate-700" : "text-slate-400"}`}>{privilege}</span>
                               </div>
                             );
                           });
@@ -6494,7 +6689,7 @@ const SellerDashboard = ({ session }) => {
 
                       {selectedBidder.verification_status === "approved" && (
                         <span className="bg-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                          <CheckCircle2 size={11} />
+                          <CheckCircle2 size={13} />
                           Verified
                         </span>
                       )}

@@ -6,7 +6,6 @@ import UrbanMineMap from "./UrbanMineMap";
 import InventoryView from "./InventoryView";
 import TransactionsView from "./TransactionsView";
 import BarangayLeaderboard from "./BarangayLeaderboard"; // Ensure path is correct
-import bannerBg from "./assets/banner.png";
 import DonationTab from "./DonationTab";
 import SellerProfileModal from "./SellerProfileModal";
 import RepairShopMessages from "./RepairShopMessages";
@@ -50,6 +49,10 @@ import {
   Leaf,
   CalendarDays,
   Upload,
+  Wrench,
+  Eye,
+  EyeOff,
+  X,
 } from "lucide-react";
 
 // Replace native browser showPopupAlert() dialogs with the dashboard's styled popup modal.
@@ -62,6 +65,244 @@ const showPopupAlert = (message) => {
     );
   }
 };
+
+// Same layout and components for every role; only the accent changes.
+const THEME = {
+  banner: "bg-gradient-to-r from-lime-300 via-emerald-200 to-cyan-300",
+  tabActive: "bg-[#527a24]",
+  accentText: "text-[#527a24]",
+  accentHover: "hover:text-[#527a24]",
+  focus: "focus:border-[#769c2d] focus:ring-lime-100",
+  focusVisible: "focus-visible:text-[#527a24] focus-visible:ring-[#769c2d]",
+  drawer: "from-[#4a7c59] to-[#769c2d]",
+  drawerText: "text-[#4a7c59]",
+  drawerBar: "bg-[#4a7c59]",
+  infoIcon: "bg-[#4a7c59]/10 text-[#4a7c59]",
+};
+
+
+// Philippine mobile number: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX (13 characters).
+// Strips anything that is not a digit (or a leading +) and caps the length while typing.
+const sanitizePhone = (value) => {
+  const raw = String(value ?? "").replace(/[^\d+]/g, "");
+  const hasPlus = raw.startsWith("+");
+  const digits = raw.replace(/\+/g, "");
+  return (hasPlus ? "+" : "") + digits.slice(0, hasPlus ? 12 : 11);
+};
+const isValidPhone = (value) => {
+  const phone = String(value || "").trim();
+  return !phone || /^(09\d{9}|\+639\d{9})$/.test(phone);
+};
+const PHONE_ERROR = "Phone number must be 11 digits starting with 09 (e.g. 09123456789) or +63 followed by 10 digits.";
+
+
+// Round avatar: shows the photo, or the first letter of the name as a fallback.
+const AvatarBubble = ({ url, name, className = "", textClassName = "" }) => {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
+
+  const initial = (name || "?").trim().charAt(0).toUpperCase();
+
+  return (
+    <div className={`relative shrink-0 overflow-hidden rounded-full ${className}`}>
+      {url && !failed ? (
+        <img
+          src={url}
+          alt={`${name || "User"}'s profile photo`}
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span className={`flex h-full w-full items-center justify-center ${textClassName}`}>
+          {initial}
+        </span>
+      )}
+    </div>
+  );
+};
+
+
+const StatCard = ({ label, value, isPrice = false }) => (
+  <div className="flex min-h-[120px] flex-col items-center justify-center rounded-2xl border border-slate-100 bg-white px-3 py-6 text-center shadow-sm">
+    <div className="text-3xl font-black tracking-tight text-slate-800">
+      {isPrice ? `₱${value}` : value}
+    </div>
+    <div className="mt-2 text-xs font-bold uppercase tracking-widest text-slate-500">{label}</div>
+  </div>
+);
+
+const StatGrid = ({ children }) => (
+  <div className="mb-8 grid grid-cols-2 gap-4 xl:grid-cols-4">{children}</div>
+);
+
+// tabs: [{ key, label, icon, muted? }]. `muted` greys a tab out but keeps it clickable.
+const TabBar = ({ tabs, active, onChange }) => (
+  <div
+    role="tablist"
+    className="mb-8 flex gap-1 overflow-x-auto rounded-xl border border-slate-100 bg-white p-1 shadow-sm"
+  >
+    {tabs.map((tab) => {
+      const isActive = active === tab.key;
+      return (
+        <button
+          key={tab.key}
+          type="button"
+          role="tab"
+          aria-selected={isActive}
+          onClick={() => onChange(tab.key)}
+          className={`flex min-w-fit flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-3 text-sm font-semibold transition ${
+            isActive ? `${THEME.tabActive} text-white shadow-sm` : "text-slate-600 hover:bg-slate-50"
+          } ${tab.muted && !isActive ? "opacity-50" : ""}`}
+        >
+          {tab.icon}
+          {tab.label}
+        </button>
+      );
+    })}
+  </div>
+);
+
+
+const PasswordField = ({ id, label, value, onChange, autoComplete }) => {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div>
+      <label htmlFor={id} className="text-sm font-semibold text-slate-600">
+        {label}
+      </label>
+      <div className="relative mt-1">
+        <input
+          id={id}
+          type={visible ? "text" : "password"}
+          value={value}
+          autoComplete={autoComplete}
+          onChange={onChange}
+          className={`w-full rounded-xl border border-slate-200 bg-white py-3 pl-3.5 pr-12 text-sm outline-none focus:ring-2 ${THEME.focus}`}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          className={`absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-slate-400 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset ${THEME.accentHover} ${THEME.focusVisible}`}
+          aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+          aria-pressed={visible}
+          title={visible ? "Hide password" : "Show password"}
+        >
+          {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const ProfileHeader = ({
+  avatarUrl,
+  name,
+  subtitle,
+  verified,
+  pendingLabel = "Verification pending",
+  uploading,
+  onClose,
+  onPhotoChange,
+  onRemovePhoto,
+}) => (
+  <div className={`relative shrink-0 overflow-hidden bg-gradient-to-b ${THEME.drawer} px-6 pb-7 pt-6 text-white`}>
+    <button
+      type="button"
+      onClick={onClose}
+      className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+      aria-label="Close profile"
+    >
+      <X size={18} />
+    </button>
+
+    <div className="flex flex-col items-center pt-2 text-center">
+      <div className="relative">
+        <AvatarBubble
+          url={avatarUrl}
+          name={name}
+          className="h-24 w-24 bg-white shadow-lg ring-4 ring-white/25"
+          textClassName={`text-4xl font-black ${THEME.drawerText}`}
+        />
+        {uploading && (
+          <div className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-900/50" role="status" aria-label="Uploading photo">
+            <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-white/40 border-t-white" />
+          </div>
+        )}
+        <label
+          className={`absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white shadow-md transition hover:bg-slate-100 focus-within:ring-2 focus-within:ring-white ${THEME.drawerText} ${
+            uploading ? "pointer-events-none opacity-60" : "cursor-pointer"
+          }`}
+          title="Change profile photo"
+        >
+          <Camera size={17} />
+          <span className="sr-only">Change profile photo</span>
+          <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={onPhotoChange} disabled={uploading} />
+        </label>
+      </div>
+
+      {avatarUrl && onRemovePhoto && (
+        <button
+          type="button"
+          onClick={onRemovePhoto}
+          disabled={uploading}
+          className="mt-2 text-xs font-semibold text-white/80 underline-offset-2 hover:text-white hover:underline disabled:opacity-50"
+        >
+          Remove photo
+        </button>
+      )}
+
+      <h2 className="mt-3 max-w-full break-words text-xl font-black leading-tight">{name}</h2>
+      <p className="mt-1 text-sm text-white/80">{subtitle}</p>
+
+      {verified ? (
+        <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-bold text-emerald-50 ring-1 ring-emerald-200/40">
+          <CheckCircle size={13} /> Verified account
+        </span>
+      ) : (
+        <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-300/20 px-3 py-1 text-xs font-bold text-amber-50 ring-1 ring-amber-200/40">
+          <Clock size={13} /> {pendingLabel}
+        </span>
+      )}
+    </div>
+  </div>
+);
+
+const ProfileTabs = ({ tabs, active, onChange }) => (
+  <div className="shrink-0 border-b border-slate-200 bg-white px-2">
+    <div className="grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} role="tablist">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={active === tab.id}
+          onClick={() => onChange(tab.id)}
+          className={`relative px-2 py-3.5 text-sm font-bold transition focus:outline-none focus-visible:bg-slate-50 ${
+            active === tab.id ? THEME.drawerText : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          {tab.label}
+          {active === tab.id && <span className={`absolute inset-x-4 bottom-0 h-[3px] rounded-t-full ${THEME.drawerBar}`} />}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+const InfoRow = ({ label, value, icon }) => (
+  <div className="flex items-center gap-3.5 px-4 py-3.5">
+    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${THEME.infoIcon}`}>{icon}</div>
+    <div className="min-w-0 flex-1">
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-0.5 break-words text-sm font-semibold leading-snug text-slate-800">{value}</p>
+    </div>
+  </div>
+);
+
 
 const HAZARDOUS_DIAGNOSIS_KEYWORDS = [
   "Dead/Degraded Battery",
@@ -494,6 +735,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           business_permit_url: profile?.business_permit_url || "",
           tech_cert_url: profile?.tech_cert_url || "",
           profile_photo: profile?.profile_photo || "",
+          avatar_url: profile?.avatar_url || "",
 
           joined_date: profile?.created_at
             ? new Date(profile.created_at).toLocaleDateString("en-US", {
@@ -2020,18 +2262,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         </div>
       )}
       {/* ===== TOP BANNER ===== */}
-      <div
-        className="relative overflow-hidden min-h-[360px] px-6 pt-6 pb-8 bg-cover bg-center"
-        style={{
-          backgroundImage: `linear-gradient(
-          rgba(255, 255, 255, 0.09),
-          rgba(255, 255, 255, 0.29)
-        ), url(${bannerBg})`,
-        }}
-      >
-        {/* Soft overlay blur */}
-        <div className="absolute inset-0 backdrop-[1px]"></div>
-
+      <div className={`relative overflow-hidden min-h-[360px] px-6 pt-6 pb-8 ${THEME.banner}`}>
         {/* CONTENT */}
         <div className="relative z-10">
           {/* --- TOP HEADER SECTION --- */}
@@ -2052,7 +2283,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               </button>
 
               {unreadMessageCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold border-2 border-white">
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold border-2 border-white">
                   {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
                 </span>
               )}
@@ -2068,7 +2299,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
               </div>
 
               {notifications.filter((n) => !n.is_read).length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold border-2 border-white">
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs min-w-5 h-5 px-1 rounded-full flex items-center justify-center font-bold border-2 border-white">
                   {notifications.filter((n) => !n.is_read).length}
                 </span>
               )}
@@ -2177,7 +2408,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 className="flex items-center gap-3 bg-white/90 backdrop-blur-md p-1 pr-4 rounded-full shadow-sm border border-white/50 cursor-pointer hover:border-slate-300 transition-all"
               >
                 <div className="text-right hidden sm:block pl-3">
-                  <p className="font-bold text-slate-800 text-xs leading-none mb-1">
+                  <p className="font-bold text-slate-800 text-sm leading-none mb-1 truncate max-w-[160px]">
                     {((profileData.role === "repair_shop" && profileData.business_name?.trim()) || profileData.full_name)}
                   </p>
 
@@ -2196,9 +2427,12 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   )}
                 </div>
 
-                <div className="w-9 h-9 bg-[#4a7c59] rounded-full flex items-center justify-center text-white font-black text-xs shadow-sm border border-white/20">
-                  {profileData.initials}
-                </div>
+                <AvatarBubble
+                  url={profileData.avatar_url || profileData.profile_photo}
+                  name={profileData.business_name || profileData.full_name}
+                  className="h-10 w-10 bg-[#4a7c59] text-white font-black shadow-sm border border-white/20"
+                  textClassName="text-sm"
+                />
               </div>
 
               {showProfileDropdown && (
@@ -2210,14 +2444,17 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                   <div className="absolute right-0 mt-3 w-64 bg-white rounded-[2rem] shadow-2xl border border-slate-50 z-20 overflow-hidden">
                     <div className="bg-gradient-to-br from-[#4a7c59] to-[#769c2d] p-5 text-white">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center font-bold text-sm">
-                          {profileData.initials}
-                        </div>
-                        <div>
-                          <p className="font-bold text-xs">
+                        <AvatarBubble
+                          url={profileData.avatar_url || profileData.profile_photo}
+                          name={profileData.business_name || profileData.full_name}
+                          className="h-11 w-11 bg-white/20 font-bold"
+                          textClassName="text-base"
+                        />
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm truncate">
                             {((profileData.role === "repair_shop" && profileData.business_name?.trim()) || profileData.full_name)}
                           </p>
-                          <p className="text-xs text-white/80">
+                          <p className="text-xs text-white/80 truncate">
                             {session?.user?.email}
                           </p>
                         </div>
@@ -2387,91 +2624,33 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           )}
 
           {/* --- STATS GRID --- */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5 mb-8">
-            <StatCard
-              label="Active Alerts"
-              value={dashboardStats.activeAlerts.toString()}
-            />
-
-            <StatCard
-              label="Pending Bids"
-              value={dashboardStats.pendingBids.toString()}
-            />
-
-            <StatCard
-              label="Acquired Parts"
-              value={dashboardStats.acquiredParts.toString()}
-            />
-
-            <StatCard
-              label="Total Spent"
-              value={dashboardStats.totalSpent}
-              isPrice
-            />
-          </div>
+          <StatGrid>
+            <StatCard label="Active Alerts" value={dashboardStats.activeAlerts.toString()} />
+            <StatCard label="Pending Bids" value={dashboardStats.pendingBids.toString()} />
+            <StatCard label="Acquired Parts" value={dashboardStats.acquiredParts.toString()} />
+            <StatCard label="Total Spent" value={dashboardStats.totalSpent} isPrice />
+          </StatGrid>
 
           {/* --- NAVIGATION --- */}
-          <div className="bg-white/95 backdrop-blur-md rounded-[2rem] border border-white shadow-lg p-3 sm:p-4 flex flex-wrap gap-2 sm:gap-3 items-stretch">
-            <NavBtn
-              active={activeTab === "browse"}
-              onClick={() => setActiveTab("browse")}
-              icon={<Search size={16} />}
-              label="Browse Listings"
-            />
-
-            <NavBtn
-              active={activeTab === "bids"}
-              onClick={() => setActiveTab("bids")}
-              icon={<Gavel size={16} />}
-              label="My Bids"
-            />
-
-            <NavBtn
-              active={activeTab === "transactions"}
-              onClick={() => setActiveTab("transactions")}
-              icon={<Gavel size={16} />}
-              label="Transactions"
-            />
-
-            <NavBtn
-              active={activeTab === "map"}
-              onClick={() => {
-                if (!isVerified) {
-                  showPopupAlert(
-                    "Access Denied: Urban Mine Map is restricted to Verified Professionals.",
-                  );
-                } else {
-                  setActiveTab("map");
-                }
-              }}
-              icon={
-                <MapIcon size={16} className={!isVerified ? "opacity-50" : ""} />
+          <TabBar
+            active={activeTab}
+            onChange={(key) => {
+              if (key === "map" && !isVerified) {
+                showPopupAlert("Access Denied: Urban Mine Map is restricted to Verified Professionals.");
+                return;
               }
-              label={isVerified ? "Urban Mine Map" : "Map (Locked)"}
-              disabled={!isVerified}
-            />
-
-            <NavBtn
-              active={activeTab === "leaderboard"}
-              onClick={() => setActiveTab("leaderboard")}
-              icon={<Trophy size={16} />}
-              label="E-waste Tracker"
-            />
-
-            <NavBtn
-              active={activeTab === "alerts"}
-              onClick={() => setActiveTab("alerts")}
-              icon={<Bell size={16} />}
-              label="My Alerts"
-            />
-
-            <NavBtn
-              active={activeTab === "donation"}
-              onClick={() => setActiveTab("donation")}
-              icon={<Gift size={16} />}
-              label="Donation"
-            />
-          </div>
+              setActiveTab(key);
+            }}
+            tabs={[
+              { key: "browse", label: "Browse Listings", icon: <Search size={18} /> },
+              { key: "bids", label: "My Bids", icon: <Gavel size={18} /> },
+              { key: "transactions", label: "Transactions", icon: <ArrowLeftRight size={18} /> },
+              { key: "map", label: isVerified ? "Urban Mine Map" : "Map (Locked)", icon: <MapIcon size={18} />, muted: !isVerified },
+              { key: "leaderboard", label: "E-waste Tracker", icon: <Trophy size={18} /> },
+              { key: "alerts", label: "My Alerts", icon: <Bell size={18} /> },
+              { key: "donation", label: "Donation", icon: <Gift size={18} /> },
+            ]}
+          />
         </div>
       </div>
 
@@ -2514,7 +2693,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                 {searchTerm.trim().length >= 2 && (
                   <div className="absolute z-30 mt-[60px] left-4 right-4 md:right-[calc(40%-0.75rem)] md:left-4">
                     <div className="bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                      <div className="px-3 py-2 border-b border-slate-100 text-[9px] font-black uppercase tracking-wide text-slate-400">
+                      <div className="px-3 py-2 border-b border-slate-100 text-xs font-black uppercase tracking-wide text-slate-400">
                         People &amp; Shops
                       </div>
                       {profileSearchLoading ? (
@@ -2544,7 +2723,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                               <p className="text-xs font-black text-slate-700 truncate">
                                 {profile.business_name || profile.full_name || "User"}
                               </p>
-                              <p className="text-[9px] text-slate-400 truncate">
+                              <p className="text-xs text-slate-400 truncate">
                                 {profile.full_name && profile.business_name ? `${profile.full_name} · ` : ""}
                                 {profile.barangay || "Location not provided"}
                               </p>
@@ -2749,46 +2928,61 @@ const RepairShopProfileDrawer = ({
 }) => {
   const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
 
+  // Keep edits isolated from the displayed/saved profile until Save Changes is clicked.
+  const [draftProfileData, setDraftProfileData] = useState(profileData);
+
+  useEffect(() => {
+    if (isEditingProfile) {
+      setDraftProfileData(profileData);
+    }
+  }, [isEditingProfile, profileData]);
+
+  const discardProfileDraft = () => {
+    setDraftProfileData(profileData);
+    setIsEditingProfile(false);
+  };
+
+  const AVATAR_MAX_BYTES = 2 * 1024 * 1024; // 2 MB, same as the seller dashboard
+
+  // The photo lives in the public "avatars" bucket under the user's own folder.
+  // The URL is stored in profiles.avatar_url (same as the seller dashboard) and
+  // mirrored to profiles.profile_photo so anything that still reads the old
+  // column keeps working.
+  const saveAvatarUrl = async (url) => {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ avatar_url: url, profile_photo: url })
+      .eq("id", session.user.id);
+    if (error) throw error;
+    setProfileData((prev) => ({ ...prev, avatar_url: url || "", profile_photo: url || "" }));
+  };
+
   const handleProfilePhotoUpload = async (event) => {
     const file = event.target.files?.[0];
-    event.target.value = "";
+    event.target.value = ""; // allow choosing the same file again later
     if (!file || !session?.user?.id) return;
 
-    const maxFileSize = 5 * 1024 * 1024;
-    if (file.size > maxFileSize) {
-      showPopupAlert("File size exceeds maximum limit. Please upload a photo under 5 MB.");
+    if (!file.type.startsWith("image/")) {
+      showPopupAlert("Please choose an image file (JPG, PNG or WebP).");
       return;
     }
-
-    if (!file.type.startsWith("image/")) {
-      showPopupAlert("Please upload a valid image file.");
+    if (file.size > AVATAR_MAX_BYTES) {
+      showPopupAlert("That photo is larger than 2 MB. Please choose a smaller one.");
       return;
     }
 
     setProfilePhotoUploading(true);
     try {
-      const extension = (file.name.split(".").pop() || "jpg").toLowerCase();
-      const path = `profile-photos/${session.user.id}/profile_${Date.now()}.${extension}`;
+      const path = `${session.user.id}/avatar`;
       const { error: uploadError } = await supabase.storage
-        .from("verifications")
-        .upload(path, file, { upsert: true, contentType: file.type });
-
+        .from("avatars")
+        .upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
       if (uploadError) throw uploadError;
 
-      const { data: publicUrlData } = supabase.storage
-        .from("verifications")
-        .getPublicUrl(path);
-      const profilePhoto = publicUrlData?.publicUrl || "";
-      if (!profilePhoto) throw new Error("Could not create the profile photo URL.");
-
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ profile_photo: profilePhoto })
-        .eq("id", session.user.id);
-
-      if (profileError) throw profileError;
-      setProfileData((prev) => ({ ...prev, profile_photo: profilePhoto }));
-      showPopupAlert("Profile photo updated successfully.");
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      // Cache-buster so the new photo shows immediately instead of the old one.
+      await saveAvatarUrl(`${data.publicUrl}?v=${Date.now()}`);
+      showPopupAlert("Profile photo updated.");
     } catch (error) {
       console.error("PROFILE PHOTO UPLOAD ERROR:", error);
       showPopupAlert(`Could not update profile photo: ${error.message}`);
@@ -2797,11 +2991,22 @@ const RepairShopProfileDrawer = ({
     }
   };
 
-  const validatePhone = (value) => {
-    const phone = String(value || "").trim();
-    if (!phone) return true;
-    return /^(09\d{9}|\+639\d{9})$/.test(phone);
+  const handleRemoveProfilePhoto = async () => {
+    if (!session?.user?.id) return;
+    setProfilePhotoUploading(true);
+    try {
+      await supabase.storage.from("avatars").remove([`${session.user.id}/avatar`]);
+      await saveAvatarUrl(null);
+      showPopupAlert("Profile photo removed.");
+    } catch (error) {
+      console.error("PROFILE PHOTO REMOVE ERROR:", error);
+      showPopupAlert(`Could not remove profile photo: ${error.message}`);
+    } finally {
+      setProfilePhotoUploading(false);
+    }
   };
+
+  const validatePhone = (value) => isValidPhone(value);
 
   return (
             <div
@@ -2819,85 +3024,34 @@ const RepairShopProfileDrawer = ({
                 aria-modal="true"
                 aria-label="Repair Shop profile"
               >
-                {/* Drawer top bar */}
-                <div className="h-[62px] shrink-0 bg-slate-900 flex items-center justify-end px-3">
-                  <button
-                    type="button"
-                    aria-label="Close profile"
-                    onClick={() => {
-                      setShowProfileModal(false);
-                      setIsEditingProfile(false);
-                      setProfilePanelTab("profile");
-                    }}
-                    className="w-8 h-8 rounded-lg bg-slate-700 text-white/80 hover:bg-slate-600 hover:text-white flex items-center justify-center transition"
-                  >
-                    <XCircle size={18} />
-                  </button>
-                </div>
+                <ProfileHeader
+                  avatarUrl={profileData?.avatar_url || profileData?.profile_photo}
+                  name={(profileData?.business_name || profileData?.full_name || (isRepairShop ? "Repair Shop" : "Tech Owner / Dealer"))}
+                  subtitle={`${isRepairShop ? "Repair Shop" : "Tech Owner / Dealer"} in ${profileData?.barangay || profileData?.assigned_area || "Valenzuela"}`}
+                  verified={verificationStatus === "verified" || verificationStatus === "approved"}
+                  pendingLabel={verificationStatus === "pending" ? "Verification pending" : "Not verified"}
+                  uploading={profilePhotoUploading}
+                  onClose={() => {
+                    setShowProfileModal(false);
+                    setIsEditingProfile(false);
+                    setProfilePanelTab("profile");
+                  }}
+                  onPhotoChange={handleProfilePhotoUpload}
+                  onRemovePhoto={handleRemoveProfilePhoto}
+                />
 
-                {/* Profile identity */}
-                <div className="px-4 pt-5 pb-3 bg-white shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-12 h-12 shrink-0">
-                      {profileData?.profile_photo ? (
-                        <img src={profileData.profile_photo} alt="Profile" className="w-12 h-12 rounded-full object-cover shadow-sm" />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#5d963d] to-[#2b8c91] text-white flex items-center justify-center text-sm font-bold shadow-sm">
-                          {profileData?.initials || "RS"}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-[15px] font-black text-slate-800 truncate">
-                          {profileData?.business_name || profileData?.full_name || (isRepairShop ? "Repair Shop" : "Tech Owner / Dealer")}
-                        </h2>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lime-50 text-[#5d963d] text-[9px] font-bold border border-lime-100 shrink-0">
-                          <CheckCircle2 size={10} />
-                          {verificationStatus === "verified" ? "Verified" : "Pending"}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        {isRepairShop ? "Repair Shop" : "Tech Owner / Dealer"} · {profileData?.barangay || profileData?.assigned_area || "Valenzuela"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Tabs */}
-                  <div className="mt-4 grid grid-cols-3 rounded-xl bg-slate-100 p-0.5">
-                    {[
-                      { id: "profile", label: "View Profile" },
-                      { id: "security", label: "Account & Security" },
-                      { id: "trust", label: "Trust Tier" },
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => {
-                          setProfilePanelTab(tab.id);
-                          setIsEditingProfile(false);
-                        }}
-                        className={`min-w-0 px-2 py-2 rounded-lg text-[9px] font-bold transition ${
-                          profilePanelTab === tab.id
-                            ? "bg-white text-[#527a24] shadow-sm"
-                            : "text-slate-500 hover:text-slate-700"
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="px-4 pb-3 bg-white">
-                  <label className="inline-flex items-center gap-2 text-[10px] font-bold text-[#5d963d] cursor-pointer">
-                    <Camera size={12} />
-                    {profilePhotoUploading ? "Uploading photo..." : "Change profile photo"}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleProfilePhotoUpload} disabled={profilePhotoUploading} />
-                  </label>
-                  <p className="text-[9px] text-slate-400 mt-1">Maximum 5 MB. Image files only.</p>
-                </div>
+                <ProfileTabs
+                  active={profilePanelTab}
+                  onChange={(id) => {
+                    setProfilePanelTab(id);
+                    setIsEditingProfile(false);
+                  }}
+                  tabs={[
+                    { id: "profile", label: "Profile" },
+                    { id: "security", label: "Security" },
+                    { id: "trust", label: "Trust Tier" },
+                  ]}
+                />
 
                 <div className="flex-1 overflow-y-auto bg-white">
                   {/* ================= VIEW PROFILE ================= */}
@@ -2906,29 +3060,29 @@ const RepairShopProfileDrawer = ({
                       {!isEditingProfile ? (
                         <>
                           <section>
-                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                            <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
                               Shop Information
                             </p>
 
-                            <div className="space-y-2">
+                            <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                               {[
                                 {
-                                  icon: <User size={14} />,
+                                  icon: <User size={17} />,
                                   label: "Full Name",
                                   value: profileData?.full_name || "No name provided",
                                 },
                                 {
-                                  icon: <Mail size={14} />,
+                                  icon: <Mail size={17} />,
                                   label: "Email",
                                   value: profileData?.email || "No email provided",
                                 },
                                 {
-                                  icon: <Phone size={14} />,
+                                  icon: <Phone size={17} />,
                                   label: "Phone Number",
                                   value: profileData?.contact_number || "No phone number",
                                 },
                                 {
-                                  icon: <MapPin size={14} />,
+                                  icon: <MapPin size={17} />,
                                   label: "Barangay",
                                   value:
                                     profileData?.barangay ||
@@ -2936,34 +3090,23 @@ const RepairShopProfileDrawer = ({
                                     "Not assigned",
                                 },
                               ].map((item) => (
-                                <div
-                                  key={item.label}
-                                  className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5"
-                                >
-                                  <span className="text-slate-400 shrink-0">{item.icon}</span>
-                                  <div className="min-w-0">
-                                    <p className="text-[9px] text-slate-400">{item.label}</p>
-                                    <p className="text-[11px] font-semibold text-slate-700 truncate">
-                                      {item.value}
-                                    </p>
-                                  </div>
-                                </div>
+                                <InfoRow key={item.label} label={item.label} value={item.value} icon={item.icon} />
                               ))}
                             </div>
                           </section>
 
                           {!isRepairShop && (
                             <section>
-                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
                                 Listing Activity
                               </p>
                               <div className="grid grid-cols-2 gap-2">
                                 <div className="rounded-xl bg-slate-50 px-3 py-2.5">
-                                  <p className="text-[9px] text-slate-400">Active Listings</p>
+                                  <p className="text-xs text-slate-400">Active Listings</p>
                                   <p className="text-sm font-black text-slate-700">{profileData?.active_created_listings || 0}</p>
                                 </div>
                                 <div className="rounded-xl bg-slate-50 px-3 py-2.5">
-                                  <p className="text-[9px] text-slate-400">Completed Listings</p>
+                                  <p className="text-xs text-slate-400">Completed Listings</p>
                                   <p className="text-sm font-black text-slate-700">{profileData?.completed_created_listings || 0}</p>
                                 </div>
                               </div>
@@ -2972,7 +3115,7 @@ const RepairShopProfileDrawer = ({
 
                           {isRepairShop && (
                             <section>
-                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
                                 Repair Service Reviews
                               </p>
                               <div className="rounded-xl bg-slate-50 p-3 space-y-2">
@@ -2980,14 +3123,14 @@ const RepairShopProfileDrawer = ({
                                   profileData.repair_reviews.slice(0, 3).map((review) => (
                                     <div key={review.id} className="border-b border-slate-200 last:border-0 pb-2 last:pb-0">
                                       <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[10px] font-bold text-slate-700">{Number(review.overall_rating || 0).toFixed(1)} / 5</span>
-                                        <span className="text-[9px] text-slate-400">{review.created_at ? new Date(review.created_at).toLocaleDateString() : ""}</span>
+                                        <span className="text-xs font-bold text-slate-700">{Number(review.overall_rating || 0).toFixed(1)} / 5</span>
+                                        <span className="text-xs text-slate-400">{review.created_at ? new Date(review.created_at).toLocaleDateString() : ""}</span>
                                       </div>
-                                      <p className="text-[10px] text-slate-500 mt-1">{review.comment || "No comment provided."}</p>
+                                      <p className="text-xs text-slate-500 mt-1">{review.comment || "No comment provided."}</p>
                                     </div>
                                   ))
                                 ) : (
-                                  <p className="text-[10px] text-slate-400">No repair-service reviews yet.</p>
+                                  <p className="text-xs text-slate-400">No repair-service reviews yet.</p>
                                 )}
                               </div>
                             </section>
@@ -2995,21 +3138,21 @@ const RepairShopProfileDrawer = ({
 
                           <section>
                             <div className="flex items-center justify-between mb-2">
-                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
                                 About the Shop
                               </p>
-                              <button
+                              {/* <button
                                 type="button"
                                 onClick={() => setIsEditingProfile(true)}
-                                className="text-[10px] font-bold text-[#5d963d] hover:text-[#3f7126] flex items-center gap-1"
+                                className="text-xs font-bold text-[#5d963d] hover:text-[#3f7126] flex items-center gap-1"
                               >
                                 <Settings size={11} />
                                 Edit
-                              </button>
+                              </button> */}
                             </div>
 
                             <div className="rounded-xl bg-slate-50 px-3 py-3">
-                              <p className="text-[11px] leading-relaxed text-slate-500">
+                              <p className="text-xs leading-relaxed text-slate-500">
                                 {profileData?.business_activity?.trim() ||
                                   "No shop description has been provided yet."}
                               </p>
@@ -3017,7 +3160,7 @@ const RepairShopProfileDrawer = ({
                           </section>
 
                           <section>
-                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                            <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
                               Services Offered
                             </p>
 
@@ -3029,14 +3172,14 @@ const RepairShopProfileDrawer = ({
                                 .map((service, index) => (
                                   <span
                                     key={`${service}-${index}`}
-                                    className="px-2.5 py-1 rounded-full border border-lime-200 bg-lime-50 text-[#5d7f3b] text-[9px] font-medium"
+                                    className="px-2.5 py-1 rounded-full border border-lime-200 bg-lime-50 text-[#5d7f3b] text-xs font-medium"
                                   >
                                     {service}
                                   </span>
                                 ))}
 
                               {!String(profileData?.tech_specialization || "").trim() && (
-                                <span className="text-[10px] text-slate-400">
+                                <span className="text-xs text-slate-400">
                                   No services listed yet.
                                 </span>
                               )}
@@ -3044,11 +3187,11 @@ const RepairShopProfileDrawer = ({
                           </section>
 
                           <section>
-                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                            <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
                               Operating Hours
                             </p>
                             <div className="rounded-xl bg-slate-50 px-3 py-3">
-                              <p className="whitespace-pre-line text-[11px] leading-relaxed text-slate-500">
+                              <p className="whitespace-pre-line text-xs leading-relaxed text-slate-500">
                                 {profileData?.operating_hours?.trim() ||
                                   "No operating hours have been provided yet."}
                               </p>
@@ -3058,7 +3201,7 @@ const RepairShopProfileDrawer = ({
                           <button
                             type="button"
                             onClick={() => setIsEditingProfile(true)}
-                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-2.5 text-[10px] font-black flex items-center justify-center gap-2 transition shadow-sm"
+                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-2.5 text-xs font-black flex items-center justify-center gap-2 transition shadow-sm"
                           >
                             <Settings size={13} />
                             Edit Contact Info
@@ -3069,133 +3212,135 @@ const RepairShopProfileDrawer = ({
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-sm font-black text-slate-800">Edit Contact Info</p>
-                              <p className="text-[10px] text-slate-400 mt-0.5">
+                              <p className="text-xs text-slate-400 mt-0.5">
                                 Update your repair shop profile details.
                               </p>
                             </div>
                             <button
                               type="button"
-                              onClick={() => setIsEditingProfile(false)}
-                              className="text-[10px] font-bold text-slate-400 hover:text-slate-600"
+                              onClick={discardProfileDraft}
+                              className="text-xs font-bold text-slate-400 hover:text-slate-600"
                             >
                               Cancel
                             </button>
                           </div>
 
                           <label className="block">
-                            <span className="text-[10px] font-bold text-slate-500">Full Name</span>
+                            <span className="text-xs font-bold text-slate-500">Full Name</span>
                             <input
                               type="text"
                               value={profileData?.full_name || ""}
                               disabled
                               readOnly
                               title="This information is verified by the system and cannot be edited."
-                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-[11px] text-slate-500 cursor-not-allowed outline-none"
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-xs text-slate-500 cursor-not-allowed outline-none"
                             />
-                            <p className="text-[9px] text-slate-400 mt-1">This information is verified by the system and cannot be edited.</p>
+                            <p className="text-xs text-slate-400 mt-1">This information is verified by the system and cannot be edited.</p>
                           </label>
 
                           <label className="block">
-                            <span className="text-[10px] font-bold text-slate-500">Phone Number</span>
+                            <span className="text-xs font-bold text-slate-500">Phone Number</span>
                             <input
                               type="tel"
-                              value={profileData?.contact_number || ""}
-                              onChange={(e) => setProfileData((prev) => ({ ...prev, contact_number: e.target.value }))}
+                              inputMode="tel"
+                              maxLength={13}
+                              value={draftProfileData?.contact_number || ""}
+                              onChange={(e) => setDraftProfileData((prev) => ({ ...prev, contact_number: sanitizePhone(e.target.value) }))}
                               placeholder="09XXXXXXXXX"
-                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs outline-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
                             />
                           </label>
 
                           <label className="block">
-                            <span className="text-[10px] font-bold text-slate-500">Barangay</span>
+                            <span className="text-xs font-bold text-slate-500">Barangay</span>
                             <input
                               type="text"
                               value={profileData?.barangay || profileData?.assigned_area || ""}
                               disabled
                               readOnly
                               title="This information is verified by the system and cannot be edited."
-                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-[11px] text-slate-500 cursor-not-allowed outline-none"
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-xs text-slate-500 cursor-not-allowed outline-none"
                             />
-                            <p className="text-[9px] text-slate-400 mt-1">This information is verified by the system and cannot be edited.</p>
+                            <p className="text-xs text-slate-400 mt-1">This information is verified by the system and cannot be edited.</p>
                           </label>
 
                           {!isRepairShop && (
                             <label className="block">
-                              <span className="text-[10px] font-bold text-slate-500">Bio</span>
+                              <span className="text-xs font-bold text-slate-500">Bio</span>
                               <textarea
                                 rows={4}
-                                value={profileData?.business_activity || ""}
-                                onChange={(e) => setProfileData((prev) => ({ ...prev, business_activity: e.target.value }))}
+                                value={draftProfileData?.business_activity || ""}
+                                onChange={(e) => setDraftProfileData((prev) => ({ ...prev, business_activity: e.target.value }))}
                                 placeholder="Tell other users a little about yourself."
-                                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
                               />
                             </label>
                           )}
 
                           <label className="block">
-                            <span className="text-[10px] font-bold text-slate-500">About the Shop</span>
+                            <span className="text-xs font-bold text-slate-500">About the Shop</span>
                             <textarea
                               rows={4}
-                              value={profileData?.business_activity || ""}
+                              value={draftProfileData?.business_activity || ""}
                               onChange={(e) =>
-                                setProfileData((prev) => ({
+                                setDraftProfileData((prev) => ({
                                   ...prev,
                                   business_activity: e.target.value,
                                 }))
                               }
                               placeholder="Describe your repair shop and services."
-                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
                             />
                           </label>
 
                           <label className="block">
-                            <span className="text-[10px] font-bold text-slate-500">
+                            <span className="text-xs font-bold text-slate-500">
                               Services Offered
                             </span>
                             <textarea
                               rows={3}
-                              value={profileData?.tech_specialization || ""}
+                              value={draftProfileData?.tech_specialization || ""}
                               onChange={(e) =>
-                                setProfileData((prev) => ({
+                                setDraftProfileData((prev) => ({
                                   ...prev,
                                   tech_specialization: e.target.value,
                                 }))
                               }
                               placeholder="Screen Replacement, Battery Replacement, Data Recovery..."
-                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
                             />
                           </label>
 
                           <label className="block">
-                            <span className="text-[10px] font-bold text-slate-500">
+                            <span className="text-xs font-bold text-slate-500">
                               Operating Hours
                             </span>
                             <textarea
                               rows={2}
                               maxLength={200}
-                              value={profileData?.operating_hours || ""}
+                              value={draftProfileData?.operating_hours || ""}
                               onChange={(e) =>
-                                setProfileData((prev) => ({
+                                setDraftProfileData((prev) => ({
                                   ...prev,
                                   operating_hours: e.target.value,
                                 }))
                               }
                               placeholder="Mon–Sat 9:00 AM – 6:00 PM, Sunday closed"
-                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
+                              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs outline-none resize-none focus:bg-white focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
                             />
                           </label>
 
                           {(verificationStatus === "rejected" || verificationStatus === "expired") && (
                             <div className="rounded-xl border border-red-100 bg-red-50/60 p-3 space-y-3">
-                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-red-700">
+                              <p className="text-xs font-black uppercase tracking-[0.12em] text-red-700">
                                 Resubmit Verification Documents
                               </p>
-                              <p className="text-[10px] text-red-500">
+                              <p className="text-xs text-red-500">
                                 Upload both corrected documents (PDF, JPEG, PNG or WebP, max 5MB each).
                               </p>
 
                               <label className="block">
-                                <span className="text-[10px] font-bold text-slate-500">
+                                <span className="text-xs font-bold text-slate-500">
                                   Business Permit / DTI Registration
                                 </span>
                                 <input
@@ -3203,15 +3348,15 @@ const RepairShopProfileDrawer = ({
                                   type="file"
                                   accept="application/pdf,image/jpeg,image/png,image/webp"
                                   onChange={(e) => setResubmissionPermitFile(e.target.files?.[0] || null)}
-                                  className="w-full mt-1 text-[10px] file:mr-2 file:rounded-lg file:border-0 file:bg-lime-100 file:px-3 file:py-1.5 file:text-[10px] file:font-bold file:text-lime-800"
+                                  className="w-full mt-1 text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-lime-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-lime-800"
                                 />
                                 {resubmissionPermitFile && (
-                                  <p className="text-[9px] text-slate-500 mt-1">Selected: {resubmissionPermitFile.name}</p>
+                                  <p className="text-xs text-slate-500 mt-1">Selected: {resubmissionPermitFile.name}</p>
                                 )}
                               </label>
 
                               <label className="block">
-                                <span className="text-[10px] font-bold text-slate-500">
+                                <span className="text-xs font-bold text-slate-500">
                                   Technical Certification
                                 </span>
                                 <input
@@ -3219,10 +3364,10 @@ const RepairShopProfileDrawer = ({
                                   type="file"
                                   accept="application/pdf,image/jpeg,image/png,image/webp"
                                   onChange={(e) => setResubmissionTechCertFile(e.target.files?.[0] || null)}
-                                  className="w-full mt-1 text-[10px] file:mr-2 file:rounded-lg file:border-0 file:bg-lime-100 file:px-3 file:py-1.5 file:text-[10px] file:font-bold file:text-lime-800"
+                                  className="w-full mt-1 text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-lime-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-lime-800"
                                 />
                                 {resubmissionTechCertFile && (
-                                  <p className="text-[9px] text-slate-500 mt-1">Selected: {resubmissionTechCertFile.name}</p>
+                                  <p className="text-xs text-slate-500 mt-1">Selected: {resubmissionTechCertFile.name}</p>
                                 )}
                               </label>
 
@@ -3230,7 +3375,7 @@ const RepairShopProfileDrawer = ({
                                 type="button"
                                 onClick={handleResubmitVerification}
                                 disabled={resubmittingVerification}
-                                className="w-full rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-2.5 text-[10px] font-black uppercase tracking-widest transition"
+                                className="w-full rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-2.5 text-xs font-black uppercase tracking-widest transition"
                               >
                                 {resubmittingVerification ? "Submitting..." : "Resubmit for Review"}
                               </button>
@@ -3246,23 +3391,23 @@ const RepairShopProfileDrawer = ({
                                   return;
                                 }
 
-                                if (!validatePhone(profileData?.contact_number)) {
-                                  showPopupAlert("Please enter valid information for Phone Number.");
+                                if (!validatePhone(draftProfileData?.contact_number)) {
+                                  showPopupAlert(PHONE_ERROR);
                                   return;
                                 }
 
                                 const { data, error } = await supabase
                                   .from("profiles")
                                   .update({
-                                    contact_number: profileData?.contact_number?.trim() || null,
+                                    contact_number: draftProfileData?.contact_number?.trim() || null,
                                     business_activity:
-                                      profileData?.business_activity?.trim() || null,
+                                      draftProfileData?.business_activity?.trim() || null,
                                     ...(isRepairShop
                                       ? {
                                           tech_specialization:
-                                            profileData?.tech_specialization?.trim() || null,
+                                            draftProfileData?.tech_specialization?.trim() || null,
                                           operating_hours:
-                                            profileData?.operating_hours?.trim() || null,
+                                            draftProfileData?.operating_hours?.trim() || null,
                                         }
                                       : {}),
                                   })
@@ -3274,12 +3419,14 @@ const RepairShopProfileDrawer = ({
 
                                 if (error) throw error;
 
-                                setProfileData((prev) => ({
-                                  ...prev,
+                                const savedProfile = {
+                                  ...profileData,
                                   ...data,
                                   operating_hours: data?.operating_hours || "",
                                   assigned_area: data?.barangay || "",
-                                }));
+                                };
+                                setProfileData((prev) => ({ ...prev, ...savedProfile }));
+                                setDraftProfileData(savedProfile);
                                 setIsEditingProfile(false);
                                 showPopupAlert(
                                   isRepairShop
@@ -3291,7 +3438,7 @@ const RepairShopProfileDrawer = ({
                                 showPopupAlert(`Failed to update profile: ${error.message}`);
                               }
                             }}
-                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-2.5 text-[10px] font-black transition"
+                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-3 text-sm font-bold transition"
                           >
                             Save Changes
                           </button>
@@ -3300,13 +3447,13 @@ const RepairShopProfileDrawer = ({
 
                       {(verificationStatus === "rejected" || verificationStatus === "expired") && (
                         <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-                          <p className="text-[10px] font-bold text-amber-800">
+                          <p className="text-xs font-bold text-amber-800">
                             Verification needs attention.
                           </p>
                           <button
                             type="button"
                             onClick={handleReverify}
-                            className="mt-2 text-[10px] font-black text-amber-700 hover:text-amber-900"
+                            className="mt-2 text-xs font-black text-amber-700 hover:text-amber-900"
                           >
                             Update verification documents →
                           </button>
@@ -3319,7 +3466,7 @@ const RepairShopProfileDrawer = ({
                   {profilePanelTab === "security" && (
                     <div className="px-4 pb-8 pt-6">
                       <section>
-                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-3">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 mb-3">
                           Change Password
                         </p>
 
@@ -3329,27 +3476,23 @@ const RepairShopProfileDrawer = ({
                             ["New Password", "next", passwordForm.next],
                             ["Confirm New Password", "confirm", passwordForm.confirm],
                           ].map(([label, key, value]) => (
-                            <label key={key} className="block">
-                              <span className="text-[10px] font-medium text-slate-500">{label}</span>
-                              <input
-                                type="password"
-                                value={value}
-                                onChange={(e) =>
-                                  setPasswordForm((prev) => ({
-                                    ...prev,
-                                    [key]: e.target.value,
-                                  }))
-                                }
-                                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-[11px] outline-none focus:border-[#769c2d] focus:ring-2 focus:ring-lime-100"
-                              />
-                            </label>
+                            <PasswordField
+                              key={key}
+                              id={`repair-password-${key}`}
+                              label={label}
+                              value={value}
+                              autoComplete={key === "current" ? "current-password" : "new-password"}
+                              onChange={(e) =>
+                                setPasswordForm((prev) => ({ ...prev, [key]: e.target.value }))
+                              }
+                            />
                           ))}
 
                           <button
                             type="button"
                             onClick={handleChangePassword}
                             disabled={changingPassword}
-                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-2.5 text-[10px] font-black transition disabled:opacity-50"
+                            className="w-full rounded-xl bg-[#5d9d25] hover:bg-[#4f8b20] text-white py-3 text-sm font-bold transition disabled:opacity-50"
                           >
                             {changingPassword ? "Updating Password..." : "Update Password"}
                           </button>
@@ -3359,14 +3502,14 @@ const RepairShopProfileDrawer = ({
                       <div className="my-6 border-t border-slate-100" />
 
                       <section>
-                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-3">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 mb-3">
                           Danger Zone
                         </p>
 
                         <button
                           type="button"
                           onClick={handleDeactivateAccount}
-                          className="w-full rounded-xl border border-red-300 text-red-600 hover:bg-red-50 py-3 text-[10px] font-bold flex items-center justify-center gap-2 transition"
+                          className="w-full rounded-xl border border-red-300 text-red-600 hover:bg-red-50 py-3 text-xs font-bold flex items-center justify-center gap-2 transition"
                         >
                           <XCircle size={13} />
                           Deactivate Account
@@ -3407,10 +3550,10 @@ const RepairShopProfileDrawer = ({
                             key={stat.label}
                             className="rounded-xl bg-slate-50 border border-slate-100 px-1.5 py-2 text-center"
                           >
-                            <p className="text-[11px] font-black text-slate-800">
+                            <p className="text-xs font-black text-slate-800">
                               {stat.value}{stat.suffix ? ` ${stat.suffix}` : ""}
                             </p>
-                            <p className="text-[8px] text-slate-400 mt-0.5 leading-tight">
+                            <p className="text-xs text-slate-400 mt-0.5 leading-tight">
                               {stat.label}
                             </p>
                           </div>
@@ -3419,7 +3562,7 @@ const RepairShopProfileDrawer = ({
 
                       <div className="grid grid-cols-2 gap-2">
                         <div className="rounded-xl border border-slate-100 bg-white px-3 py-2">
-                          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                          <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
                             Purchase Transaction Reviews
                           </p>
                           <p className="mt-0.5 text-sm font-black text-slate-700">
@@ -3427,7 +3570,7 @@ const RepairShopProfileDrawer = ({
                           </p>
                         </div>
                         <div className="rounded-xl border border-slate-100 bg-white px-3 py-2">
-                          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                          <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
                             Repair Service Reviews
                           </p>
                           <p className="mt-0.5 text-sm font-black text-slate-700">
@@ -3438,7 +3581,7 @@ const RepairShopProfileDrawer = ({
 
                       {userTrustStats.purchaseTransactionReviews === 0 &&
                         userTrustStats.repairServiceReviews === 0 && (
-                          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-center text-[9px] font-medium text-slate-400">
+                          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs font-medium text-slate-400">
                             No ratings available
                           </p>
                         )}
@@ -3446,7 +3589,7 @@ const RepairShopProfileDrawer = ({
                       <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 p-3.5">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="text-[9px] font-medium text-slate-400 uppercase tracking-wide">
+                            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">
                               Current Tier
                             </p>
                             <p className="text-base font-black text-amber-500 mt-0.5">
@@ -3456,7 +3599,7 @@ const RepairShopProfileDrawer = ({
                             </p>
                           </div>
 
-                          <div className="text-right text-[9px] text-slate-400">
+                          <div className="text-right text-xs text-slate-400">
                             <p>
                               {userTrustStats.completedTransactions} transactions
                             </p>
@@ -3482,7 +3625,7 @@ const RepairShopProfileDrawer = ({
                               style={{ width: `${trustTierProgress}%` }}
                             />
                           </div>
-                          <div className="flex items-center justify-between mt-1 text-[8px] text-slate-400">
+                          <div className="flex items-center justify-between mt-1 text-xs text-slate-400">
                             <span>{currentTrustTier?.name || "Current"}</span>
                             <span>{nextTrustTier?.name || "Maximum"}</span>
                           </div>
@@ -3496,10 +3639,10 @@ const RepairShopProfileDrawer = ({
                               <Leaf size={16} />
                             </div>
                             <div>
-                              <p className="text-[10px] font-black uppercase text-[#145374]">
+                              <p className="text-xs font-black uppercase text-[#145374]">
                                 CO₂ Recovery Contribution
                               </p>
-                              <p className="text-[8px] text-[#3b91ad]">
+                              <p className="text-xs text-[#3b91ad]">
                                 From harvesting & processing e-waste
                               </p>
                             </div>
@@ -3508,9 +3651,9 @@ const RepairShopProfileDrawer = ({
                           <div className="text-right shrink-0">
                             <p className="text-lg font-black text-[#145374]">
                               {Number(profileData?.co2_recovered_kg || 0).toFixed(2)}
-                              <span className="text-[9px] ml-0.5">kg</span>
+                              <span className="text-xs ml-0.5">kg</span>
                             </p>
-                            <p className="text-[8px] text-[#3b91ad]">CO₂e recovered</p>
+                            <p className="text-xs text-[#3b91ad]">CO₂e recovered</p>
                           </div>
                         </div>
 
@@ -3518,7 +3661,7 @@ const RepairShopProfileDrawer = ({
                           <div className="w-7 h-7 rounded-lg bg-white text-emerald-600 flex items-center justify-center shadow-sm">
                             <Package size={13} />
                           </div>
-                          <p className="text-[9px] text-[#145374]">
+                          <p className="text-xs text-[#145374]">
                             <span className="font-black">
                               {profileData?.recovered_devices || 0} devices
                             </span>{" "}
@@ -3528,7 +3671,7 @@ const RepairShopProfileDrawer = ({
                       </section>
 
                       <section>
-                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 mb-2">
                           Current Privileges
                         </p>
 
@@ -3539,14 +3682,14 @@ const RepairShopProfileDrawer = ({
                               className="flex items-center gap-2 rounded-lg bg-emerald-50 px-2.5 py-1.5"
                             >
                               <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
-                              <span className="text-[9px] font-medium text-emerald-700">
+                              <span className="text-xs font-medium text-emerald-700">
                                 {privilege}
                               </span>
                             </div>
                           ))}
 
                           {!currentTrustTier?.privileges?.length && (
-                            <p className="text-[10px] text-slate-400 rounded-lg bg-slate-50 p-3">
+                            <p className="text-xs text-slate-400 rounded-lg bg-slate-50 p-3">
                               No privileges are configured for this tier yet.
                             </p>
                           )}
@@ -5038,33 +5181,6 @@ const MessagesView = ({
     </div>
   );
 };
-
-const StatCard = ({ label, value, isPrice }) => (
-  <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 flex flex-col items-center justify-center min-h-[140px]">
-    <span
-      className={`text-3xl font-black text-slate-800 tracking-tighter ${isPrice ? "text-slate-900" : ""}`}
-    >
-      {isPrice ? `₱${value}` : value}
-    </span>
-    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-2">
-      {label}
-    </span>
-  </div>
-);
-
-const NavBtn = ({ active, onClick, icon, label, disabled }) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    className={`flex-1 basis-[calc(50%-0.5rem)] sm:basis-auto min-w-[130px] flex items-center justify-center gap-2 px-3 py-3 rounded-xl font-black text-xs whitespace-nowrap transition-all ${active
-      ? "bg-[#527a24] text-white shadow-md"
-      : "bg-white text-slate-500 hover:bg-lime-50 hover:text-[#527a24] border border-slate-100"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-  >
-    <span className="shrink-0">{icon}</span>
-    {label}
-  </button>
-);
 
 const MenuLink = ({ icon, label, onClick }) => (
   <button

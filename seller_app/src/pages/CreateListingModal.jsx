@@ -206,6 +206,17 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   const [showSanitizationGuide, setShowSanitizationGuide] = useState(false);
   const [hasMarketHistory, setHasMarketHistory] = useState(true);
   const [checklist, setChecklist] = useState(INITIAL_CHECKLIST);
+  const [popup, setPopup] = useState(null);
+
+  const showPopup = (message, type = "error") => {
+    setPopup({ message, type });
+  };
+
+  const dismissPopup = () => {
+    const wasSuccessful = popup?.type === "success";
+    setPopup(null);
+    if (wasSuccessful) onClose();
+  };
 
   // Add this helper object inside your file to handle dynamic breakdown mapping
   const CATEGORY_COMPONENTS_MAP = {
@@ -818,13 +829,10 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
   };
 
   const getApplicableChecklistKeys = () => {
-    // Not Working devices may not be capable of completing device-level
-    // operations such as factory reset, account removal, or SIM removal.
-    // Those checks therefore do not apply to a Not Working listing.
-    const categoryKeys =
-      formData.condition === "Not Working"
-        ? []
-        : CHECKLIST_BY_CATEGORY[formData.category] || [];
+    // Checklist requirements depend on the device category, not its working
+    // condition. A device that cannot power on may still contain personal data
+    // that must be removed or securely sanitized before it is listed.
+    const categoryKeys = CHECKLIST_BY_CATEGORY[formData.category] || [];
 
     return showHazardWarning
       ? [...categoryKeys, "hazardAcknowledged"]
@@ -838,8 +846,8 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     })
   );
 
-  // When the device category/condition changes, clear checks that no longer
-  // apply so an old selection can never satisfy the wrong checklist.
+  // When the device category or hazard status changes, clear checks that no
+  // longer apply so an old selection cannot satisfy the wrong checklist.
   useEffect(() => {
     const applicableKeys = new Set(getApplicableChecklistKeys());
 
@@ -1134,11 +1142,11 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
     );
 
     if (validFiles.length !== files.length) {
-      alert("Only PNG and JPEG files are allowed.");
+      showPopup("Only PNG and JPEG files are allowed.");
     }
 
     if (validFiles.length + formData.attachments.length > 5) {
-      alert("You can only upload up to 5 images.");
+      showPopup("You can only upload up to 5 images.");
     }
 
     // Legacy image handler retained for compatibility; active uploads use
@@ -1179,9 +1187,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         file.type.startsWith("video/mov");
 
       if (!isImage && !isVideo) {
-        alert(
-          `Unsupported file type: ${file.name}. Only images (PNG, JPEG) and videos (MP4, MOV) are accepted.`,
-        );
+        showPopup(`Unsupported file type: ${file.name}. Only images (PNG, JPEG) and videos (MP4, MOV) are accepted.`);
         continue;
       }
 
@@ -1189,13 +1195,13 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       // preview object URL or adding the file to the listing.
       const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        alert(`File too large: ${file.name}. Each photo or video must be 10MB or smaller.`);
+        showPopup(`File too large: ${file.name}. Each photo or video must be 10MB or smaller.`);
         continue;
       }
 
       // Check max limits (Combined 5 item limit)
       if (formData.attachments.length + newAttachments.length >= 5) {
-        alert("Maximum upload allowance is capped at 5 files.");
+        showPopup("Maximum upload allowance is capped at 5 files.");
         break;
       }
 
@@ -1279,27 +1285,27 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         );
 
       if (!formData.category || !formData.model?.trim()) {
-        alert("Please select a category and model before creating the listing.");
+        showPopup("Please select a category and model before creating the listing.");
         return;
       }
 
       if (hasFormError) {
-        alert("Large household appliances cannot be listed on this platform.");
+        showPopup("Large household appliances cannot be listed on this platform.");
         return;
       }
 
       if (!isAssessmentComplete) {
-        alert("Assessment Incomplete. Please select at least one damage/issue or mark the device as 'No Visible Damage' to continue.");
+        showPopup("Assessment Incomplete. Please select at least one damage/issue or mark the device as 'No Visible Damage' to continue.");
         return;
       }
 
       if (conditionAssessmentMismatch) {
-        alert("Assessment and Condition Need Confirmation. Please confirm or correct the device condition before proceeding.");
+        showPopup("Assessment and Condition Need Confirmation. Please confirm or correct the device condition before proceeding.");
         return;
       }
 
       if (!attachmentsAreValid) {
-        alert("Photos Required. Please upload 1 to 5 supported photos or videos, with each file 10MB or smaller.");
+        showPopup("Photos Required. Please upload 1 to 5 supported photos or videos, with each file 10MB or smaller.");
         return;
       }
 
@@ -1310,7 +1316,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
         formData.price === "" ||
         Number(formData.price) <= 0
       ) {
-        alert("Mandatory fields missing.");
+        showPopup("Mandatory fields missing.");
         return;
       }
 
@@ -1368,11 +1374,12 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
       if (insertedData && selectedIssues.length > 0) {
         await handleHazardDetection(insertedData.id, selectedIssues);
       }
-      alert("Listing Created Successfully!");
+      // Keep this modal mounted so the success popup can render.
+      // The popup's Done button calls onClose after the user dismisses it.
+      showPopup("Your e-waste listing has been created successfully.", "success");
       resetCreateListingForm();
-      onClose();
     } catch (err) {
-      alert("Error: " + err.message);
+      showPopup("Error: " + err.message, "error");
     } finally {
       setLoading(false); // Safeguard against sticking at "Processing..."
     }
@@ -2395,6 +2402,20 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                         {formData.model || "this device"}:
                       </p>
 
+                      {formData.condition === "Not Working" && (
+                        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                          <Info size={17} className="mt-0.5 shrink-0 text-amber-600" />
+                          <div className="space-y-1">
+                            <p className="text-s font-bold text-amber-900">
+                              Important for Not Working devices
+                            </p>
+                            <p className="text-sm leading-relaxed text-amber-800">
+                              These data-sanitization steps still apply even if the device cannot turn on. Only check a step after it has actually been completed. If you cannot access the device to erase its data, arrange for its storage drive to be removed and securely sanitized by a qualified technician before listing it. Do not mark the device as sanitized if its personal data may still be accessible.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       {applicableChecklistItems.map((item) => (
                         <div
                           key={item.id}
@@ -2712,6 +2733,38 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
           onClose={() => setShowSanitizationGuide(false)}
           deviceModel={formData.model}
         />
+      )}
+
+      {popup && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-live="assertive"
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+          >
+            <div className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full ${
+              popup.type === "success" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+            }`}>
+              {popup.type === "success" ? <CheckCircle2 size={30} /> : <AlertTriangle size={30} />}
+            </div>
+            <h3 className="text-center text-lg font-bold text-gray-800">
+              {popup.type === "success" ? "Listing Created" : "Please Check"}
+            </h3>
+            <p className="mt-2 text-center text-sm leading-relaxed text-gray-600">
+              {popup.message}
+            </p>
+            <button
+              type="button"
+              onClick={dismissPopup}
+              className={`mt-6 w-full rounded-xl py-3 font-semibold text-white transition-colors ${
+                popup.type === "success" ? "bg-[#17708c] hover:bg-[#125f75]" : "bg-red-600 hover:bg-red-700"
+              }`}
+            >
+              {popup.type === "success" ? "Done" : "Okay"}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
