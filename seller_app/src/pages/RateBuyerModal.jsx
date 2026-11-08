@@ -37,40 +37,45 @@ const RateBuyerModal = ({ isOpen, onClose, buyerName, onConfirm }) => {
     recommend !== null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white w-full max-w-lg rounded-[2rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+      <div role="dialog"
+        aria-modal="true"
+        aria-labelledby="rate-buyer-title"
+        className="relative mx-auto my-4 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-300 sm:my-6 sm:rounded-[1.75rem]">
         
         {/* --- HEADER --- */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-500 p-8 text-white relative">
+        <div className="relative shrink-0 bg-gradient-to-r from-blue-600 to-purple-500 px-5 py-4 text-white sm:px-6 sm:py-5">
           <button 
             onClick={onClose}
-            className="absolute right-6 top-6 hover:bg-white/20 p-1 rounded-full transition-colors"
+            className="absolute right-4 top-4 rounded-full p-2 transition-colors hover:bg-white/20 sm:right-5 sm:top-5"
           >
             <X size={20} />
           </button>
-          <h2 className="text-2xl font-bold">Rate Your Experience</h2>
+          <h2 id="rate-buyer-title" className="pr-10 text-xl font-bold sm:text-2xl">Rate Your Experience</h2>
           <p className="text-white/80 text-sm mt-1">How was your transaction with {buyerName}?</p>
         </div>
 
-        <div className="p-8 max-h-[70vh] overflow-y-auto no-scrollbar space-y-8">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-6 sm:px-6 sm:py-6">
           
           {/* --- RATING CATEGORIES --- */}
-          <div className="space-y-6">
+          <div className="space-y-5">
             {categories.map((cat) => (
-              <div key={cat.id} className="flex flex-col gap-1">
+              <div key={cat.id} className="flex flex-col gap-1.5">
                 <h3 className="font-bold text-slate-800 text-sm">{cat.label}</h3>
                 <p className="text-xs text-slate-400 mb-1">{cat.sub}</p>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
                       onMouseEnter={() => setHoveredRatings({ ...hoveredRatings, [cat.id]: star })}
                       onMouseLeave={() => setHoveredRatings({ ...hoveredRatings, [cat.id]: 0 })}
                       onClick={() => setRatings({ ...ratings, [cat.id]: star })}
-                      className="transition-transform active:scale-90"
+                      type="button"
+                      aria-label={`${star} out of 5 stars for ${cat.label}`}
+                      className="rounded-md p-0.5 transition-transform hover:scale-110 active:scale-90"
                     >
                       <Star
-                        size={28}
+                        size={24}
                         className={`transition-colors ${
                           star <= (hoveredRatings[cat.id] || ratings[cat.id])
                             ? "fill-amber-400 text-amber-400"
@@ -85,14 +90,15 @@ const RateBuyerModal = ({ isOpen, onClose, buyerName, onConfirm }) => {
           </div>
 
           {/* --- RECOMMENDATION --- */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <h3 className="font-bold text-slate-800 text-sm">
               Would you recommend this seller? <span className="text-red-500">*</span>
             </h3>
-            <div className="flex gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
               <button
                 onClick={() => setRecommend('yes')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all font-bold text-sm ${
+                type="button"
+                className={`min-h-11 flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 transition-all font-bold text-sm ${
                   recommend === 'yes'
                     ? "border-blue-500 bg-blue-50 text-blue-600"
                     : "border-slate-100 text-slate-500 hover:border-slate-200"
@@ -122,7 +128,7 @@ const RateBuyerModal = ({ isOpen, onClose, buyerName, onConfirm }) => {
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder="Share your experience..."
-                className="w-full h-32 pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-slate-600 placeholder:text-slate-300 resize-none transition-all"
+                className="w-full min-h-24 max-h-40 resize-y rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm text-slate-600 outline-none transition-all placeholder:text-slate-300 focus:border-transparent focus:ring-2 focus:ring-blue-500 sm:min-h-28"
               />
             </div>
             <p className="text-xs text-slate-400 italic">Your feedback helps build trust in the community</p>
@@ -139,17 +145,17 @@ const RateBuyerModal = ({ isOpen, onClose, buyerName, onConfirm }) => {
         </div>
 
         {/* --- FOOTER BUTTONS --- */}
-        <div className="p-8 border-t border-slate-50 flex gap-4 bg-slate-50/30">
+        <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-slate-50/90 px-5 py-4 sm:gap-4 sm:px-6">
           <button
             onClick={onClose}
-            className="flex-1 py-4 px-6 border border-slate-200 bg-white rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-colors text-sm"
+            className="min-h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-50 sm:px-6"
           >
             Cancel
           </button>
           <button
             disabled={!isFormValid}
             onClick={() => onConfirm({ ratings, recommend, feedback })}
-            className={`flex-1 py-4 px-6 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md ${
+            className={`min-h-11 flex-1 rounded-xl px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md sm:px-6 ${
               isFormValid
                 ? "bg-[#2d7a7f] text-white hover:bg-[#246367] shadow-teal-100"
                 : "bg-teal-100/50 text-white cursor-not-allowed shadow-none"

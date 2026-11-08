@@ -200,7 +200,9 @@ const syncUserReputation = async (userId) => {
   const { data: marketplaceReviews, error: marketplaceError } = await supabase
     .from("reviews")
     .select("overall_rating")
-    .eq("seller_id", userId);
+    .eq("seller_id", userId)
+    .eq("review_type", "selling")
+    .eq("moderation_status", "approved");
 
   if (marketplaceError) throw marketplaceError;
 
@@ -260,7 +262,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
           key={star}
           type="button"
           onClick={() => setValue(star)}
-          className="p-1 transition-transform hover:scale-110"
+          className="rounded-md p-0.5 transition-transform hover:scale-110"
           aria-label={`${star} star${star > 1 ? "s" : ""}`}
         >
           <Star
@@ -394,7 +396,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
               <div className="flex items-center gap-2 text-white/80 text-xs font-black uppercase tracking-widest">
                 <Wrench size={14} /> Repair Service Review
               </div>
-              <h2 className="text-2xl font-black mt-2">Rate Repair Shop</h2>
+              <h2 id="marketplace-rating-title" className="mt-1 pr-10 text-xl font-black sm:text-2xl">Rate Repair Shop</h2>
               <p className="text-xs text-white/75 mt-1">
                 Share your experience with {repairShop}.
               </p>
@@ -478,7 +480,7 @@ const RepairReviewModal = ({ isOpen, transaction, currentUserId, onClose, onSubm
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              rows={4}
+              rows={3}
               maxLength={1000}
               placeholder="Tell us about your repair experience..."
               className="w-full mt-2 rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 resize-none"
@@ -552,7 +554,7 @@ const MarketplaceRatingModal = ({
           aria-label={`${star} star${star > 1 ? "s" : ""}`}
         >
           <Star
-            size={26}
+            size={23}
             fill={star <= value ? "currentColor" : "none"}
             className={star <= value ? "text-yellow-400" : "text-slate-300"}
           />
@@ -627,16 +629,22 @@ const MarketplaceRatingModal = ({
       onClose();
     } catch (error) {
       console.error("Marketplace rating error:", error);
-      showAppAlert(`Failed to submit rating: ${error.message}`);
+      
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm">
-      <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden">
-        <div className="bg-gradient-to-r from-[#2d7a7f] to-[#3285a1] p-6 text-white">
+    <div className="fixed inset-0 z-[350] overflow-y-auto overscroll-contain bg-slate-900/70 backdrop-blur-sm">
+      <div className="flex min-h-full w-full items-center justify-center p-3 sm:p-5">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="marketplace-rating-title"
+        className="my-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem]"
+      >
+        <div className="shrink-0 bg-gradient-to-r from-[#2d7a7f] to-[#3285a1] px-5 py-4 text-white sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-white/80 text-xs font-black uppercase tracking-widest">
@@ -661,7 +669,7 @@ const MarketplaceRatingModal = ({
           </div>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [touch-action:pan-y] space-y-5 sm:px-6">
           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
             <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
               {isRatingBuyer ? "Buyer" : "Seller"}
@@ -718,7 +726,7 @@ const MarketplaceRatingModal = ({
               rows={4}
               maxLength={1000}
               placeholder={`Tell us about your experience with this ${isRatingBuyer ? "buyer" : "seller"}...`}
-              className="w-full mt-2 rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-[#2d7a7f] focus:ring-2 focus:ring-blue-100 resize-none"
+              className="w-full mt-2 min-h-24 max-h-40 rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-[#2d7a7f] focus:ring-2 focus:ring-blue-100 resize-y"
             />
             <p className="text-xs text-slate-400 text-right mt-1">
               {feedback.length}/1000
@@ -735,6 +743,7 @@ const MarketplaceRatingModal = ({
             {submitting ? "Submitting Rating..." : `Submit ${isRatingBuyer ? "Buyer" : "Seller"} Rating`}
           </button>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -1473,6 +1482,51 @@ const attachHazardFlags = async (rows) => {
       ...listing,
       is_hazardous: isListingHazardous(listing),
     }));
+  }
+};
+
+// Attach the latest marketplace transaction state to each seller-owned listing.
+ // Transaction status is authoritative for the lifecycle badge; the listing row
+ // may remain "matched" or "meetup_scheduled" after handover completion.
+const attachTransactionStatuses = async (rows) => {
+  const listings = Array.isArray(rows) ? rows : [];
+  const ids = listings.map((listing) => listing?.id).filter(Boolean);
+  if (ids.length === 0) return listings;
+
+  try {
+    const { data: transactionRows, error } = await supabase
+      .from("transactions")
+      .select("listing_id,status,updated_at,created_at")
+      .in("listing_id", ids)
+      .eq("transaction_type", "purchase");
+
+    if (error) throw error;
+
+    const latestByListing = new Map();
+    (transactionRows || []).forEach((transaction) => {
+      if (!transaction.listing_id) return;
+      const key = String(transaction.listing_id);
+      const existing = latestByListing.get(key);
+      const transactionTime = new Date(
+        transaction.updated_at || transaction.created_at || 0
+      ).getTime();
+      const existingTime = existing
+        ? new Date(existing.updated_at || existing.created_at || 0).getTime()
+        : -Infinity;
+      if (!existing || transactionTime >= existingTime) {
+        latestByListing.set(key, transaction);
+      }
+    });
+
+    return listings.map((listing) => {
+      const latestTransaction = latestByListing.get(String(listing.id));
+      return latestTransaction
+        ? { ...listing, transaction_status: String(latestTransaction.status || "").toLowerCase() }
+        : listing;
+    });
+  } catch (error) {
+    console.warn("Unable to load listing transaction statuses:", error.message || error);
+    return listings;
   }
 };
 
@@ -2328,17 +2382,23 @@ const SellerDashboard = ({ session }) => {
       setTrustTierError("");
 
       try {
-        const [tiersResult, txResult, trustResult, marketplaceReviewsResult] =
-          await Promise.all([
+        const [
+          tiersResult,
+          txResult,
+          trustResult,
+          marketplaceReviewsResult,
+          repairPurchaseReviewsResult,
+        ] = await Promise.all([
             supabase
               .from("trust_tiers")
               .select("id,name,min_transactions,min_rating,privileges")
               .order("min_transactions", { ascending: true }),
             supabase
               .from("transactions")
-              .select("id,seller_id,harvester_id,status,carbon_saved")
+              .select("id,seller_id,harvester_id,status,transaction_type,carbon_saved")
               .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
-              .eq("status", "completed"),
+              .eq("status", "completed")
+              .eq("transaction_type", "purchase"),
             supabase
               .from("user_trust_tiers")
               .select("trust_tier_id,completed_transactions,average_rating,total_reviews")
@@ -2348,13 +2408,19 @@ const SellerDashboard = ({ session }) => {
               .from("reviews")
               .select("overall_rating")
               .eq("seller_id", userId)
+              .eq("review_type", "selling")
               .eq("moderation_status", "approved"),
+            supabase
+              .from("repair_purchase_reviews")
+              .select("overall_rating")
+              .eq("repair_shop_id", userId),
           ]);
 
         if (tiersResult.error) throw tiersResult.error;
         if (txResult.error) throw txResult.error;
         if (trustResult.error) throw trustResult.error;
         if (marketplaceReviewsResult.error) throw marketplaceReviewsResult.error;
+        if (repairPurchaseReviewsResult.error) throw repairPurchaseReviewsResult.error;
 
         const tiers = (tiersResult.data || []).map((tier) => ({
           ...tier,
@@ -2363,14 +2429,21 @@ const SellerDashboard = ({ session }) => {
           privileges: Array.isArray(tier.privileges) ? tier.privileges : [],
         }));
 
-        // Owner/Dealer trust tiers use marketplace reviews only. Repair-shop
-        // reviews remain separate and continue to use the existing repair
-        // review flow elsewhere in this dashboard. The database evaluator is
-        // the source of truth when a user_trust_tiers row exists; the fallback
-        // keeps the dashboard working while that row is being initialized.
+        // Purchase Trust Tier ratings include approved marketplace selling
+        // reviews plus Repair Shop purchase reviews. Repair Service reviews
+        // remain separate and do not affect the purchase reputation score.
+        // The database evaluator is the source of truth when a
+        // user_trust_tiers row exists; the fallback keeps the dashboard
+        // working while that row is being initialized.
         const completedTransactionsData = txResult.data || [];
         const calculatedCompletedTransactions = completedTransactionsData.length;
-        const eligibleRatings = (marketplaceReviewsResult.data || [])
+        // Match evaluate_user_trust_tier(): approved marketplace selling
+        // reviews plus repair-shop purchase reviews contribute to the user's
+        // Trust Tier rating. Repair service reviews remain excluded.
+        const eligibleRatings = [
+          ...(marketplaceReviewsResult.data || []),
+          ...(repairPurchaseReviewsResult.data || []),
+        ]
           .map((review) => Number(review.overall_rating))
           .filter((rating) => Number.isFinite(rating) && rating > 0);
         const calculatedTotalReviews = eligibleRatings.length;
@@ -2496,7 +2569,10 @@ const SellerDashboard = ({ session }) => {
 
   const hasTrustPrivilege = (privilegeNames = []) => {
     const currentPrivileges = (currentTrustTier?.privileges || []).map(normalizePrivilege);
-    if (!currentPrivileges.length) return true;
+    // Fail closed: a missing or empty privilege list must never grant access
+    // to a trust-tier-restricted action. This also protects against checking
+    // privileges before the tier configuration has loaded successfully.
+    if (!currentPrivileges.length) return false;
     const requested = privilegeNames.map(normalizePrivilege);
     return requested.some((name) =>
       currentPrivileges.some(
@@ -2578,29 +2654,44 @@ const SellerDashboard = ({ session }) => {
         const sellerIds = [...new Set(listings.map((listing) => listing.seller_id).filter(Boolean))];
         if (!sellerIds.length) return;
 
-        const [{ data: sellerTransactions, error: txError }, { data: sellerReviews, error: reviewError }] = await Promise.all([
+        const [
+          { data: sellerTransactions, error: txError },
+          { data: sellerReviews, error: reviewError },
+          { data: repairPurchaseReviews, error: repairPurchaseReviewError },
+        ] = await Promise.all([
           supabase
             .from("transactions")
-            .select("seller_id,harvester_id,status")
+            .select("seller_id,harvester_id,status,transaction_type")
             .eq("status", "completed")
+            .eq("transaction_type", "purchase")
             .or(sellerIds.map((id) => `seller_id.eq.${id}`).join(",") + "," + sellerIds.map((id) => `harvester_id.eq.${id}`).join(",")),
           supabase
             .from("reviews")
             .select("seller_id,overall_rating")
             .in("seller_id", sellerIds)
+            .eq("review_type", "selling")
             .eq("moderation_status", "approved"),
+          supabase
+            .from("repair_purchase_reviews")
+            .select("repair_shop_id,overall_rating")
+            .in("repair_shop_id", sellerIds),
         ]);
 
         if (txError) throw txError;
         if (reviewError) throw reviewError;
+        if (repairPurchaseReviewError) throw repairPurchaseReviewError;
 
         const next = {};
         sellerIds.forEach((sellerId) => {
           const completed = (sellerTransactions || []).filter(
             (tx) => tx.seller_id === sellerId || tx.harvester_id === sellerId
           ).length;
-          const ratings = (sellerReviews || [])
-            .filter((review) => review.seller_id === sellerId)
+          const ratings = [
+            ...(sellerReviews || [])
+              .filter((review) => review.seller_id === sellerId),
+            ...(repairPurchaseReviews || [])
+              .filter((review) => review.repair_shop_id === sellerId),
+          ]
             .map((review) => Number(review.overall_rating))
             .filter((rating) => Number.isFinite(rating) && rating > 0);
           const average = ratings.length
@@ -2787,6 +2878,19 @@ const SellerDashboard = ({ session }) => {
       setTransactions((prev) =>
         prev.map((t) => (t.id === txId ? { ...t, ...updatedTx } : t))
       );
+
+      // Refresh the My Created Listings badge immediately after handover.
+      // Keep the listings table's own status untouched; transaction status is
+      // displayed as the authoritative lifecycle state for this listing.
+      if (txToComplete.listing_id) {
+        setMyListings((prev) =>
+          prev.map((listing) =>
+            String(listing.id) === String(txToComplete.listing_id)
+              ? { ...listing, transaction_status: "completed" }
+              : listing
+          )
+        );
+      }
 
       if (selectedTxId === txId) {
         setTransactionStatusHistory((prev) => [
@@ -4033,7 +4137,8 @@ const SellerDashboard = ({ session }) => {
 
         if (ownError) throw ownError;
 
-        const hydratedOwnListings = await attachHazardFlags(ownListings || []);
+        const hazardCheckedOwnListings = await attachHazardFlags(ownListings || []);
+        const hydratedOwnListings = await attachTransactionStatuses(hazardCheckedOwnListings);
         setMyListings(hydratedOwnListings);
 
         // ==========================================
@@ -4083,7 +4188,8 @@ const SellerDashboard = ({ session }) => {
 
         if (ownError) throw ownError;
 
-        const hydratedOwnListings = await attachHazardFlags(ownListings || []);
+        const hazardCheckedOwnListings = await attachHazardFlags(ownListings || []);
+        const hydratedOwnListings = await attachTransactionStatuses(hazardCheckedOwnListings);
         setMyListings(hydratedOwnListings);
 
         const donations = hydratedOwnListings.filter(
@@ -5041,6 +5147,9 @@ const SellerDashboard = ({ session }) => {
           {activeTab === "messages" && (
             <SellerMessages
               userId={session.user.id}
+              trustTier={currentTrustTier}
+              trustTierLoading={trustTierLoading}
+              trustTierError={trustTierError}
               onTabChange={(tab) => {
                 if (tab && tab !== "messages") setActiveTab(tab);
               }}
@@ -5054,13 +5163,17 @@ const SellerDashboard = ({ session }) => {
                 : "Not Working";
 
             const formatStatus = (status) => {
-              const value = String(status || "active").toLowerCase();
+              const value = String(status || "active").trim().toLowerCase();
               if (value === "inactive") return "Sold";
               if (value === "donated") return "For Donation";
               if (value === "drop_off_assigned") return "Drop-off Assigned";
               if (value === "processed") return "Processed";
               if (value === "matched") return "Matched";
-              return value.charAt(0).toUpperCase() + value.slice(1);
+              // Convert database enum values such as meetup_scheduled into
+              // readable labels without changing the stored transaction status.
+              return value
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (character) => character.toUpperCase());
             };
 
             const getListingOwner = (item) => {
@@ -5171,11 +5284,15 @@ const SellerDashboard = ({ session }) => {
             const renderListingCard = (item, mode = "listing") => {
               const bidsForItem = getVisibleBids(item);
               const isMine = item.seller_id === session.user.id;
-              const status = String(item.status || "active").toLowerCase();
+              const status = String(
+                mode === "created" && item.transaction_status
+                  ? item.transaction_status
+                  : item.status || "active"
+              ).toLowerCase();
               const isActive = status === "active";
               const isHazardous = isListingHazardous(item) || item.is_hazardous === true;
               const condition = normalizeCondition(item.condition);
-              const statusLabel = formatStatus(item.status);
+              const statusLabel = formatStatus(status);
               const owner = getListingOwner(item);
               const barangay = getListingBarangay(item);
               const deviceId = item.device_id || item.model_number || item.serial_number || "Electronic Device";
@@ -5260,7 +5377,9 @@ const SellerDashboard = ({ session }) => {
                     </div>
                   )}
                   {!isMine && mode === "all" && sellerTrustTiers[item.seller_id] &&
-                    Number(sellerTrustTiers[item.seller_id].min_transactions || 0) > 0 && (
+                    ["GOLD", "PLATINUM"].includes(
+                      String(sellerTrustTiers[item.seller_id].name || "").trim().toUpperCase()
+                    ) && (
                     <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 border border-amber-100">
                       <Award size={12} /> Recommended Seller · {getTrustTierLabel(sellerTrustTiers[item.seller_id].name)}
                     </div>
@@ -5276,7 +5395,7 @@ const SellerDashboard = ({ session }) => {
                         <p className="mt-1 truncate text-xs text-slate-400">{deviceId}</p>
                       </div>
                     </div>
-                    <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${status === "active" ? "bg-emerald-100 text-emerald-700" : status === "donated" ? "bg-purple-100 text-purple-700" : status === "inactive" ? "bg-slate-100 text-slate-600" : "bg-blue-100 text-blue-700"}`}>
+                    <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${status === "active" ? "bg-emerald-100 text-emerald-700" : status === "completed" ? "bg-emerald-100 text-emerald-700" : status === "donated" ? "bg-purple-100 text-purple-700" : status === "inactive" ? "bg-slate-100 text-slate-600" : "bg-blue-100 text-blue-700"}`}>
                       {statusLabel}
                     </span>
                   </div>
@@ -5759,6 +5878,114 @@ const SellerDashboard = ({ session }) => {
                                 </div>
                               </div>
                             )}
+
+                            {/* SILVER+ flexible handover proposal details.
+                                Proposal creation and accept/reject actions remain in SellerMessages. */}
+                            {!isRepair &&
+                              (tx.handover_arrangement ||
+                                tx.handover_address ||
+                                tx.handover_contact ||
+                                tx.handover_schedule ||
+                                tx.handover_instructions ||
+                                tx.handover_proposal_status) && (
+                                <div className="mx-8 mt-6 rounded-2xl border border-cyan-200 bg-cyan-50/70 p-5">
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <p className="text-xs font-black uppercase tracking-wider text-cyan-800">
+                                        Flexible Handover Arrangement
+                                      </p>
+                                      <p className="mt-1 text-xs text-cyan-700">
+                                        Proposed handover details for this transaction.
+                                      </p>
+                                    </div>
+                                    <span
+                                      className={`rounded-full px-3 py-1 text-[11px] font-black uppercase ${
+                                        String(tx.handover_proposal_status || "").toLowerCase() === "accepted"
+                                          ? "bg-emerald-100 text-emerald-700"
+                                          : String(tx.handover_proposal_status || "").toLowerCase() === "rejected"
+                                            ? "bg-red-100 text-red-700"
+                                            : "bg-amber-100 text-amber-700"
+                                      }`}
+                                    >
+                                      {tx.handover_proposal_status
+                                        ? tx.handover_proposal_status.replace(/_/g, " ")
+                                        : "Details saved"}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                    {tx.handover_arrangement && (
+                                      <div className="sm:col-span-2">
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                          Preferred arrangement
+                                        </p>
+                                        <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-700">
+                                          {tx.handover_arrangement}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {tx.handover_address && (
+                                      <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                          Address / Location
+                                        </p>
+                                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                          {tx.handover_address}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {tx.handover_contact && (
+                                      <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                          Contact details
+                                        </p>
+                                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                          {tx.handover_contact}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {tx.handover_schedule && (
+                                      <div className="sm:col-span-2">
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                          Preferred date / time
+                                        </p>
+                                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                          {tx.handover_schedule}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {tx.handover_instructions && (
+                                      <div className="sm:col-span-2">
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                          Additional instructions
+                                        </p>
+                                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                          {tx.handover_instructions}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-cyan-100 pt-3">
+                                    <p className="text-xs text-cyan-800">
+                                      {String(tx.handover_proposal_status || "").toLowerCase() === "accepted"
+                                        ? "The other party accepted this handover arrangement."
+                                        : String(tx.handover_proposal_status || "").toLowerCase() === "rejected"
+                                          ? "This proposal was rejected. Open Messages to discuss or submit a revised arrangement."
+                                          : String(tx.handover_proposal_status || "").toLowerCase() === "pending"
+                                            ? "Waiting for the other party to review this proposal."
+                                            : "Open Messages to discuss this handover arrangement."}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveTab("messages")}
+                                      className="rounded-xl border border-cyan-300 bg-white px-4 py-2 text-xs font-black text-cyan-800 transition hover:bg-cyan-100"
+                                    >
+                                      Open Messages
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
 
                             {/* PROGRESS */}
                             <div className="p-10 border-b border-slate-50">

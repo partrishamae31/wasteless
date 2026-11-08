@@ -57,6 +57,18 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
   const fetchSellerProfile = async () => {
     try {
       setLoading(true);
+      setSeller(null);
+      setListings([]);
+      setSoldListings([]);
+      setReviews([]);
+      setReviewers({});
+      setRepairReviews([]);
+      setRepairReviewers({});
+      setTrustTier(null);
+      setCompletedTransactions(0);
+      setCo2RecoveredKg(0);
+      setNotFound(false);
+      setUnavailable(false);
 
       // ============================================
       // 1. GET SELLER PROFILE
@@ -103,11 +115,17 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
 
       setNotFound(false);
       setUnavailable(false);
+      // Keep the fetched profile in state before rendering any profile details.
+      setSeller(profile);
+
       // ============================================
-      // 1B. TRUST TIER + COMPLETED TRANSACTIONS + CO₂
-      // Uses the same transaction/rating rules as the dashboard.
+      // 1B. TRUST TIER + COMPLETED PURCHASES + CO₂
+      // Trust progress uses completed purchase transactions only. CO₂ is
+      // attributed only to completed transactions where this user harvested.
+      // Marketplace reputation combines approved selling and repair-purchase
+      // reviews; repair-service reviews remain a separate rating category.
       // ============================================
-      const [tiersResult, transactionsResult, marketplaceRatingResult, repairRatingResult] =
+      const [tiersResult, transactionsResult, marketplaceRatingResult, repairPurchaseRatingResult] =
         await Promise.all([
           supabase
             .from("trust_tiers")
@@ -115,15 +133,17 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
             .order("min_transactions", { ascending: true }),
           supabase
             .from("transactions")
-            .select("id,status,carbon_saved")
+            .select("id,status,carbon_saved,transaction_type,seller_id,harvester_id")
             .or(`seller_id.eq.${sellerId},harvester_id.eq.${sellerId}`)
             .eq("status", "completed"),
           supabase
             .from("reviews")
             .select("overall_rating")
-            .eq("seller_id", sellerId),
+            .eq("seller_id", sellerId)
+            .eq("review_type", "selling")
+            .eq("moderation_status", "approved"),
           supabase
-            .from("repair_reviews")
+            .from("repair_purchase_reviews")
             .select("overall_rating")
             .eq("repair_shop_id", sellerId),
         ]);
@@ -131,12 +151,18 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
       if (tiersResult.error) console.error("Trust tiers error:", tiersResult.error);
       if (transactionsResult.error) console.error("Completed transactions error:", transactionsResult.error);
       if (marketplaceRatingResult.error) console.error("Marketplace rating error:", marketplaceRatingResult.error);
-      if (repairRatingResult.error) console.error("Repair rating error:", repairRatingResult.error);
+      if (repairPurchaseRatingResult.error) console.error("Repair purchase rating error:", repairPurchaseRatingResult.error);
 
       const completed = transactionsResult.data || [];
-      const purchaseRatings = (marketplaceRatingResult.data || [])
+      const completedPurchases = completed.filter(
+        (transaction) => String(transaction.transaction_type || "").toLowerCase() === "purchase",
+      );
+      const purchaseRatings = [
+        ...(marketplaceRatingResult.data || []),
+        ...(repairPurchaseRatingResult.data || []),
+      ]
         .map((row) => Number(row.overall_rating))
-        .filter(Number.isFinite);
+        .filter((value) => Number.isFinite(value) && value > 0);
       const purchaseAverage = purchaseRatings.length
         ? purchaseRatings.reduce((sum, value) => sum + value, 0) / purchaseRatings.length
         : 0;
@@ -146,7 +172,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
       const calculatedTier =
         [...sortedTiers].reverse().find(
           (tier) =>
-            completed.length >= Number(tier.min_transactions || 0) &&
+            completedPurchases.length >= Number(tier.min_transactions || 0) &&
             purchaseAverage >= Number(tier.min_rating || 0),
         ) ||
         sortedTiers.find((tier) => String(tier.name || "").toLowerCase() === "newcomer") ||
@@ -154,9 +180,11 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
         null;
 
       setTrustTier(calculatedTier);
-      setCompletedTransactions(completed.length);
+      setCompletedTransactions(completedPurchases.length);
       setCo2RecoveredKg(
-        completed.reduce((sum, transaction) => sum + Number(transaction.carbon_saved || 0), 0),
+        completed
+          .filter((transaction) => transaction.harvester_id === sellerId)
+          .reduce((sum, transaction) => sum + Number(transaction.carbon_saved || 0), 0),
       );
 
       // ============================================
@@ -247,6 +275,8 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
   `,
         )
         .eq("seller_id", sellerId)
+        .eq("review_type", "selling")
+        .eq("moderation_status", "approved")
         .order("created_at", {
           ascending: false,
         });
@@ -290,7 +320,70 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
       }
 
       // ============================================
-      // 8. GET REPAIR-SERVICE REVIEWS
+      // 8. GET REPAIR-SHOP PURCHASE REVIEWS
+      // These are marketplace / buying reviews, not repair-service reviews.
+      // Keep them in the Buy / Sell list and combine reviewer lookups.
+      // ============================================
+      const { data: repairPurchaseReviews, error: repairPurchaseReviewsError } =
+        await supabase
+          .from("repair_purchase_reviews")
+          .select(`
+            id,
+            transaction_id,
+            repair_shop_id,
+            reviewer_id,
+            communication_rating,
+            transaction_rating,
+            overall_rating,
+            recommend,
+            comment,
+            created_at
+          `)
+          .eq("repair_shop_id", sellerId)
+          .order("created_at", { ascending: false });
+
+      if (repairPurchaseReviewsError) {
+        console.error("Repair purchase reviews error:", repairPurchaseReviewsError);
+      } else if (repairPurchaseReviews?.length) {
+        const normalizedRepairPurchaseReviews = repairPurchaseReviews.map((review) => ({
+          ...review,
+          review_source: "repair_purchase",
+          // Keep the common marketplace review shape for the existing UI.
+          punctuality_rating: null,
+          condition_rating: null,
+        }));
+        setReviews((currentReviews) =>
+          [...currentReviews, ...normalizedRepairPurchaseReviews].sort(
+            (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
+          ),
+        );
+
+        const purchaseReviewerIds = [
+          ...new Set(normalizedRepairPurchaseReviews.map((review) => review.reviewer_id).filter(Boolean)),
+        ];
+        if (purchaseReviewerIds.length > 0) {
+          const { data: purchaseReviewerProfiles, error: purchaseReviewerError } =
+            await supabase
+              .from("profiles")
+              .select("id, full_name")
+              .in("id", purchaseReviewerIds);
+
+          if (purchaseReviewerError) {
+            console.error("Repair purchase reviewer profiles error:", purchaseReviewerError);
+          } else {
+            setReviewers((currentReviewers) => ({
+              ...currentReviewers,
+              ...(purchaseReviewerProfiles || []).reduce((map, reviewerProfile) => {
+                map[reviewerProfile.id] = reviewerProfile.full_name;
+                return map;
+              }, {}),
+            }));
+          }
+        }
+      }
+
+      // ============================================
+      // 9. GET REPAIR-SERVICE REVIEWS
       // ============================================
       const { data: sellerRepairReviews, error: repairReviewsError } =
         await supabase
@@ -380,6 +473,10 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
 
   const sellerName = seller?.business_name || seller?.full_name || "Seller";
   const isRepairShopProfile = String(seller?.role || "").toLowerCase() === "repair_shop";
+  const trustTierName = String(trustTier?.name || "NEWCOMER").trim().toUpperCase();
+  // GOLD and PLATINUM are the configured upper trust tiers and receive the
+  // Recommended Seller label on the public profile and active listings.
+  const isRecommendedSeller = ["GOLD", "PLATINUM"].includes(trustTierName);
 
   const sortReviews = (items) => [...items].sort((a, b) => {
     if (reviewSort === "Most Helpful") {
@@ -442,7 +539,9 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
     .slice(0, 2)
     .toUpperCase();
 
-  const rating = Number(seller?.average_rating || 0);
+  const rating = reviews.length
+    ? reviews.reduce((sum, review) => sum + Number(review.overall_rating || 0), 0) / reviews.length
+    : Number(seller?.average_rating || 0);
 
   const joinedDate = seller?.created_at
     ? new Date(seller.created_at).toLocaleDateString("en-US", {
@@ -547,14 +646,13 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
     );
   };
 
-  // Marketplace rating — from public.reviews only.
+  // Marketplace rating — approved selling reviews plus repair-shop purchase reviews.
   const marketplaceReviewAverage =
     reviews.length > 0
-      ? reviews.reduce((sum, review) => sum + getReviewRating(review), 0) /
-        reviews.length
+      ? reviews.reduce((sum, review) => sum + getReviewRating(review), 0) / reviews.length
       : rating;
 
-  // Repair rating — from public.repair_reviews only.
+  // Repair-service rating — from public.repair_reviews only.
   const repairReviewAverage = getRepairAverage("overall_rating");
   const repairCommunicationAverage = getRepairAverage("communication_rating");
   const repairServiceAverage = getRepairAverage("service_rating");
@@ -642,7 +740,7 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
 
               <p className="text-xs text-slate-400">
                 Barangay {seller?.barangay || "Valenzuela"}
-                {seller?.city ? ` · ${seller.city}` : " · Valenzuela City"}
+                {" · Valenzuela City"}
               </p>
             </div>
 
@@ -674,8 +772,14 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
           <div className="flex flex-wrap gap-1.5">
             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-100 rounded-full text-xs font-black text-amber-700">
               <Award size={9} />
-              {trustTier?.name || "NEWCOMER"}
+              {trustTierName}
             </span>
+            {isRecommendedSeller && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-100 rounded-full text-xs font-black text-sky-700">
+                <CheckCircle2 size={9} />
+                Recommended Seller
+              </span>
+            )}
             <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-100 rounded-full text-xs font-black text-emerald-700">
               {co2RecoveredKg.toFixed(2)} kg CO₂ saved
             </span>
@@ -821,6 +925,14 @@ const SellerProfileModal = ({ sellerId, onClose, onMessage }) => {
                           <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-[#5b9b27] text-white text-xs font-black">
                             Active
                           </span>
+                          <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-full bg-amber-500/95 text-white text-[9px] font-black shadow-sm">
+                            {trustTierName}
+                          </span>
+                          {isRecommendedSeller && (
+                            <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded-full bg-sky-600/95 text-white text-[9px] font-black shadow-sm">
+                              Recommended
+                            </span>
+                          )}
                         </div>
 
                         {/* DETAILS */}

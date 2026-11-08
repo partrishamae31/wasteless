@@ -416,6 +416,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
   const [trustTiers, setTrustTiers] = useState([]);
   const [trustTierLoading, setTrustTierLoading] = useState(true);
   const [trustTierError, setTrustTierError] = useState("");
+  const [savedTrustTierId, setSavedTrustTierId] = useState(null);
   const [userTrustStats, setUserTrustStats] = useState({
     completedTransactions: 0,
     // Repair Shop ratings are intentionally kept separate.
@@ -789,46 +790,81 @@ const HarvesterDashboard = ({ session, onLogout }) => {
       try {
         const userId = session.user.id;
 
-        const [tiersResult, transactionsResult, marketplaceReviewsResult, repairReviewsResult] =
-          await Promise.all([
-            supabase
-              .from("trust_tiers")
-              .select("id,name,min_transactions,min_rating,privileges")
-              .order("min_transactions", { ascending: true }),
-            supabase
-              .from("transactions")
-              .select("id,seller_id,harvester_id,status")
-              .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
-              .eq("status", "completed"),
-            supabase
-              .from("reviews")
-              .select("overall_rating")
-              .eq("seller_id", userId),
-            supabase
-              .from("repair_reviews")
-              .select("overall_rating")
-              .eq("repair_shop_id", userId),
-          ]);
+        const [
+          tiersResult,
+          transactionsResult,
+          purchaseReviewsResult,
+          marketplaceReviewsResult,
+          repairReviewsResult,
+          savedTierResult,
+        ] = await Promise.all([
+          supabase
+            .from("trust_tiers")
+            .select("id,name,min_transactions,min_rating,privileges")
+            .order("min_transactions", { ascending: true }),
+          supabase
+            .from("transactions")
+            .select("id,seller_id,harvester_id,status,transaction_type")
+            .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
+            .eq("status", "completed")
+            .eq("transaction_type", "purchase"),
+          // Repair Shop purchase reputation comes from its dedicated
+          // purchase-review table.
+          supabase
+            .from("repair_purchase_reviews")
+            .select("overall_rating")
+            .eq("repair_shop_id", userId),
+          // Include approved selling reviews as well, matching the backend
+          // evaluator's complete eligible-ratings UNION for this user.
+          supabase
+            .from("reviews")
+            .select("overall_rating")
+            .eq("seller_id", userId)
+            .eq("review_type", "selling")
+            .or("moderation_status.eq.approved,moderation_status.is.null"),
+          // Repair-service feedback remains a separate customer-experience score.
+          supabase
+            .from("repair_reviews")
+            .select("overall_rating")
+            .eq("repair_shop_id", userId),
+          supabase
+            .from("user_trust_tiers")
+            .select("trust_tier_id,completed_transactions,average_rating,total_reviews")
+            .eq("user_id", userId)
+            .maybeSingle(),
+        ]);
 
         if (tiersResult.error) throw tiersResult.error;
         if (transactionsResult.error) throw transactionsResult.error;
+        if (purchaseReviewsResult.error) throw purchaseReviewsResult.error;
         if (marketplaceReviewsResult.error) throw marketplaceReviewsResult.error;
         if (repairReviewsResult.error) throw repairReviewsResult.error;
+        if (savedTierResult.error) throw savedTierResult.error;
 
         const tiers = tiersResult.data || [];
         const completedTransactions = (transactionsResult.data || []).length;
 
-        // IMPORTANT: Purchase Transaction and Repair Service ratings must
-        // never be averaged together. They represent two different
-        // customer experiences and are displayed separately throughout the
-        // Repair Shop profile. The existing Trust Tier rules continue to use
-        // the Purchase Transaction rating as the participant rating.
-        const purchaseTransactionRatings = (marketplaceReviewsResult.data || [])
-          .map((review) => Number(review?.overall_rating))
-          .filter((rating) => Number.isFinite(rating));
+        // Keep purchase reputation and repair-service reputation separate.
+        // This mirrors evaluate_user_trust_tier(): purchase reviews affect
+        // the trust tier; repair-service reviews are displayed independently.
+        // Ignore missing/blank ratings instead of converting null or an empty
+        // value to 0. A missing review score must not lower either reputation
+        // average or inflate the review count.
+        const isValidReviewRating = (review) =>
+          review?.overall_rating !== null &&
+          review?.overall_rating !== undefined &&
+          String(review.overall_rating).trim() !== "" &&
+          Number.isFinite(Number(review.overall_rating));
+
+        const purchaseTransactionRatings = [
+          ...(purchaseReviewsResult.data || []),
+          ...(marketplaceReviewsResult.data || []),
+        ]
+          .filter(isValidReviewRating)
+          .map((review) => Number(review.overall_rating));
         const repairServiceRatings = (repairReviewsResult.data || [])
-          .map((review) => Number(review?.overall_rating))
-          .filter((rating) => Number.isFinite(rating));
+          .filter(isValidReviewRating)
+          .map((review) => Number(review.overall_rating));
 
         const purchaseTransactionReviews = purchaseTransactionRatings.length;
         const repairServiceReviews = repairServiceRatings.length;
@@ -840,11 +876,19 @@ const HarvesterDashboard = ({ session, onLogout }) => {
           : 0;
 
         setTrustTiers(tiers);
+        setSavedTrustTierId(savedTierResult.data?.trust_tier_id || null);
         setUserTrustStats({
-          completedTransactions,
+          // Prefer the backend's persisted transaction count when available.
+          completedTransactions: Number(
+            savedTierResult.data?.completed_transactions ?? completedTransactions
+          ),
           // Keep these existing fields as aliases for the purchase score only.
-          averageRating: purchaseTransactionRating,
-          totalReviews: purchaseTransactionReviews,
+          averageRating: Number(
+            savedTierResult.data?.average_rating ?? purchaseTransactionRating
+          ),
+          totalReviews: Number(
+            savedTierResult.data?.total_reviews ?? purchaseTransactionReviews
+          ),
           purchaseTransactionRating,
           purchaseTransactionReviews,
           repairServiceRating,
@@ -865,7 +909,11 @@ const HarvesterDashboard = ({ session, onLogout }) => {
     (a, b) => Number(a.min_transactions || 0) - Number(b.min_transactions || 0),
   );
 
+  // Use the tier assignment persisted by the backend evaluator whenever
+  // available. Keep the local threshold calculation only as a safe fallback
+  // for accounts that have not yet received their first tier assignment.
   const currentTrustTier =
+    sortedTrustTiers.find((tier) => tier.id === savedTrustTierId) ||
     [...sortedTrustTiers]
       .reverse()
       .find(
@@ -2262,7 +2310,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
         </div>
       )}
       {/* ===== TOP BANNER ===== */}
-      <div className={`relative overflow-hidden min-h-[360px] px-6 pt-6 pb-8 ${THEME.banner}`}>
+      <div className={`relative z-10 min-h-[360px] px-6 pt-6 pb-8 ${THEME.banner}`}>
         {/* CONTENT */}
         <div className="relative z-10">
           {/* --- TOP HEADER SECTION --- */}
@@ -2314,7 +2362,7 @@ const HarvesterDashboard = ({ session, onLogout }) => {
                     aria-hidden="true"
                   />
 
-                  <div className="absolute right-0 top-full mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div className="absolute right-0 top-full mt-4 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
                   <div className="p-5 border-b border-slate-50 flex justify-between items-center">
                     <h3 className="font-black text-slate-800 text-xs uppercase tracking-tight">
                       Notifications
@@ -3578,6 +3626,15 @@ const RepairShopProfileDrawer = ({
                           </p>
                         </div>
                       </div>
+
+                      {trustTierError && (
+                        <p
+                          role="alert"
+                          className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"
+                        >
+                          Trust Tier information could not be fully loaded: {trustTierError}
+                        </p>
+                      )}
 
                       {userTrustStats.purchaseTransactionReviews === 0 &&
                         userTrustStats.repairServiceReviews === 0 && (

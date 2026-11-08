@@ -18,7 +18,13 @@ import {
   MessageSquare,
 } from "lucide-react";
 
-const SellerMessages = ({ userId, onTabChange }) => {
+const SellerMessages = ({
+  userId,
+  onTabChange,
+  trustTier,
+  trustTierLoading = false,
+  trustTierError = "",
+}) => {
   const [conversations, setConversations] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -40,6 +46,32 @@ const SellerMessages = ({ userId, onTabChange }) => {
 
   const [acceptedBidAmount, setAcceptedBidAmount] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [alertPopup, setAlertPopup] = useState(null);
+
+  // Prevent the page behind the meetup/handover modal from scrolling.
+  // The modal's own content area remains independently scrollable.
+  useEffect(() => {
+    if (!isModalOpen) return undefined;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverscroll = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscroll;
+    };
+  }, [isModalOpen]);
+
+  // Use a consistent in-app popup for validation and transaction feedback.
+  const showAppAlert = (message, type = "error") => {
+    setAlertPopup({ message, type });
+  };
 
   const [meetupData, setMeetupData] = useState({
     date: "",
@@ -47,6 +79,14 @@ const SellerMessages = ({ userId, onTabChange }) => {
     location: "",
     drop_off_point_id: "",
     notes: "",
+  });
+  const [isFlexibleHandoverMode, setIsFlexibleHandoverMode] = useState(false);
+  const [flexibleHandoverData, setFlexibleHandoverData] = useState({
+    arrangement: "",
+    address: "",
+    contact: "",
+    schedule: "",
+    instructions: "",
   });
 
   const [dropOffPoints, setDropOffPoints] = useState([]);
@@ -63,6 +103,72 @@ const SellerMessages = ({ userId, onTabChange }) => {
   // Verification accounts are view-only (receive and read, no reply).
   const [senderProfile, setSenderProfile] = useState(null);
   const [senderProfileLoaded, setSenderProfileLoaded] = useState(false);
+
+  // Partner-establishment access is driven by the privilege configured by
+  // the administrator for the user's current trust tier. Accept common
+  // wording variations without granting access based on the tier name alone.
+  const normalizePrivilege = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ");
+
+  const hasPartnerMeetupPrivilege =
+    !trustTierLoading &&
+    !trustTierError &&
+    (Array.isArray(trustTier?.privileges) ? trustTier.privileges : []).some((privilege) => {
+      const normalized = normalizePrivilege(privilege);
+      return (
+        normalized.includes("partner") &&
+        (normalized.includes("establishment") ||
+          normalized.includes("meetup") ||
+          normalized.includes("location"))
+      );
+    });
+
+  // Flexible handover arrangements are available only to SILVER, GOLD,
+  // and PLATINUM accounts. Do not grant access while tier data is unavailable.
+  const normalizedTrustTierName = normalizePrivilege(trustTier?.name);
+  const canUseFlexibleHandover =
+    !trustTierLoading &&
+    !trustTierError &&
+    ["silver", "gold", "platinum"].includes(normalizedTrustTierName);
+
+  // Barangay MRF entries are donation facilities, not transaction meetup
+  // locations. The database stores this classification in the text `partner`
+  // column (for example, "Barangay MRF"), so identify it before checking
+  // whether a location is a restricted partner establishment.
+  const isBarangayMRFDropOffPoint = (point) => {
+    const normalizedPartner = normalizePrivilege(point?.partner);
+    return [
+      "barangay mrf",
+      "mrf",
+      "materials recovery facility",
+      "barangay materials recovery facility",
+    ].includes(normalizedPartner);
+  };
+
+  const isPartnerDropOffPoint = (point) => {
+    if (isBarangayMRFDropOffPoint(point)) return false;
+
+    const partnerValue = point?.partner;
+    if (typeof partnerValue === "boolean") return partnerValue;
+
+    const normalized = normalizePrivilege(partnerValue);
+    return Boolean(
+      normalized &&
+      !["false", "no", "0", "none", "null"].includes(normalized)
+    );
+  };
+
+  // Marketplace meetup choices exclude donation-only Barangay MRF sites.
+  // Actual partner establishments remain restricted by the configured tier
+  // privilege; ordinary non-partner meetup locations remain available.
+  const selectableDropOffPoints = dropOffPoints.filter(
+    (point) =>
+      !isBarangayMRFDropOffPoint(point) &&
+      (!isPartnerDropOffPoint(point) || hasPartnerMeetupPrivilege)
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -649,6 +755,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
           address,
           latitude,
           longitude,
+          partner,
           is_active
         `)
         .eq("is_active", true)
@@ -1285,13 +1392,214 @@ const SellerMessages = ({ userId, onTabChange }) => {
   };
 
   // ============================================================
+  // FLEXIBLE HANDOVER PROPOSAL (SILVER+)
+  // ============================================================
+
+  const handleSubmitFlexibleHandover = async () => {
+    if (!canSendMessages) {
+      showAppAlert("Your account is view-only and cannot propose a handover arrangement.");
+      return;
+    }
+
+    if (trustTierLoading || trustTierError || !canUseFlexibleHandover) {
+      showAppAlert("Flexible handover arrangements are available only to verified SILVER, GOLD, and PLATINUM users.");
+      return;
+    }
+
+    const arrangement = flexibleHandoverData.arrangement.trim();
+    if (!arrangement) {
+      showAppAlert("Please describe your preferred handover arrangement.");
+      return;
+    }
+
+    const contactNumber = String(flexibleHandoverData.contact || "").trim();
+    if (contactNumber && !/^\d{1,11}$/.test(contactNumber)) {
+      showAppAlert("Contact number must contain numbers only and must not exceed 11 digits.");
+      return;
+    }
+
+    if (!activeTransaction?.id) {
+      showAppAlert("No active transaction is selected. Please refresh and try again.");
+      return;
+    }
+
+    const currentStatus = normalizeTransactionStatus(activeTransaction.status);
+    if (!["pending", "matched"].includes(currentStatus)) {
+      showAppAlert("A flexible handover can only be proposed for a pending or matched transaction.");
+      return;
+    }
+
+    if (![activeTransaction.seller_id, activeTransaction.harvester_id].includes(userId)) {
+      showAppAlert("You are not a participant in this transaction.");
+      return;
+    }
+
+    try {
+      const proposedAt = new Date().toISOString();
+      const { data: proposedTx, error: proposalError } = await supabase
+        .from("transactions")
+        .update({
+          handover_arrangement: arrangement,
+          handover_address: flexibleHandoverData.address.trim() || null,
+          handover_contact: flexibleHandoverData.contact.trim() || null,
+          handover_schedule: flexibleHandoverData.schedule.trim() || null,
+          handover_instructions: flexibleHandoverData.instructions.trim() || null,
+          handover_proposed_by: userId,
+          handover_proposal_status: "pending",
+          handover_proposed_at: proposedAt,
+          handover_responded_at: null,
+          updated_at: proposedAt,
+        })
+        .eq("id", activeTransaction.id)
+        .in("status", ["pending", "matched", "Matched"])
+        .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
+        .or("handover_proposal_status.is.null,handover_proposal_status.eq.rejected")
+        .select("*")
+        .maybeSingle();
+
+      if (proposalError) throw proposalError;
+      if (!proposedTx) {
+        throw new Error("A handover proposal is already pending or has already been accepted. Refresh the transaction and try again.");
+      }
+
+      const proposalMessage = `Schedule Meetup
+Arrangement: ${arrangement}
+Address: ${flexibleHandoverData.address.trim() || "Not provided"}
+Contact: ${flexibleHandoverData.contact.trim() || "Not provided"}
+Preferred Schedule: ${flexibleHandoverData.schedule.trim() || "To be agreed"}
+Instructions: ${flexibleHandoverData.instructions.trim() || "None"}
+
+Please review this proposal and accept or reject it in the transaction conversation.`;
+
+      const { error: messageError } = await supabase.from("messages").insert([{
+        listing_id: activeTransaction.listing_id || activeChat?.listing_id || null,
+        sender_id: userId,
+        receiver_id: activeTransaction.seller_id === userId
+          ? activeTransaction.harvester_id
+          : activeTransaction.seller_id,
+        content: proposalMessage,
+      }]);
+
+      if (messageError) {
+        console.warn("Handover proposal message could not be sent:", messageError.message);
+      }
+
+      const recipientId = activeTransaction.seller_id === userId
+        ? activeTransaction.harvester_id
+        : activeTransaction.seller_id;
+      if (recipientId) {
+        const { error: notificationError } = await supabase.from("notifications").insert([{
+          user_id: recipientId,
+          type: "transaction_update",
+          title: "Schedule meetup",
+          content: "The other party proposed a flexible handover arrangement. Review it in Messages.",
+          related_listing_id: activeTransaction.listing_id || null,
+          is_read: false,
+          description: "A handover proposal is waiting for your response.",
+        }]);
+        if (notificationError) {
+          console.warn("Handover proposal notification could not be created:", notificationError.message);
+        }
+      }
+
+      setIsModalOpen(false);
+      setIsFlexibleHandoverMode(false);
+      setFlexibleHandoverData({
+        arrangement: "",
+        address: "",
+        contact: "",
+        schedule: "",
+        instructions: "",
+      });
+      showAppAlert("Your handover proposal has been sent. The other party must accept it before the arrangement is confirmed.", "success");
+      await fetchActiveTransaction();
+      await fetchConversations();
+    } catch (err) {
+      console.error("Error submitting schedule meetup:", err);
+      showAppAlert(`Unable to submit the handover proposal: ${err.message || "Unknown error"}`);
+    }
+  };
+
+  const handleRespondToHandoverProposal = async (tx, response) => {
+    if (!canSendMessages) {
+      showAppAlert("Your account is view-only and cannot respond to a handover proposal.");
+      return;
+    }
+    if (!tx?.id || tx.handover_proposal_status !== "pending") return;
+    if (tx.handover_proposed_by === userId) {
+      showAppAlert("You cannot respond to your own handover proposal.");
+      return;
+    }
+    if (![tx.seller_id, tx.harvester_id].includes(userId)) {
+      showAppAlert("You are not a participant in this transaction.");
+      return;
+    }
+    if (!["accepted", "rejected"].includes(response)) return;
+
+    try {
+      const respondedAt = new Date().toISOString();
+      const { data: updatedTx, error: responseError } = await supabase
+        .from("transactions")
+        .update({
+          handover_proposal_status: response,
+          handover_responded_at: respondedAt,
+          updated_at: respondedAt,
+        })
+        .eq("id", tx.id)
+        .or(`seller_id.eq.${userId},harvester_id.eq.${userId}`)
+        .eq("handover_proposal_status", "pending")
+        .neq("handover_proposed_by", userId)
+        .select("*")
+        .maybeSingle();
+
+      if (responseError) throw responseError;
+      if (!updatedTx) {
+        throw new Error("This proposal has already been answered. Refresh the conversation to see its latest status.");
+      }
+
+      const responseLabel = response === "accepted" ? "accepted" : "rejected";
+      const proposerId = tx.handover_proposed_by;
+      if (proposerId) {
+        const { error: messageError } = await supabase.from("messages").insert([{
+          listing_id: tx.listing_id || null,
+          sender_id: userId,
+          receiver_id: proposerId,
+          content: `Schedule meetup ${responseLabel}.${response === "accepted" ? " The proposed arrangement is now agreed by both parties." : " Please discuss and submit a revised proposal if needed."}`,
+        }]);
+        if (messageError) {
+          console.warn("Handover response message could not be sent:", messageError.message);
+        }
+        const { error: notificationError } = await supabase.from("notifications").insert([{
+          user_id: proposerId,
+          type: "transaction_update",
+          title: `Handover Proposal ${response === "accepted" ? "Accepted" : "Rejected"}`,
+          content: `The other party ${responseLabel} your Schedule meetup.`,
+          related_listing_id: tx.listing_id || null,
+          is_read: false,
+          description: "Your Schedule meetup has received a response.",
+        }]);
+        if (notificationError) {
+          console.warn("Handover response notification could not be created:", notificationError.message);
+        }
+      }
+
+      showAppAlert(`Handover proposal ${responseLabel}.`, "success");
+      await fetchActiveTransaction();
+      await fetchConversations();
+    } catch (err) {
+      console.error("Error responding to Schedule meetup:", err);
+      showAppAlert(`Unable to respond to the proposal: ${err.message || "Unknown error"}`);
+    }
+  };
+
+  // ============================================================
   // SCHEDULE MARKETPLACE MEETUP
   // ============================================================
 
   const handleScheduleMeetup = async () => {
     // Pending Verification accounts are view-only: no meetup scheduling.
     if (!canSendMessages) {
-      alert(
+      showAppAlert(
         "Pending Verification accounts are view-only and cannot schedule meetups."
       );
       return;
@@ -1303,7 +1611,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
       !activeChat ||
       !activeChat.listing_id
     ) {
-      alert(
+      showAppAlert(
         "Meetup scheduling is only available for marketplace transactions."
       );
 
@@ -1315,7 +1623,7 @@ const SellerMessages = ({ userId, onTabChange }) => {
       !meetupData.time ||
       !meetupData.drop_off_point_id
     ) {
-      alert(
+      showAppAlert(
         "Please select a date, time, and drop-off point."
       );
 
@@ -1328,16 +1636,44 @@ const SellerMessages = ({ userId, onTabChange }) => {
     );
 
     if (Number.isNaN(scheduledAt.getTime())) {
-      alert("The meetup date or time is invalid. Please correct it.");
+      showAppAlert("The meetup date or time is invalid. Please correct it.");
       return;
     }
 
     if (scheduledAt.getTime() <= Date.now()) {
-      alert("The meetup must be scheduled for a future date and time.");
+      showAppAlert("The meetup must be scheduled for a future date and time.");
       return;
     }
 
     try {
+      // Re-fetch the selected location so a stale/modified client-side list
+      // cannot bypass the active-point or partner-establishment restriction.
+      const { data: selectedPoint, error: pointError } = await supabase
+        .from("drop_off_points")
+        .select("id,name,barangay,city,address,partner,is_active")
+        .eq("id", meetupData.drop_off_point_id)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (pointError) throw pointError;
+      if (!selectedPoint) {
+        throw new Error("This drop-off point is no longer active. Please choose another location.");
+      }
+
+      if (isBarangayMRFDropOffPoint(selectedPoint)) {
+        throw new Error(
+          "Barangay MRF locations are for e-waste donations and cannot be used for transaction meetups. Please choose a meetup location."
+        );
+      }
+
+      if (isPartnerDropOffPoint(selectedPoint) && !hasPartnerMeetupPrivilege) {
+        throw new Error(
+          trustTierLoading || trustTierError
+            ? "Your trust-tier privileges could not be verified. Partner-establishment meetups are unavailable until your trust-tier information loads successfully."
+            : `Your current trust tier (${trustTier?.name || "NEWCOMER"}) does not include partner-establishment meetups. Please select a standard drop-off point.`
+        );
+      }
+
       // Only the listing owner may schedule.
       const {
         data: existingTx,
@@ -1367,6 +1703,12 @@ const SellerMessages = ({ userId, onTabChange }) => {
         })
         .limit(1)
         .maybeSingle();
+
+      if (fetchError) throw fetchError;
+      if (!existingTx) {
+        throw new Error("No active marketplace transaction was found for this conversation.");
+      }
+
       if (existingTx.seller_id !== userId) {
         throw new Error("Only the listing owner can schedule the meetup.");
       }
@@ -1385,10 +1727,6 @@ const SellerMessages = ({ userId, onTabChange }) => {
       // scope transactions with .eq("barangay", adminBarangay), so storing
       // the point name here would hide the transaction from every
       // barangay coordinator.
-      const selectedPoint = dropOffPoints.find(
-        (point) => point.id === meetupData.drop_off_point_id
-      );
-
       const {
         data: scheduledTx,
         error: scheduleError,
@@ -1517,8 +1855,9 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
         );
       }
 
-      alert(
-        `Meetup Scheduled for ₱${finalPrice.toLocaleString()}`
+      showAppAlert(
+        `Meetup Scheduled for ₱${finalPrice.toLocaleString()}`,
+        "success"
       );
 
       setIsModalOpen(false);
@@ -1544,10 +1883,11 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
         err
       );
 
-      alert(
+      showAppAlert(
         "Transaction failed: " +
           (err.message ||
-            "Unknown error")
+            "Unknown error"),
+        "error"
       );
     }
   };
@@ -1601,6 +1941,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
   // Opens the meetup form for one specific transaction with this person.
   const openMeetupFor = (tx) => {
     if (!canSendMessages) return;
+    setIsFlexibleHandoverMode(false);
     setActiveTransaction(tx);
     setAcceptedBidAmount(Number(tx.amount || 0));
     setActiveChat((prev) =>
@@ -1615,6 +1956,30 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
     setIsModalOpen(true);
   };
 
+  const openFlexibleHandoverFor = (tx) => {
+    if (!canSendMessages || !canUseFlexibleHandover) return;
+    setActiveTransaction(tx);
+    setAcceptedBidAmount(Number(tx.amount || 0));
+    setActiveChat((prev) =>
+      prev
+        ? {
+            ...prev,
+            listing_id: tx.listing_id,
+            listings: { device_model: getListingModel(tx.listing_id) },
+          }
+        : prev
+    );
+    setFlexibleHandoverData({
+      arrangement: "",
+      address: "",
+      contact: "",
+      schedule: "",
+      instructions: "",
+    });
+    setIsFlexibleHandoverMode(true);
+    setIsModalOpen(true);
+  };
+
   const getThreadLabel = (conv) =>
     conv.listing_id
       ? `Re: ${conv.listings?.device_model || "Item"}`
@@ -1622,6 +1987,67 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
   return (
     <>
+      {alertPopup && (
+        <div
+          className="fixed inset-0 z-[900] flex items-center justify-center bg-slate-950/55 p-4"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setAlertPopup(null);
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-live="assertive"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+                  alertPopup.type === "success"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-rose-100 text-rose-700"
+                }`}
+              >
+                {alertPopup.type === "success" ? (
+                  <CheckCheck size={22} />
+                ) : (
+                  <ShieldAlert size={22} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-black text-slate-800">
+                  {alertPopup.type === "success" ? "Success" : "Please check"}
+                </h3>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">
+                  {alertPopup.message}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAlertPopup(null)}
+                aria-label="Close popup"
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setAlertPopup(null)}
+                className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-sm transition ${
+                  alertPopup.type === "success"
+                    ? "bg-emerald-700 hover:bg-emerald-800"
+                    : "bg-slate-800 hover:bg-slate-900"
+                }`}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showNewMessage && (
         <div className="fixed inset-0 z-[500] bg-slate-900/50 flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-5">
@@ -1652,7 +2078,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
         </div>
       )}
 
-      <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border border-white overflow-hidden h-[calc(100vh-12rem)] min-h-[600px] max-h-[850px] font-sans">
+      <div className="grid grid-cols-12 gap-8 bg-white rounded-[3rem] shadow-sm border mt-16 border-white overflow-hidden h-[calc(100vh-12rem)] min-h-[600px] max-h-[850px] font-sans">
 
       {/* ======================================================
           SIDEBAR
@@ -1927,17 +2353,58 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     {tx.meetup_time && <p className="flex items-center gap-2"><Clock size={13} />{formatMeetupTime(tx.meetup_time)}</p>}
                     {tx.barangay && <p className="flex items-center gap-2"><MapPin size={13} />{tx.barangay}</p>}
                   </div>
-                  {tx.seller_id === userId && ["pending", "matched"].includes(normalizeTransactionStatus(tx.status)) && (
-                    <button
-                      type="button"
-                      disabled={!canSendMessages}
-                      title={!canSendMessages ? "View-only: your account is pending verification" : undefined}
-                      onClick={() => openMeetupFor(tx)}
-                      className="mt-4 flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-xs font-bold disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
-                    >
-                      <Calendar size={14} />
-                      {canSendMessages ? "Schedule Meetup" : "Schedule Meetup (View-only)"}
-                    </button>
+                  {["pending", "matched"].includes(normalizeTransactionStatus(tx.status)) &&
+                    (!tx.handover_proposal_status || tx.handover_proposal_status === "rejected") &&
+                    (canUseFlexibleHandover ? (
+                      <button
+                        type="button"
+                        disabled={!canSendMessages}
+                        title={!canSendMessages ? "View-only: your account is pending verification" : undefined}
+                        onClick={() => openFlexibleHandoverFor(tx)}
+                        className="mt-4 flex items-center gap-2 bg-teal-700 hover:bg-teal-800 text-white px-4 py-2 rounded-xl text-xs font-bold disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                      >
+                        <Navigation size={14} />
+                        Propose Flexible Handover
+                      </button>
+                    ) : tx.seller_id === userId ? (
+                      <button
+                        type="button"
+                        disabled={!canSendMessages}
+                        title={!canSendMessages ? "View-only: your account is pending verification" : undefined}
+                        onClick={() => openMeetupFor(tx)}
+                        className="mt-4 flex items-center gap-2 bg-[#2d7a7f] text-white px-4 py-2 rounded-xl text-xs font-bold disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                      >
+                        <Calendar size={14} />
+                        {canSendMessages ? "Schedule Meetup" : "Schedule Meetup (View-only)"}
+                      </button>
+                    ) : null)}
+                  {tx.handover_proposal_status && (
+                    <div className={`mt-4 rounded-xl border p-4 text-xs ${
+                      tx.handover_proposal_status === "accepted"
+                        ? "border-emerald-200 bg-emerald-50"
+                        : tx.handover_proposal_status === "rejected"
+                        ? "border-rose-200 bg-rose-50"
+                        : "border-amber-200 bg-amber-50"
+                    }`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-bold text-slate-700">Flexible Handover · {String(tx.handover_proposal_status).toUpperCase()}</p>
+                        {tx.handover_proposed_at && <span className="text-slate-400">{formatDate(tx.handover_proposed_at)}</span>}
+                      </div>
+                      <p className="mt-2 text-slate-700"><b>Arrangement:</b> {tx.handover_arrangement || "—"}</p>
+                      {tx.handover_address && <p className="mt-1 text-slate-600"><b>Address:</b> {tx.handover_address}</p>}
+                      {tx.handover_contact && <p className="mt-1 text-slate-600"><b>Contact:</b> {tx.handover_contact}</p>}
+                      {tx.handover_schedule && <p className="mt-1 text-slate-600"><b>Preferred schedule:</b> {tx.handover_schedule}</p>}
+                      {tx.handover_instructions && <p className="mt-1 text-slate-600"><b>Instructions:</b> {tx.handover_instructions}</p>}
+                      {tx.handover_proposal_status === "pending" && tx.handover_proposed_by !== userId && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" disabled={!canSendMessages} onClick={() => handleRespondToHandoverProposal(tx, "accepted")} className="rounded-lg bg-emerald-700 px-3 py-2 font-bold text-white hover:bg-emerald-800 disabled:opacity-50">Accept Arrangement</button>
+                          <button type="button" disabled={!canSendMessages} onClick={() => handleRespondToHandoverProposal(tx, "rejected")} className="rounded-lg bg-rose-600 px-3 py-2 font-bold text-white hover:bg-rose-700 disabled:opacity-50">Reject Proposal</button>
+                        </div>
+                      )}
+                      {tx.handover_proposal_status === "pending" && tx.handover_proposed_by === userId && <p className="mt-2 font-semibold text-amber-700">Waiting for the other party to respond.</p>}
+                      {tx.handover_proposal_status === "accepted" && <p className="mt-2 font-semibold text-emerald-700">Both parties have accepted this arrangement.</p>}
+                      {tx.handover_proposal_status === "rejected" && <p className="mt-2 font-semibold text-rose-700">The other party rejected this proposal. You may discuss and submit a revised proposal.</p>}
+                    </div>
                   )}
                   {tx.harvester_id === userId && normalizeTransactionStatus(tx.status) === "meetup_scheduled" && (
                     <span className="mt-4 inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl text-xs font-bold border border-emerald-100">
@@ -2015,6 +2482,38 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
               })}
 
             </div>
+
+            {/* ==================================================
+                STICKY TRANSACTION ACTION
+                Keeps meetup/handover access visible while messages scroll.
+            =================================================== */}
+            {activeTransaction?.listing_id &&
+              ["pending", "matched"].includes(normalizeTransactionStatus(activeTransaction.status)) &&
+              (!activeTransaction.handover_proposal_status ||
+                activeTransaction.handover_proposal_status === "rejected") &&
+              (canUseFlexibleHandover || activeTransaction.seller_id === userId) && (
+                <div className="shrink-0 border-t border-slate-100 bg-white px-6 py-3">
+                  <button
+                    type="button"
+                    disabled={!canSendMessages}
+                    onClick={() => {
+                      if (canUseFlexibleHandover) {
+                        openFlexibleHandoverFor(activeTransaction);
+                      } else {
+                        openMeetupFor(activeTransaction);
+                      }
+                    }}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#2d7a7f] px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {canUseFlexibleHandover ? <Navigation size={16} /> : <Calendar size={16} />}
+                    {canUseFlexibleHandover
+                      ? "Propose Flexible Handover"
+                      : canSendMessages
+                        ? "Schedule Meetup"
+                        : "Schedule Meetup (View-only)"}
+                  </button>
+                </div>
+              )}
 
             {/* ==================================================
                 MESSAGE INPUT
@@ -2170,20 +2669,20 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
       {isModalOpen &&
         activeChat &&
         activeChat.listing_id && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overscroll-none bg-black/40 p-4 backdrop-blur-sm">
 
-            <div className="bg-white rounded-[1.5rem] w-full max-w-lg overflow-hidden shadow-xl animate-in fade-in zoom-in duration-200">
+            <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-[1.5rem] bg-white shadow-xl animate-in fade-in zoom-in duration-200">
 
               {/* ------------------------------------------------
                   HEADER
               ------------------------------------------------- */}
 
-              <div className="p-8 pb-4 flex justify-between items-start">
+              <div className="shrink-0 p-8 pb-4 flex justify-between items-start">
 
                 <div>
 
                   <h2 className="font-bold text-[#2d3748] text-xl">
-                    Schedule Meetup
+                    {isFlexibleHandoverMode ? "Propose Flexible Handover" : "Schedule Meetup"}
                   </h2>
 
                   <p className="text-sm text-slate-500 mt-1">
@@ -2194,16 +2693,16 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     {activeChat.listings
                       ?.device_model ||
                       "Item"}
+                    {isFlexibleHandoverMode ? " · Proposal requires the other party's approval" : ""}
                   </p>
 
                 </div>
 
                 <button
-                  onClick={() =>
-                    setIsModalOpen(
-                      false
-                    )
-                  }
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setIsFlexibleHandoverMode(false);
+                  }}
                   className="text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   <X size={24} />
@@ -2211,7 +2710,7 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
               </div>
 
-              <div className="px-8 pb-8 space-y-6 max-h-[80vh] overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 pb-8 space-y-6">
 
                 {/* ------------------------------------------------
                     ACCEPTED BID
@@ -2243,6 +2742,81 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                 </div>
 
+                {isFlexibleHandoverMode ? (
+                  <div className="space-y-5">
+                    <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-xs leading-5 text-teal-800">
+                      SILVER, GOLD, and PLATINUM users may propose their own handover arrangement. Describe what works for both parties; there is no fixed delivery-mode dropdown. The other party must accept the proposal before it is confirmed.
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-slate-600">Preferred Handover Arrangement <span className="text-rose-500">*</span></label>
+                      <textarea
+                        value={flexibleHandoverData.arrangement}
+                        onChange={(e) => setFlexibleHandoverData({ ...flexibleHandoverData, arrangement: e.target.value })}
+                        placeholder="Describe how you would like to hand over the device (for example, arrange a pickup, meet at an agreed place, or use a courier)."
+                        className="h-28 w-full resize-y rounded-xl border border-slate-200 p-4 text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-slate-600">Address or Meeting Location</label>
+                      <textarea
+                        value={flexibleHandoverData.address}
+                        onChange={(e) => setFlexibleHandoverData({ ...flexibleHandoverData, address: e.target.value })}
+                        placeholder="Enter the pickup address, delivery address, or proposed meeting place."
+                        className="h-20 w-full resize-y rounded-xl border border-slate-200 p-4 text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-slate-600">Contact Details</label>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={11}
+                        value={flexibleHandoverData.contact}
+                        onChange={(e) => {
+                          const numericContact = e.target.value.replace(/\D/g, "").slice(0, 11);
+                          setFlexibleHandoverData({
+                            ...flexibleHandoverData,
+                            contact: numericContact,
+                          });
+                        }}
+                        placeholder="Enter up to 11 digits"
+                        aria-label="Contact number (numbers only, maximum 11 digits)"
+                        className="w-full rounded-xl border border-slate-200 p-4 text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
+                      />
+                      <p className="mt-1 text-right text-[11px] text-slate-400">
+                        {flexibleHandoverData.contact.length}/11 digits
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-slate-600">Preferred Date and Time</label>
+                      <input
+                        type="datetime-local"
+                        value={flexibleHandoverData.schedule}
+                        onChange={(e) => setFlexibleHandoverData({ ...flexibleHandoverData, schedule: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 p-4 text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        Select your preferred date and time using the picker. The other party can review your proposed schedule.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-slate-600">Additional Instructions</label>
+                      <textarea
+                        value={flexibleHandoverData.instructions}
+                        onChange={(e) => setFlexibleHandoverData({ ...flexibleHandoverData, instructions: e.target.value })}
+                        placeholder="Add any other details the other party should know."
+                        className="h-24 w-full resize-y rounded-xl border border-slate-200 p-4 text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 {/* ------------------------------------------------
                     DATE
                 ------------------------------------------------- */}
@@ -2359,14 +2933,33 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                   <div className="space-y-2">
 
-                    {dropOffPoints.length ===
+                    {/* {dropOffPoints.some(isBarangayMRFDropOffPoint) && (
+                      <div className="p-3 rounded-xl border border-sky-200 bg-sky-50 text-xs text-sky-700">
+                        Barangay MRF facilities are reserved for e-waste donations and are not available as transaction meetup locations.
+                      </div>
+                    )} */}
+
+                    {trustTierLoading ? (
+                      <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-500">
+                        Checking your trust-tier privileges. Standard meetup locations remain available.
+                      </div>
+                    ) : trustTierError ? (
+                      <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-700">
+                        Trust-tier privileges could not be loaded. Partner establishments are temporarily unavailable; choose a standard drop-off point.
+                      </div>
+                    ) : !hasPartnerMeetupPrivilege && dropOffPoints.some(isPartnerDropOffPoint) ? (
+                      <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-700">
+                        Partner establishments are restricted to trust tiers with the corresponding admin-configured privilege. Your current tier is {trustTier?.name || "NEWCOMER"}.
+                      </div>
+                    ) : null}
+
+                    {selectableDropOffPoints.length ===
                     0 ? (
                       <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-400">
-                        No active drop-off
-                        points available.
+                        No eligible active drop-off points available.
                       </div>
                     ) : (
-                      dropOffPoints.map(
+                      selectableDropOffPoints.map(
                         (point) => (
                           <button
                             key={
@@ -2407,6 +3000,12 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                                   point.name
                                 }
                               </p>
+
+                              {isPartnerDropOffPoint(point) && (
+                                <span className="inline-flex mt-1 rounded-full bg-purple-50 px-2 py-1 text-[10px] font-bold text-purple-700">
+                                  Partner Establishment
+                                </span>
+                              )}
 
                               <p className="text-xs text-slate-400 mt-1">
                                 {
@@ -2462,6 +3061,9 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
 
                 </div>
 
+                  </>
+                )}
+
                 {/* ------------------------------------------------
                     BUTTONS
                 ------------------------------------------------- */}
@@ -2474,6 +3076,14 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                       setIsModalOpen(
                         false
                       );
+                      setIsFlexibleHandoverMode(false);
+                      setFlexibleHandoverData({
+                        arrangement: "",
+                        address: "",
+                        contact: "",
+                        schedule: "",
+                        instructions: "",
+                      });
 
                       setMeetupData({
                         date: "",
@@ -2493,11 +3103,13 @@ Date: ${meetupData.date} at ${formatMeetupTime(meetupData.time)}${
                     type="button"
                     disabled={!canSendMessages}
                     onClick={
-                      handleScheduleMeetup
+                      isFlexibleHandoverMode
+                        ? handleSubmitFlexibleHandover
+                        : handleScheduleMeetup
                     }
-                    className="flex-1 py-4 px-6 bg-[#9bc2c9] hover:bg-[#8ab1b8] text-white rounded-xl text-sm font-bold transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-4 px-6 bg-teal-700 hover:bg-teal-800 active:bg-teal-900 text-white rounded-xl text-sm font-extrabold transition-all shadow-lg shadow-teal-700/25 ring-1 ring-teal-800/10 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:ring-0 disabled:cursor-not-allowed"
                   >
-                    Schedule Meetup
+                    {isFlexibleHandoverMode ? "Send Handover Proposal" : "Schedule Meetup"}
                   </button>
 
                 </div>

@@ -1349,112 +1349,186 @@ const TransactionsView = ({
     const [comment, setComment] = useState("");
 
     const StarRow = ({ label, sublabel, category }) => (
-      <div className="space-y-1">
-        <div className="flex justify-between items-end">
-          <div>
-            <p className="text-sm font-bold text-slate-700">{label}</p>
-            <p className="text-xs text-slate-400 font-medium">{sublabel}</p>
-          </div>
+      <div className="space-y-1.5">
+        <div>
+          <p className="text-sm font-bold text-slate-800">{label}</p>
+          <p className="text-xs font-medium leading-5 text-slate-500">{sublabel}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-1.5">
           {[1, 2, 3, 4, 5].map((star) => (
             <button
               key={star}
+              type="button"
+              aria-label={`${star} out of 5 stars for ${label}`}
+              aria-pressed={ratings[category] === star}
               onClick={() =>
                 setRatings((prev) => ({ ...prev, [category]: star }))
               }
-              className={`transition-all ${ratings[category] >= star ? "text-amber-400" : "text-slate-200"}`}
+              className={`rounded-lg p-1 transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-amber-200 ${
+                ratings[category] >= star
+                  ? "text-amber-400"
+                  : "text-slate-300 hover:text-amber-300"
+              }`}
             >
               <Star
-                size={24}
+                size={25}
                 fill={ratings[category] >= star ? "currentColor" : "none"}
               />
             </button>
           ))}
+          {ratings[category] > 0 && (
+            <span className="ml-1 text-xs font-semibold text-slate-500">
+              {ratings[category]}/5
+            </span>
+          )}
         </div>
       </div>
     );
 
+    const isRepair = isRepairTransaction(transaction);
+    const sellerName =
+      transaction.seller?.full_name ||
+      (isRepair ? "the repair shop" : "the seller");
+
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
-        <div className="p-6">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="bg-[#3285a1] p-8 text-white relative text-center">
+      <div className="fixed inset-0 z-[100] overflow-y-auto overscroll-contain bg-slate-900/60 p-3 backdrop-blur-sm sm:p-5">
+        <div className="flex min-h-full w-full items-center justify-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rate-seller-modal-title"
+            className="my-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-[1.75rem]"
+          >
+            <div className="relative shrink-0 bg-gradient-to-r from-[#2d7a7f] to-[#3285a1] px-5 py-5 text-white sm:px-6">
               <button
+                type="button"
                 onClick={onClose}
-                className="absolute right-6 top-6 hover:bg-white/20 rounded-full p-1"
+                aria-label="Close rating form"
+                className="absolute right-4 top-4 rounded-full p-2 text-white/90 transition hover:bg-white/20 hover:text-white"
               >
                 <XCircle size={20} />
               </button>
-              <h2 className="text-xl font-black uppercase tracking-tight">
-                Rate Your Experience
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/70">
+                Transaction feedback
+              </p>
+              <h2 id="rate-seller-modal-title" className="mt-1 pr-10 text-xl font-black sm:text-2xl">
+                Rate {isRepair ? "Your Experience" : "Seller"}
               </h2>
-              <p className="text-white/80 text-xs font-bold uppercase mt-1">
-                How was your {isRepairTransaction(transaction) ? "repair service" : "transaction"} with{" "}
-                {transaction.seller?.full_name || (isRepairTransaction(transaction) ? "the repair shop" : "the seller")} ?
+              <p className="mt-1 pr-6 text-xs leading-5 text-white/85">
+                Share your experience with {sellerName}.
               </p>
             </div>
 
-            <div className="p-8 space-y-6 overflow-y-auto max-h-[60vh] custom-scrollbar">
-              <StarRow
-                label="Communication"
-                sublabel="Responsiveness and clarity"
-                category="communication"
-              />
-              <StarRow
-                label="Punctuality"
-                sublabel="On-time for meetup"
-                category="punctuality"
-              />
-              <StarRow
-                label={isRepairTransaction(transaction) ? "Service Quality" : "Item Condition"}
-                sublabel={isRepairTransaction(transaction) ? "Quality of the repair service" : "Item matched description"}
-                category="condition"
-              />
-              <StarRow
-                label="Overall Experience"
-                sublabel="Overall satisfaction"
-                category="overall"
-              />
-
-              <div className="space-y-3 pt-2">
-                <p className="text-xs font-black text-slate-700 uppercase">
-                  Would you recommend this seller?{" "}
-                  <span className="text-red-500">*</span>
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-5 [touch-action:pan-y] sm:px-6 sm:py-6">
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                  {isRepair ? "Repair Shop" : "Seller"}
                 </p>
-                <div className="flex gap-3">
+                <p className="mt-1 break-words text-sm font-black text-slate-800">
+                  {sellerName}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {transaction.listing?.device_model ||
+                    transaction.device_model ||
+                    (isRepair ? getRepairDevice(transaction) : "Transaction")}
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                <StarRow
+                  label="Communication"
+                  sublabel="Responsiveness and clarity"
+                  category="communication"
+                />
+                <StarRow
+                  label="Punctuality"
+                  sublabel="On-time for meetup"
+                  category="punctuality"
+                />
+                <StarRow
+                  label={isRepair ? "Service Quality" : "Item Condition"}
+                  sublabel={
+                    isRepair
+                      ? "Quality of the repair service"
+                      : "Item matched its description"
+                  }
+                  category="condition"
+                />
+                <StarRow
+                  label="Overall Experience"
+                  sublabel="Overall satisfaction"
+                  category="overall"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-bold text-slate-800">
+                    Would you recommend this {isRepair ? "repair shop" : "seller"}?
+                    <span className="ml-1 text-rose-500">*</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Let others know if you would recommend their service.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
+                    type="button"
                     onClick={() => setRecommend(true)}
-                    className={`flex-1 py-3 px-4 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-black uppercase transition-all ${recommend === true ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-100 text-slate-400"}`}
+                    aria-pressed={recommend === true}
+                    className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-xs font-black transition-all ${
+                      recommend === true
+                        ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200"
+                    }`}
                   >
-                    <Check size={14} /> Yes, Recommend
+                    <Check size={15} /> Yes, I recommend
                   </button>
                   <button
+                    type="button"
                     onClick={() => setRecommend(false)}
-                    className={`flex-1 py-3 px-4 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-black uppercase transition-all ${recommend === false ? "border-red-500 bg-red-50 text-red-700" : "border-slate-100 text-slate-400"}`}
+                    aria-pressed={recommend === false}
+                    className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-xs font-black transition-all ${
+                      recommend === false
+                        ? "border-rose-400 bg-rose-50 text-rose-700"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-rose-200"
+                    }`}
                   >
-                    <XCircle size={14} /> No, Don't
+                    <XCircle size={15} /> No
                   </button>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs font-black text-slate-700 uppercase">
-                  Additional Feedback (Optional)
-                </p>
+                <label
+                  htmlFor="rate-seller-comment"
+                  className="text-sm font-bold text-slate-800"
+                >
+                  Write a review
+                  <span className="ml-1 text-xs font-medium text-slate-400">
+                    (Optional)
+                  </span>
+                </label>
                 <textarea
+                  id="rate-seller-comment"
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
-                  placeholder="Share your experience..."
-                  className="w-full h-24 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#3285a1]/20"
+                  placeholder={`Tell us about your experience with ${sellerName}...`}
+                  maxLength={1000}
+                  rows={3}
+                  className="min-h-24 max-h-40 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#3285a1] focus:ring-2 focus:ring-[#3285a1]/15"
                 />
+                <p className="text-right text-[11px] tabular-nums text-slate-400">
+                  {comment.length}/1000
+                </p>
               </div>
             </div>
 
-            <div className="p-6 bg-slate-50 flex gap-3">
+            <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-slate-50/95 px-5 py-4 sm:px-6">
               <button
+                type="button"
                 onClick={onClose}
-                className="flex-1 py-4 font-black text-slate-400 text-xs uppercase"
+                className="min-h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-500 transition hover:bg-slate-100"
               >
                 Cancel
               </button>
@@ -1468,10 +1542,11 @@ const TransactionsView = ({
                     comment,
                   })
                 }
-                className={`flex-1 py-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg transition-all text-white ${isSubmittingRating
-                  ? "bg-slate-400 cursor-not-allowed"
-                  : "bg-[#769c2d] hover:bg-[#668827] active:scale-[0.98]"
-                  }`}
+                className={`min-h-11 flex-1 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-wide text-white shadow-sm transition-all ${
+                  isSubmittingRating
+                    ? "cursor-not-allowed bg-slate-400"
+                    : "bg-[#3285a1] hover:bg-[#286f88] active:scale-[0.98]"
+                }`}
               >
                 {isSubmittingRating ? "Submitting..." : "Submit Rating"}
               </button>
@@ -1765,6 +1840,133 @@ const TransactionsView = ({
               </div>
             </div>
 
+            {/* Flexible handover proposal details (SILVER and above) */}
+            {!isRepairTransaction(selectedTransaction) &&
+              (
+                selectedTransaction.handover_proposal_status ||
+                selectedTransaction.handover_arrangement ||
+                selectedTransaction.handover_address ||
+                selectedTransaction.handover_contact ||
+                selectedTransaction.handover_schedule ||
+                selectedTransaction.handover_instructions
+              ) && (
+                <div className="bg-cyan-50 border border-cyan-200 rounded-[2rem] p-8 space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-cyan-800 font-black text-xs uppercase">
+                      <MapPin size={16} />
+                      Flexible Handover Arrangement
+                    </div>
+                    <span
+                      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        String(selectedTransaction.handover_proposal_status || "").toLowerCase() === "accepted"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : String(selectedTransaction.handover_proposal_status || "").toLowerCase() === "rejected"
+                            ? "bg-red-100 text-red-700"
+                            : String(selectedTransaction.handover_proposal_status || "").toLowerCase() === "pending"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {selectedTransaction.handover_proposal_status
+                        ? String(selectedTransaction.handover_proposal_status).replace(/_/g, " ")
+                        : "Details provided"}
+                    </span>
+                  </div>
+
+                  {selectedTransaction.handover_proposed_by && (
+                    <p className="text-xs text-cyan-900/70 font-medium">
+                      Proposed by{" "}
+                      {selectedTransaction.handover_proposed_by === session?.user?.id
+                        ? "you"
+                        : "the other transaction participant"}
+                      {selectedTransaction.handover_proposed_at
+                        ? ` on ${new Date(selectedTransaction.handover_proposed_at).toLocaleString()}`
+                        : ""}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {selectedTransaction.handover_arrangement && (
+                      <div className="md:col-span-2">
+                        <p className="text-[10px] font-black text-cyan-700 uppercase tracking-wider">
+                          Preferred Arrangement
+                        </p>
+                        <p className="text-sm font-bold text-slate-800 mt-1 whitespace-pre-line">
+                          {selectedTransaction.handover_arrangement}
+                        </p>
+                      </div>
+                    )}
+                    {selectedTransaction.handover_address && (
+                      <div className="md:col-span-2">
+                        <p className="text-[10px] font-black text-cyan-700 uppercase tracking-wider">
+                          Address / Meeting Location
+                        </p>
+                        <p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-line">
+                          {selectedTransaction.handover_address}
+                        </p>
+                      </div>
+                    )}
+                    {selectedTransaction.handover_contact && (
+                      <div>
+                        <p className="text-[10px] font-black text-cyan-700 uppercase tracking-wider">
+                          Contact Details
+                        </p>
+                        <p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-line">
+                          {selectedTransaction.handover_contact}
+                        </p>
+                      </div>
+                    )}
+                    {selectedTransaction.handover_schedule && (
+                      <div>
+                        <p className="text-[10px] font-black text-cyan-700 uppercase tracking-wider">
+                          Preferred Date / Time
+                        </p>
+                        <p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-line">
+                          {selectedTransaction.handover_schedule}
+                        </p>
+                      </div>
+                    )}
+                    {selectedTransaction.handover_instructions && (
+                      <div className="md:col-span-2">
+                        <p className="text-[10px] font-black text-cyan-700 uppercase tracking-wider">
+                          Additional Instructions
+                        </p>
+                        <p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-line">
+                          {selectedTransaction.handover_instructions}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {String(selectedTransaction.handover_proposal_status || "").toLowerCase() === "pending" && (
+                    <p className="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      This handover arrangement is waiting for the other participant to accept or reject it. Open Messages to respond.
+                    </p>
+                  )}
+                  {String(selectedTransaction.handover_proposal_status || "").toLowerCase() === "accepted" && (
+                    <p className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                      Both participants have accepted this handover arrangement. The transaction status remains unchanged until the normal handover confirmation process is completed.
+                    </p>
+                  )}
+                  {String(selectedTransaction.handover_proposal_status || "").toLowerCase() === "rejected" && (
+                    <p className="text-xs font-semibold text-red-800 bg-red-50 border border-red-200 rounded-xl p-3">
+                      This proposal was rejected. The participants can discuss and submit a revised arrangement in Messages.
+                    </p>
+                  )}
+
+                  {onOpenMessages && (
+                    <button
+                      type="button"
+                      onClick={onOpenMessages}
+                      className="w-full bg-[#3285a1] text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-[#286f88] transition flex items-center justify-center gap-2"
+                    >
+                      <MessageSquare size={14} />
+                      Open Messages
+                    </button>
+                  )}
+                </div>
+              )}
+
             {/* Status Specific Cards */}
             {!isRepairTransaction(selectedTransaction) &&
               normalizeTransactionStatus(selectedTransaction.status) === "matched" && (
@@ -1868,9 +2070,9 @@ const TransactionsView = ({
                   </div>
 
                   <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                    Your bid has been accepted and the sale is confirmed. The
-                    seller is arranging the meetup — the schedule and location
-                    will appear here once it has been set.
+                    {String(selectedTransaction.handover_proposal_status || "").toLowerCase() === "accepted"
+                      ? "The flexible handover arrangement has been accepted by both participants. Review the agreed details above and use Messages if you need to coordinate any final details."
+                      : "Your bid has been accepted and the sale is confirmed. The seller is arranging the meetup — the schedule and location will appear here once it has been set."}
                   </p>
 
                   <div className="bg-white rounded-2xl p-5 border border-orange-100 space-y-3">

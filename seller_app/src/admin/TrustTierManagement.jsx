@@ -40,8 +40,8 @@ const StatCard = ({ item }) => {
           <Icon size={18} />
         </div>
 
-        <span className="text-xs font-semibold text-emerald-500">
-          +12%
+        <span className="text-xs font-semibold text-[#9CA3AF]">
+          Live
         </span>
       </div>
 
@@ -103,6 +103,11 @@ const TierCard = ({ tier, onEdit }) => (
 const TrustTierManagement = ({ adminBarangay }) => {
   const [tiers, setTiers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [repairShopTierCounts, setRepairShopTierCounts] = useState({
+    purchase: { NEWCOMER: 0, BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 },
+    service: { NEWCOMER: 0, BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 },
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -115,6 +120,30 @@ const TrustTierManagement = ({ adminBarangay }) => {
     setLoading(true);
     setError("");
     try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+
+      const currentUserId = authData?.user?.id;
+      if (!currentUserId) {
+        setIsAdmin(false);
+        throw new Error("You must be signed in to access Trust Tier Management.");
+      }
+
+      const { data: currentProfile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", currentUserId)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+
+      const administrator = String(currentProfile?.role || "").trim().toLowerCase() === "admin";
+      setIsAdmin(administrator);
+
+      if (!administrator) {
+        throw new Error("Access denied. Only administrators can manage trust tiers.");
+      }
+
       const { data: tierRows, error: tierError } = await supabase
         .from("trust_tiers")
         .select("id,name,min_transactions,min_rating,privileges,created_at,updated_at");
@@ -155,22 +184,29 @@ const TrustTierManagement = ({ adminBarangay }) => {
 
       const idsOrEmpty = (ids) => (ids.length ? ids : EMPTY_ID);
 
-      const [profiles, listings, shops, transactions, reviews, repairReviews] = await Promise.all([
-        scopeQuery(supabase.from("profiles").select("id", { count: "exact", head: true }), adminBarangay),
+      // Keep the admin distribution aligned with the purchase-reputation model:
+      // count completed purchase transactions and combine eligible purchase
+      // reviews from marketplace selling and Repair Shop purchase transactions.
+      // Repair-service ratings remain a separate reputation stream.
+      const [profiles, listings, shops, transactions, reviews, repairPurchaseReviews, repairShopTiers] = await Promise.all([
+        scopeQuery(supabase.from("profiles").select("id", { count: "exact" }), adminBarangay),
         barangayUserIds === null
           ? supabase.from("listings").select("id", { count: "exact", head: true }).in("status", ["active", "available", "pending", "meetup_scheduled", "Meetup Scheduled"])
           : supabase.from("listings").select("id", { count: "exact", head: true }).in("status", ["active", "available", "pending", "meetup_scheduled", "Meetup Scheduled"]).in("seller_id", idsOrEmpty(barangayUserIds)),
         scopeQuery(supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "repair_shop").or("is_verified.eq.true,verification_status.eq.verified"), adminBarangay),
-        scopeTransactionsQuery(supabase.from("transactions").select("seller_id,harvester_id,status").eq("status", "completed"), adminBarangay),
+        scopeTransactionsQuery(supabase.from("transactions").select("seller_id,harvester_id,status,transaction_type,listing_id").eq("status", "completed").eq("transaction_type", "purchase"), adminBarangay),
         barangayUserIds === null
-          ? supabase.from("reviews").select("seller_id,overall_rating")
-          : supabase.from("reviews").select("seller_id,overall_rating").in("seller_id", idsOrEmpty(barangayUserIds)),
+          ? supabase.from("reviews").select("seller_id,overall_rating").eq("review_type", "selling").eq("moderation_status", "approved").not("overall_rating", "is", null)
+          : supabase.from("reviews").select("seller_id,overall_rating").eq("review_type", "selling").eq("moderation_status", "approved").not("overall_rating", "is", null).in("seller_id", idsOrEmpty(barangayUserIds)),
         barangayUserIds === null
-          ? supabase.from("repair_reviews").select("repair_shop_id,overall_rating")
-          : supabase.from("repair_reviews").select("repair_shop_id,overall_rating").in("repair_shop_id", idsOrEmpty(barangayUserIds)),
+          ? supabase.from("repair_purchase_reviews").select("repair_shop_id,overall_rating").not("overall_rating", "is", null)
+          : supabase.from("repair_purchase_reviews").select("repair_shop_id,overall_rating").not("overall_rating", "is", null).in("repair_shop_id", idsOrEmpty(barangayUserIds)),
+        barangayUserIds === null
+          ? supabase.from("repair_shop_reputation_tiers").select("repair_shop_id,reputation_type,trust_tier_id")
+          : supabase.from("repair_shop_reputation_tiers").select("repair_shop_id,reputation_type,trust_tier_id").in("repair_shop_id", idsOrEmpty(barangayUserIds)),
       ]);
 
-      const firstError = [profiles, listings, shops, transactions, reviews, repairReviews].find(r => r.error);
+      const firstError = [profiles, listings, shops, transactions, reviews, repairPurchaseReviews, repairShopTiers].find(r => r.error);
       if (firstError?.error) throw firstError.error;
 
       setStats({
@@ -194,11 +230,19 @@ const TrustTierManagement = ({ adminBarangay }) => {
         ratings[id].total += Number(value);
         ratings[id].count += 1;
       };
+      // Purchase reputation includes approved marketplace selling reviews and
+      // Repair Shop purchase reviews. Repair-service reviews remain separate.
       (reviews.data || []).forEach(r => addRating(r.seller_id, r.overall_rating));
-      (repairReviews.data || []).forEach(r => addRating(r.repair_shop_id, r.overall_rating));
+      (repairPurchaseReviews.data || []).forEach(r => addRating(r.repair_shop_id, r.overall_rating));
 
       const counts = { NEWCOMER: 0, BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 };
-      Object.keys(completedByUser).forEach(id => {
+      // Include every profile, including users with no completed transactions,
+      // so NEWCOMER distribution is not understated.
+      const allUserIds = new Set([
+        ...(profiles.data || []).map(profile => profile.id),
+        ...Object.keys(completedByUser),
+      ]);
+      allUserIds.forEach(id => {
         const ratingInfo = ratings[id];
         const rating = ratingInfo ? ratingInfo.total / ratingInfo.count : 0;
         let tierName = "NEWCOMER";
@@ -208,6 +252,26 @@ const TrustTierManagement = ({ adminBarangay }) => {
         counts[tierName] += 1;
       });
       setUserTierCounts(counts);
+
+      const repairCounts = {
+        purchase: { NEWCOMER: 0, BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 },
+        service: { NEWCOMER: 0, BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 },
+      };
+      const tierNameById = new Map(normalized.map(tier => [tier.id, tier.name]));
+
+      (repairShopTiers.data || []).forEach(row => {
+        const category = String(row.reputation_type || "").toLowerCase();
+        const tierName = tierNameById.get(row.trust_tier_id);
+        if (
+          (category === "purchase" || category === "service") &&
+          tierName &&
+          Object.prototype.hasOwnProperty.call(repairCounts[category], tierName)
+        ) {
+          repairCounts[category][tierName] += 1;
+        }
+      });
+
+      setRepairShopTierCounts(repairCounts);
     } catch (err) {
       console.error("Trust tier load error:", err);
       setError(err?.message || "Failed to load trust tier data.");
@@ -326,6 +390,23 @@ const TrustTierManagement = ({ adminBarangay }) => {
     { title: "Completed Devices", value: stats.completedDevices.toLocaleString(), icon: Database, color: "text-orange-500" },
   ], [stats]);
 
+  if (!loading && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-[#F5F7FB] p-6">
+        <div className="max-w-xl mx-auto mt-12 rounded-xl border border-red-200 bg-white p-6">
+          <div className="flex items-center gap-3 text-red-600">
+            <Shield size={22} />
+            <h1 className="text-lg font-semibold">Administrator Access Required</h1>
+          </div>
+          <p className="mt-3 text-sm text-[#6B7280]">
+            Only administrator accounts can manage trust tier requirements and privileges.
+          </p>
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F5F7FB] p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -377,6 +458,38 @@ const TrustTierManagement = ({ adminBarangay }) => {
             </div>
           )}
 
+          {!loading && tiers.length > 0 && (
+            <div className="mt-4 rounded-xl border border-[#ECEEF3] bg-white p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Shield size={17} className="text-violet-600" />
+                <div>
+                  <h3 className="text-sm font-semibold text-[#111827]">Repair Shop Reputation Distribution</h3>
+                  <p className="text-xs text-[#9CA3AF] mt-1">Purchase and repair-service reputation are counted separately.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {[
+                  { key: "purchase", label: "Purchase Reputation" },
+                  { key: "service", label: "Repair Service Reputation" },
+                ].map(category => (
+                  <div key={category.key} className="rounded-lg border border-[#ECEEF3] p-4">
+                    <p className="text-sm font-semibold text-[#374151] mb-3">{category.label}</p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {TIER_ORDER.map(name => (
+                        <div key={name} className="rounded-md bg-[#F8FAFC] p-2 text-center">
+                          <p className="text-[10px] font-semibold text-[#9CA3AF]">{name}</p>
+                          <p className="mt-1 text-lg font-bold text-[#111827]">
+                            {repairShopTierCounts[category.key][name] || 0}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mt-5 bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl p-5 flex items-start gap-3">
             <Info size={18} className="text-[#2563EB] mt-0.5 shrink-0" />
             <div>
@@ -384,8 +497,8 @@ const TrustTierManagement = ({ adminBarangay }) => {
               <ul className="space-y-1 text-[13px] text-[#2563EB]">
                 <li>• Tier changes are saved immediately to the trust_tiers table.</li>
                 <li>• A user qualifies for the highest tier where both requirements are satisfied.</li>
-                <li>• Completed marketplace and repair transactions are used for the transaction count.</li>
-                <li>• Marketplace and repair ratings are included when calculating the user's average rating.</li>
+                <li>• Completed purchase transactions are used for the tier transaction count.</li>
+                <li>• Owner/Dealer selling ratings and Repair Shop purchase ratings contribute to purchase reputation; Repair Shop service ratings are tracked separately.</li>
                 <li>• Higher tiers must have stricter transaction and rating requirements.</li>
               </ul>
             </div>
