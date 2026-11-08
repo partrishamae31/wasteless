@@ -10,6 +10,7 @@ import wastelessLogo from "./assets/wasteless-logo.png";
 const AdminSignup = ({ onBackToLogin }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [popup, setPopup] = useState(null);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -44,10 +45,17 @@ const AdminSignup = ({ onBackToLogin }) => {
       ]);
 
       if (profileError) throw profileError;
-      alert("Registration successful! Wait for system approval.");
-      onBackToLogin();
+      setPopup({
+        type: "success",
+        title: "Registration Successful",
+        message: "Your registration has been submitted. Please wait for system approval.",
+      });
     } catch (err) {
-      alert(err.message);
+      setPopup({
+        type: "error",
+        title: "Registration Failed",
+        message: err?.message || "Something went wrong. Please try again.",
+      });
     } finally {
       setLoading(false);
     }
@@ -216,6 +224,50 @@ const AdminSignup = ({ onBackToLogin }) => {
           </div>
         </div>
       </div>
+
+      {popup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="signup-popup-title"
+            className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl"
+          >
+            <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full ${
+              popup.type === "success" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
+            }`}>
+              {popup.type === "success" ? (
+                <BadgeCheck size={34} />
+              ) : (
+                <Fingerprint size={34} />
+              )}
+            </div>
+
+            <h2 id="signup-popup-title" className="text-xl font-bold text-slate-800 text-center">
+              {popup.title}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 text-center break-words">
+              {popup.message}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                const wasSuccessful = popup.type === "success";
+                setPopup(null);
+                if (wasSuccessful) onBackToLogin();
+              }}
+              className={`mt-6 h-12 w-full rounded-xl font-bold text-sm text-white transition-colors ${
+                popup.type === "success"
+                  ? "bg-[#07A63D] hover:bg-green-700"
+                  : "bg-slate-800 hover:bg-slate-700"
+              }`}
+            >
+              {popup.type === "success" ? "Back to Sign In" : "Okay"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

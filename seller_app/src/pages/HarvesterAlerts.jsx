@@ -66,7 +66,11 @@ const HarvesterAlerts = ({ session, isVerified }) => {
     preferred_barangay: "",
   });
 
-  const [error, setError] = useState("");
+  const [popup, setPopup] = useState(null);
+
+  const showPopup = (type, title, message) => {
+    setPopup({ type, title, message });
+  };
 
   /*
    * REPAIR SHOP COMPONENT ALERTS
@@ -257,17 +261,16 @@ const HarvesterAlerts = ({ session, isVerified }) => {
 
     // Pending Verification accounts are view-only.
     if (!isVerified) {
-      alert("Pending Verification accounts are view-only and cannot create alerts.");
+      showPopup("warning", "View-Only Access", "Pending Verification accounts are view-only and cannot create alerts.");
       return;
     }
 
-    setError("");
 
     /*
      * DEVICE MODEL
      */
     if (!formData.device_model.trim()) {
-      setError("Please enter a device model.");
+      showPopup("error", "Missing Device Model", "Please enter a device model.");
       return;
     }
 
@@ -275,7 +278,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
      * CONDITION
      */
     if (!CONDITION_OPTIONS.includes(formData.condition)) {
-      setError("Please select a valid listing condition.");
+      showPopup("error", "Invalid Condition", "Please select a valid listing condition.");
       return;
     }
 
@@ -285,7 +288,7 @@ const HarvesterAlerts = ({ session, isVerified }) => {
     const price = parseFloat(formData.max_price);
 
     if (isNaN(price) || price <= 0) {
-      setError("Maximum price must be greater than zero.");
+      showPopup("error", "Invalid Maximum Price", "Maximum price must be greater than zero.");
       return;
     }
 
@@ -313,9 +316,10 @@ const HarvesterAlerts = ({ session, isVerified }) => {
     if (insertError) {
       console.error("CREATE ALERT ERROR:", insertError);
 
-      setError(
-        insertError.message ||
-          "Unable to create the component alert."
+      showPopup(
+        "error",
+        "Unable to Create Alert",
+        insertError.message || "Unable to create the component alert."
       );
 
       return;
@@ -334,12 +338,13 @@ const HarvesterAlerts = ({ session, isVerified }) => {
     });
 
     await fetchAlerts();
+    showPopup("success", "Alert Created", "Your component alert has been created successfully.");
   };
 
   const deleteAlert = async (id) => {
     // Pending Verification accounts are view-only.
     if (!isVerified) {
-      alert("Pending Verification accounts are view-only and cannot delete alerts.");
+      showPopup("warning", "View-Only Access", "Pending Verification accounts are view-only and cannot delete alerts.");
       return;
     }
 
@@ -350,19 +355,24 @@ const HarvesterAlerts = ({ session, isVerified }) => {
 
     if (deleteError) {
       console.error("Delete alert error:", deleteError);
+      showPopup(
+        "error",
+        "Unable to Delete Alert",
+        deleteError.message || "Something went wrong while deleting this alert."
+      );
       return;
     }
 
     await fetchAlerts();
+    showPopup("success", "Alert Deleted", "The component alert has been deleted successfully.");
   };
 
   const openCreateModal = () => {
     if (!isVerified) {
-      alert("Pending Verification accounts are view-only and cannot create alerts.");
+      showPopup("warning", "View-Only Access", "Pending Verification accounts are view-only and cannot create alerts.");
       return;
     }
 
-    setError("");
     setFormData({
       device_model: "",
       condition: "Not Working",
@@ -773,13 +783,6 @@ const HarvesterAlerts = ({ session, isVerified }) => {
             </div>
 
             <div className="p-8">
-              {error && (
-                <div className="mb-4 bg-red-50 border border-red-200 text-red-500 text-sm px-4 py-3 rounded-xl flex items-center gap-2">
-                  <AlertCircle size={16} />
-                  {error}
-                </div>
-              )}
-
               <form
                 onSubmit={handleCreateAlert}
                 className="space-y-6"
@@ -982,6 +985,60 @@ const HarvesterAlerts = ({ session, isVerified }) => {
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* FEEDBACK POPUP */}
+      {popup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="harvester-alert-popup-title"
+            className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl"
+          >
+            <div
+              className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full ${
+                popup.type === "success"
+                  ? "bg-green-100 text-green-600"
+                  : popup.type === "warning"
+                    ? "bg-amber-100 text-amber-600"
+                    : "bg-red-100 text-red-600"
+              }`}
+            >
+              {popup.type === "success" ? (
+                <CheckCircle2 size={34} />
+              ) : popup.type === "warning" ? (
+                <AlertCircle size={34} />
+              ) : (
+                <X size={34} />
+              )}
+            </div>
+
+            <h2
+              id="harvester-alert-popup-title"
+              className="text-xl font-bold text-slate-800 text-center"
+            >
+              {popup.title}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 text-center break-words">
+              {popup.message}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setPopup(null)}
+              className={`mt-6 h-12 w-full rounded-xl font-bold text-sm text-white transition-colors ${
+                popup.type === "success"
+                  ? "bg-green-600 hover:bg-green-700"
+                  : popup.type === "warning"
+                    ? "bg-amber-500 hover:bg-amber-600"
+                    : "bg-slate-800 hover:bg-slate-700"
+              }`}
+            >
+              Okay
+            </button>
           </div>
         </div>
       )}
