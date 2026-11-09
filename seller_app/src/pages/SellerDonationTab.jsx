@@ -217,11 +217,10 @@ const SellerDonationTab = ({
         if (isMounted) {
           const fetchedPoints = Array.isArray(data) ? data : [];
 
-          setAvailableDropOffPoints(
-            fetchedPoints.length > 0
-              ? fetchedPoints
-              : parentDropOffPoints
-          );
+          // The Supabase result is authoritative, including an empty result.
+          // Do not replace it with parent data that may be filtered to the
+          // logged-in user's barangay.
+          setAvailableDropOffPoints(fetchedPoints);
         }
       } catch (error) {
         console.error("Failed to load drop-off points:", error);
@@ -251,20 +250,7 @@ const SellerDonationTab = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /*
-   * ---------------------------------------------------------
-   * KEEP PARENT DROP-OFF POINTS AVAILABLE
-   * ---------------------------------------------------------
-   */
-  useEffect(() => {
-    if (parentDropOffPoints.length > 0) {
-      setAvailableDropOffPoints((current) =>
-        current.length > 0 ? current : parentDropOffPoints
-      );
-    }
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dropOffPointsProp]);
 
   /*
    * ---------------------------------------------------------
@@ -926,13 +912,8 @@ const SellerDonationTab = ({
    * ---------------------------------------------------------
    * DONATION BARANGAY + MAPPED DROP-OFF POINTS
    * ---------------------------------------------------------
-   *
-   * TC_DON_03 requires the Owner/Dealer to choose a barangay first,
-   * then display the mapped drop-off details for that barangay.
-   *
-   * TC_DON_05 also requires a barangay with no mapped point to remain
-   * selectable so the user can be clearly informed that administrator
-   * assistance or another barangay is required.
+   * Only barangays with an active, available MRF are selectable.
+   * Users may choose any such barangay, not only their own barangay.
    */
   const normalizeBarangay = (value) =>
     String(value || "")
@@ -946,22 +927,11 @@ const SellerDonationTab = ({
     availableDropOffPoints.forEach((point) => {
       const label = String(point?.barangay || "").trim();
       const normalized = normalizeBarangay(label);
+      const isActive = point?.is_active !== false;
+      const isAvailable =
+        String(point?.status || "available").trim().toLowerCase() === "available";
 
-      if (normalized && !byNormalizedName.has(normalized)) {
-        byNormalizedName.set(normalized, label);
-      }
-    });
-
-    /*
-     * Also include barangays already present on the seller's listings.
-     * This is important for TC_DON_05: a seller must be able to select
-     * a barangay even when no active drop-off point is mapped to it.
-     */
-    allListings.forEach((listing) => {
-      const label = String(listing?.barangay || "").trim();
-      const normalized = normalizeBarangay(label);
-
-      if (normalized && !byNormalizedName.has(normalized)) {
+      if (normalized && isActive && isAvailable && !byNormalizedName.has(normalized)) {
         byNormalizedName.set(normalized, label);
       }
     });
@@ -969,7 +939,7 @@ const SellerDonationTab = ({
     return Array.from(byNormalizedName.values()).sort((a, b) =>
       a.localeCompare(b)
     );
-  }, [availableDropOffPoints, allListings]);
+  }, [availableDropOffPoints]);
 
   const mappedDropOffPointsForBarangay = useMemo(() => {
     const normalizedSelectedBarangay =
@@ -990,6 +960,25 @@ const SellerDonationTab = ({
       String(point.id) === String(selectedDropOffPointId)
   );
 
+  // If MRF data finishes loading after the modal was opened, select the
+  // first valid barangay when the listing's own barangay has no MRF.
+  useEffect(() => {
+    if (!selectedListing || loadingDropOffPoints || donationBarangays.length === 0) return;
+
+    const currentIsAvailable = donationBarangays.some(
+      (name) => normalizeBarangay(name) === normalizeBarangay(selectedDonationBarangay)
+    );
+
+    if (!currentIsAvailable) {
+      const listingBarangay = String(selectedListing?.barangay || "").trim();
+      const preferred = donationBarangays.find(
+        (name) => normalizeBarangay(name) === normalizeBarangay(listingBarangay)
+      );
+      setSelectedDonationBarangay(preferred || donationBarangays[0]);
+      setSelectedDropOffPointId("");
+    }
+  }, [selectedListing, loadingDropOffPoints, donationBarangays, selectedDonationBarangay]);
+
   /*
    * ---------------------------------------------------------
    * OPEN DONATION MODAL
@@ -1002,9 +991,14 @@ const SellerDonationTab = ({
     setDonationError("");
     setDonationSuccess("");
     setSelectedDropOffPointId("");
-    setSelectedDonationBarangay(
-      String(listing?.barangay || "").trim()
+
+    // Prefer the listing's barangay only when it has an available MRF.
+    // Otherwise default to the first barangay that does have one.
+    const listingBarangay = String(listing?.barangay || "").trim();
+    const preferredBarangay = donationBarangays.find(
+      (name) => normalizeBarangay(name) === normalizeBarangay(listingBarangay)
     );
+    setSelectedDonationBarangay(preferredBarangay || donationBarangays[0] || "");
     setSelectedListing(listing);
   };
 
@@ -1947,7 +1941,11 @@ const SellerDonationTab = ({
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-60"
               >
                 <option value="">
-                  Select a barangay
+                  {loadingDropOffPoints
+                    ? "Loading available MRF barangays..."
+                    : donationBarangays.length > 0
+                      ? "Select a barangay with an active MRF"
+                      : "No active MRF available"}
                 </option>
 
                 {donationBarangays.map((barangay) => (
@@ -1956,6 +1954,12 @@ const SellerDonationTab = ({
                   </option>
                 ))}
               </select>
+
+              {!loadingDropOffPoints && donationBarangays.length === 0 && (
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+                  There are currently no active and available MRFs registered in the system. Please contact the Administrator for assistance.
+                </p>
+              )}
 
               {selectedDonationBarangay &&
                 mappedDropOffPointsForBarangay.length === 0 && (

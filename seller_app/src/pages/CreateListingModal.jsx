@@ -2525,7 +2525,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
               )}
 
               {/* Footer Acknowledgement Section */}
-              <div className="space-y-4 pt-4">
+              {/* <div className="space-y-4 pt-4">
                 <label className="flex items-start gap-3 p-5 bg-gray-50 rounded-2xl cursor-pointer border border-gray-100">
                   <input
                     type="checkbox"
@@ -2557,7 +2557,7 @@ const CreateListingModal = ({ isOpen, onClose, userId }) => {
                     </p>
                   </div>
                 </label>
-              </div>
+              </div> */}
 
               {!isStep5Complete && (
                 <p className="text-center text-xs text-red-500 font-bold px-6">

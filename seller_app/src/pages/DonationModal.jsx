@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import useBodyScrollLock from "../utils/useBodyScrollLock";
 import { X, Info, MapPin, Navigation, CheckCircle2, ChevronLeft, Circle, MoreVertical } from "lucide-react";
 
@@ -13,21 +13,81 @@ const DonationModal = ({
 }) => {
   const normalizedBarangay = barangay || listing?.barangay || "";
 
-  const activeDropOffPoints = Array.isArray(availableDropOffPoints)
-    ? availableDropOffPoints.filter((point) => point?.is_active !== false)
-    : [];
+  // Only active and available MRF/drop-off records can be selected.
+  // Do not restrict this list to the seller's registered barangay.
+  const activeDropOffPoints = useMemo(
+    () =>
+      (Array.isArray(availableDropOffPoints) ? availableDropOffPoints : []).filter(
+        (point) => {
+          // Donation destinations must be MRFs only. Other drop-off records,
+          // such as Karuhatan's meetup center, are reserved for purchase meetups.
+          const partner = String(point?.partner || "").trim().toLowerCase();
+          const pointName = String(point?.name || "").trim();
+          const isMrf = partner === "barangay mrf" || /\bmrf\b/i.test(pointName);
 
-  const matchingDropOffPoints = activeDropOffPoints.filter(
-    (point) =>
-      !normalizedBarangay ||
-      String(point?.barangay || "").trim().toLowerCase() ===
-        String(normalizedBarangay).trim().toLowerCase()
+          return (
+            isMrf &&
+            point?.id &&
+            point?.barangay &&
+            point?.is_active !== false &&
+            String(point?.status || "available").trim().toLowerCase() === "available"
+          );
+        }
+      ),
+    [availableDropOffPoints]
   );
 
+  const availableBarangays = useMemo(() => {
+    const names = new Map();
+    activeDropOffPoints.forEach((point) => {
+      const name = String(point.barangay).trim();
+      const key = name.toLowerCase();
+      if (name && !names.has(key)) names.set(key, name);
+    });
+    return [...names.values()].sort((a, b) => a.localeCompare(b));
+  }, [activeDropOffPoints]);
+
+  const getPreferredPoint = () => {
+    if (dropOffPoint?.id) {
+      const exact = activeDropOffPoints.find(
+        (point) => String(point.id) === String(dropOffPoint.id)
+      );
+      if (exact) return exact;
+    }
+    const localBarangayPoint = activeDropOffPoints.find(
+      (point) =>
+        String(point.barangay || "").trim().toLowerCase() ===
+        String(normalizedBarangay).trim().toLowerCase()
+    );
+    return localBarangayPoint || activeDropOffPoints[0] || null;
+  };
+
+  const [selectedPointId, setSelectedPointId] = useState("");
+  const [view, setView] = useState("details");
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const preferred = getPreferredPoint();
+    setSelectedPointId(preferred?.id ? String(preferred.id) : "");
+    setView("details");
+    // Reset selection when modal/listing/available MRF records change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, listing?.id, dropOffPoint?.id, availableDropOffPoints]);
+
   const selectedPoint =
-    dropOffPoint ||
-    matchingDropOffPoints[0] ||
-    null;
+    activeDropOffPoints.find((point) => String(point.id) === selectedPointId) ||
+    getPreferredPoint();
+
+  const handleBarangayChange = (event) => {
+    const chosenBarangay = event.target.value;
+    const nextPoint = activeDropOffPoints.find(
+      (point) =>
+        String(point.barangay || "").trim().toLowerCase() ===
+        chosenBarangay.trim().toLowerCase()
+    );
+    setSelectedPointId(nextPoint?.id ? String(nextPoint.id) : "");
+    setView("details");
+  };
 
   // The drop-off point's location/name is the destination label.
   // `partner` identifies the organization/operator (e.g. WMO), not the location.
@@ -57,7 +117,6 @@ const DonationModal = ({
 
   const hasMappedPoint = Boolean(selectedPoint?.id);
 
-  const [view, setView] = useState("details");
   useBodyScrollLock(isOpen);
 
   const handleConfirm = () => {
@@ -94,7 +153,7 @@ const DonationModal = ({
               </h2>
               <p className="text-xs opacity-90 uppercase tracking-wider font-medium">
                 {view === "details"
-                  ? "Select your barangay's e-waste center"
+                  ? "Select a barangay with an MRF"
                   : `Barangay ${pointBarangay} Drop-off Point`}
               </p>
             </div>
@@ -113,22 +172,31 @@ const DonationModal = ({
             <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl flex gap-3">
               <Info className="text-blue-500 shrink-0 mt-0.5" size={18} />
               <p className="text-xs text-blue-700 leading-relaxed text-left">
-                <span className="font-bold">
-                  Drop-off at Your Barangay Center:
-                </span>{" "}
-                Based on your registered address in
-                <span className="font-bold">
-                  {" "}
-                  {pointBarangay}
-                </span>
-                , you will bring your device to your designated center.
+                <span className="font-bold">Choose an available MRF:</span>{" "}
+                You may select any barangay with an active, available MRF, even
+                if it is outside your registered barangay.
               </p>
             </div>
 
             <div className="space-y-3">
               <label className="text-xs font-black text-slate-400 uppercase tracking-[0.15em] block text-left">
-                Your Designated E-waste Center
+                Select Barangay with an Active MRF
               </label>
+              <select
+                value={selectedPoint?.barangay || ""}
+                onChange={handleBarangayChange}
+                disabled={availableBarangays.length === 0}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#f97316] disabled:bg-slate-100"
+              >
+                {availableBarangays.length === 0 ? (
+                  <option value="">No active MRF available</option>
+                ) : (
+                  availableBarangays.map((name) => (
+                    <option key={name} value={name}>Barangay {name}</option>
+                  ))
+                )}
+              </select>
+              {selectedPoint ? (
               <div className="border border-emerald-100 bg-emerald-50/40 rounded-3xl p-6 border-dashed">
                 <div className="flex gap-4 mb-5 text-left">
                   <div className="bg-[#10b981] p-3.5 rounded-2xl text-white shrink-0 h-fit shadow-sm">
@@ -153,6 +221,11 @@ const DonationModal = ({
                   <Navigation size={16} fill="white" /> Get Directions
                 </button>
               </div>
+              ) : (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  No active and available MRF records were returned. Please check the drop-off point records and Supabase read access.
+                </div>
+              )}
             </div>
 
             {!hasMappedPoint && (
@@ -160,9 +233,8 @@ const DonationModal = ({
                 <Info className="text-red-500 shrink-0 mt-0.5" size={18} />
                 <p className="text-xs text-red-700 leading-relaxed text-left">
                   <span className="font-bold">No mapped drop-off point:</span>{" "}
-                  There is no active administrator-mapped e-waste drop-off point
-                  for {pointBarangay}. Please choose another barangay or contact
-                  the administrator for disposal coordination.
+                  No active MRF is currently selected. Choose a barangay with an
+                  available MRF before confirming the donation.
                 </p>
               </div>
             )}
