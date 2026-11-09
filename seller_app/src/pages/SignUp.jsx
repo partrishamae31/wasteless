@@ -2162,7 +2162,7 @@ const SignUp = ({ onLoginClick }) => {
                   : "border-gray-100 text-gray-600 hover:border-gray-300"
                   }`}
               >
-                Community User / Tech-Dealer
+                Tech-Owner / Dealer
                 <span className="block text-xs font-normal text-gray-400 mt-1">
                   Buy working items or sell unused/non-working electronics
                 </span>
